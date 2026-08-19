@@ -1,15 +1,44 @@
 import { eq } from "drizzle-orm";
 import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
-import { discordRoles, members, membershipEvents } from "../src/db/schema";
+import { discordRoles, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
+
+/** Removes a member from any party slot / busy entry they're currently placed in. */
+async function clearPartyAssignments(memberId: string) {
+  await db
+    .update(partySlots)
+    .set({ memberId: null, className: null, updatedAt: new Date() })
+    .where(eq(partySlots.memberId, memberId));
+  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+}
 
 interface NormalizedMember {
   discordId: string;
   username: string;
   globalName: string | null;
+  nickname: string | null;
   avatarUrl: string;
   roles: string[];
   joinedAt: Date | null;
+  hasTrackedRole: boolean;
+}
+
+/**
+ * Name of the Discord role that gates guild-roster tracking. Only members
+ * currently holding this role are synced into the app. Matched
+ * case-insensitively. Defaults to "Rooc".
+ */
+const TRACKED_ROLE_NAME = (process.env.DISCORD_TRACKED_ROLE_NAME || "Rooc").trim().toLowerCase();
+
+/** Resolves the tracked role in a guild by name (case-insensitive). */
+export function resolveTrackedRole(guild: Guild): Role | null {
+  return guild.roles.cache.find((r) => r.name.trim().toLowerCase() === TRACKED_ROLE_NAME) ?? null;
+}
+
+function memberHasTrackedRole(member: GuildMember): boolean {
+  const role = resolveTrackedRole(member.guild);
+  if (!role) return false;
+  return member.roles.cache.has(role.id);
 }
 
 export function normalizeMember(member: GuildMember): NormalizedMember {
@@ -17,9 +46,11 @@ export function normalizeMember(member: GuildMember): NormalizedMember {
     discordId: member.id,
     username: member.user.username,
     globalName: member.user.globalName ?? null,
+    nickname: member.nickname ?? null,
     avatarUrl: member.displayAvatarURL({ size: 128, extension: "png" }),
     roles: member.roles.cache.map((r) => r.id).filter((id) => id !== member.guild.id),
     joinedAt: member.joinedAt,
+    hasTrackedRole: memberHasTrackedRole(member),
   };
 }
 
@@ -45,6 +76,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
         discordId: normalized.discordId,
         discordUsername: normalized.username,
         discordGlobalName: normalized.globalName,
+        discordNickname: normalized.nickname,
         discordAvatar: normalized.avatarUrl,
         discordRoles: normalized.roles,
         status: "ACTIVE",
@@ -62,6 +94,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
     .set({
       discordUsername: normalized.username,
       discordGlobalName: normalized.globalName,
+      discordNickname: normalized.nickname,
       discordAvatar: normalized.avatarUrl,
       discordRoles: normalized.roles,
       status: "ACTIVE",
@@ -87,37 +120,9 @@ export async function markMemberLeftFromGateway(discordId: string) {
     .update(members)
     .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
     .where(eq(members.id, existing.id));
+  await clearPartyAssignments(existing.id);
 
   await logEvent(existing.id, "LEAVE", "ออกจาก Discord server");
-}
-
-/** Update cached role list on a guildMemberUpdate event, logging only real changes. */
-export async function syncRolesFromGateway(normalized: NormalizedMember) {
-  const existing = await db.query.members.findFirst({
-    where: eq(members.discordId, normalized.discordId),
-  });
-  if (!existing) return;
-
-  const before = new Set(existing.discordRoles);
-  const after = new Set(normalized.roles);
-  const changed =
-    before.size !== after.size || [...before].some((r) => !after.has(r));
-
-  await db
-    .update(members)
-    .set({
-      discordUsername: normalized.username,
-      discordGlobalName: normalized.globalName,
-      discordAvatar: normalized.avatarUrl,
-      discordRoles: normalized.roles,
-      lastSyncedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(members.id, existing.id));
-
-  if (changed) {
-    await logEvent(existing.id, "ROLE_UPDATE", "role ใน Discord เปลี่ยนแปลง");
-  }
 }
 
 /** Upsert the cached name/color/position for a single Discord role. */
@@ -166,7 +171,12 @@ export async function runFullSync(guild: Guild) {
   const discordMembers = await guild.members.fetch();
   const normalizedList = [...discordMembers.values()]
     .filter((m) => !m.user.bot)
-    .map(normalizeMember);
+    .map(normalizeMember)
+    // Only track members who currently hold the configured role (default
+    // "Rooc"). Everyone else is left out of the roster entirely — if they
+    // were previously tracked and lost the role, the reconciliation loop
+    // below will mark them LEFT.
+    .filter((m) => m.hasTrackedRole);
 
   const dbMembers = await db.select().from(members);
   const dbByDiscordId = new Map(dbMembers.map((m) => [m.discordId, m]));
@@ -187,6 +197,7 @@ export async function runFullSync(guild: Guild) {
           discordId: normalized.discordId,
           discordUsername: normalized.username,
           discordGlobalName: normalized.globalName,
+          discordNickname: normalized.nickname,
           discordAvatar: normalized.avatarUrl,
           discordRoles: normalized.roles,
           status: "ACTIVE",
@@ -205,6 +216,7 @@ export async function runFullSync(guild: Guild) {
       .set({
         discordUsername: normalized.username,
         discordGlobalName: normalized.globalName,
+        discordNickname: normalized.nickname,
         discordAvatar: normalized.avatarUrl,
         discordRoles: normalized.roles,
         status: "ACTIVE",
@@ -220,15 +232,17 @@ export async function runFullSync(guild: Guild) {
     }
   }
 
-  // Anyone marked ACTIVE in the DB but absent from the current member list
-  // left (or was kicked/banned) while the bot was not running.
+  // Anyone marked ACTIVE in the DB but absent from the current tracked-role
+  // list either left the Discord server, was kicked/banned, or simply lost
+  // the tracked role — in every case they drop out of the roster.
   for (const dbMember of dbMembers) {
     if (dbMember.status === "ACTIVE" && !seenDiscordIds.has(dbMember.discordId)) {
       await db
         .update(members)
         .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
         .where(eq(members.id, dbMember.id));
-      await logEvent(dbMember.id, "LEAVE", "ออกจาก Discord server (พบจากการซิงค์)");
+      await clearPartyAssignments(dbMember.id);
+      await logEvent(dbMember.id, "LEAVE", "ออกจากกิลด์ (ออกจาก Discord server หรือไม่มี role ที่ติดตามแล้ว)");
       left++;
     }
   }

@@ -2,8 +2,8 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
-import { RankBadge, StatusBadge } from "@/components/badges";
-import { eventLabels } from "@/lib/ui";
+import { StatusBadge } from "@/components/badges";
+import { eventLabels, memberDisplayName } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
 import { formatDistanceToNow } from "date-fns";
@@ -33,12 +33,11 @@ export default async function MemberDetailPage({
         />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold text-zinc-50">
-            {member.discordGlobalName ?? member.discordUsername}
+            {memberDisplayName(member)}
           </h1>
           <p className="text-sm text-zinc-500">@{member.discordUsername}</p>
         </div>
         <div className="flex items-center gap-2">
-          <RankBadge rank={member.guildRank} />
           <StatusBadge status={member.status} />
         </div>
       </div>
@@ -95,6 +94,10 @@ export default async function MemberDetailPage({
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
             <h2 className="mb-4 font-medium text-zinc-100">สถานะ Discord</h2>
             <dl className="flex flex-col gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-zinc-500">ชื่อเล่นในเซิร์ฟเวอร์ (nickname)</dt>
+                <dd className="text-zinc-200">{member.discordNickname ?? "—"}</dd>
+              </div>
               <div>
                 <dt className="text-xs text-zinc-500">เข้าร่วม Discord เมื่อ</dt>
                 <dd className="text-zinc-200">

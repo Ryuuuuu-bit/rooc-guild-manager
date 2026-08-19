@@ -11,6 +11,7 @@ interface NavProps {
 const links = [
   { href: "/", label: "ภาพรวม" },
   { href: "/members", label: "สมาชิก" },
+  { href: "/party", label: "จัดปาตี้" },
   { href: "/activity", label: "ประวัติกิจกรรม" },
 ];
 

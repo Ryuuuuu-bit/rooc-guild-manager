@@ -45,4 +45,12 @@ export const env = {
       .map((s) => s.trim())
       .filter(Boolean);
   },
+  /**
+   * Name of the Discord role that gates guild-roster membership. Only
+   * members currently holding this role are tracked/shown in the app.
+   * Matched case-insensitively. Defaults to "Rooc".
+   */
+  get trackedRoleName(): string {
+    return (process.env.DISCORD_TRACKED_ROLE_NAME ?? "Rooc").trim();
+  },
 };

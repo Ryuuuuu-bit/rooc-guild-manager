@@ -3,8 +3,8 @@ import Discord from "next-auth/providers/discord";
 import { env } from "@/lib/env";
 import { discordUserFetch, discordAvatarUrl, DiscordApiError } from "@/lib/discord";
 import { db } from "@/db";
-import { members } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { discordRoles, members } from "@/db/schema";
+import { eq, ilike } from "drizzle-orm";
 
 // Extend the built-in NextAuth types with the fields this app needs.
 declare module "next-auth" {
@@ -41,6 +41,7 @@ interface DiscordProfile {
 
 interface GuildMemberResponse {
   roles: string[];
+  nick: string | null;
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -96,38 +97,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       user.isAdmin = isAdmin;
       user.avatarUrl = avatarUrl;
 
-      // Best-effort: make sure this person shows up in the roster right
-      // away rather than waiting for the bot's next sync pass. Never block
-      // sign-in on this failing.
+      // Best-effort: if this person currently holds the tracked role (e.g.
+      // "Rooc"), make sure they show up in the roster right away rather
+      // than waiting for the bot's next sync pass. People without the role
+      // can still sign in (guild membership is all that's required to use
+      // the app) but are not added to the roster. Never block sign-in on
+      // any of this failing.
       try {
-        const existing = await db.query.members.findFirst({
-          where: eq(members.discordId, discordProfile.id),
+        const trackedRole = await db.query.discordRoles.findFirst({
+          where: ilike(discordRoles.name, env.trackedRoleName),
         });
+        const hasTrackedRole = Boolean(
+          trackedRole && guildMember.roles.includes(trackedRole.id)
+        );
 
-        if (!existing) {
-          await db.insert(members).values({
-            discordId: discordProfile.id,
-            discordUsername: discordProfile.username,
-            discordGlobalName: discordProfile.global_name,
-            discordAvatar: avatarUrl,
-            discordRoles: guildMember.roles,
-            status: "ACTIVE",
-            joinedDiscordAt: new Date(),
-            lastSyncedAt: new Date(),
+        if (hasTrackedRole) {
+          const existing = await db.query.members.findFirst({
+            where: eq(members.discordId, discordProfile.id),
           });
-        } else {
-          await db
-            .update(members)
-            .set({
+
+          if (!existing) {
+            await db.insert(members).values({
+              discordId: discordProfile.id,
               discordUsername: discordProfile.username,
               discordGlobalName: discordProfile.global_name,
+              discordNickname: guildMember.nick,
               discordAvatar: avatarUrl,
               discordRoles: guildMember.roles,
               status: "ACTIVE",
+              joinedDiscordAt: new Date(),
               lastSyncedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(members.id, existing.id));
+            });
+          } else {
+            await db
+              .update(members)
+              .set({
+                discordUsername: discordProfile.username,
+                discordGlobalName: discordProfile.global_name,
+                discordNickname: guildMember.nick,
+                discordAvatar: avatarUrl,
+                discordRoles: guildMember.roles,
+                status: "ACTIVE",
+                leftDiscordAt: null,
+                lastSyncedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(members.id, existing.id));
+          }
         }
       } catch (err) {
         console.error("Failed to upsert member on sign-in", err);

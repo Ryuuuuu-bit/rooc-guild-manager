@@ -6,7 +6,6 @@ import {
   normalizeMember,
   upsertMemberFromGateway,
   markMemberLeftFromGateway,
-  syncRolesFromGateway,
   upsertRole,
   removeRole,
 } from "./sync";
@@ -48,8 +47,14 @@ client.once(Events.ClientReady, async (readyClient) => {
 client.on(Events.GuildMemberAdd, async (member) => {
   if (member.guild.id !== GUILD_ID || member.user.bot) return;
   try {
-    await upsertMemberFromGateway(normalizeMember(member));
-    console.log(`[bot] join: ${member.user.username} (${member.id})`);
+    const normalized = normalizeMember(member);
+    // Only add them to the roster if they already carry the tracked role
+    // (e.g. auto-role bots that assign it on join). Otherwise wait — they'll
+    // be picked up by guildMemberUpdate if/when the role is granted.
+    if (normalized.hasTrackedRole) {
+      await upsertMemberFromGateway(normalized);
+      console.log(`[bot] join: ${member.user.username} (${member.id})`);
+    }
   } catch (err) {
     console.error("[bot] failed to handle guildMemberAdd", err);
   }
@@ -68,7 +73,15 @@ client.on(Events.GuildMemberRemove, async (member) => {
 client.on(Events.GuildMemberUpdate, async (_old, newMember) => {
   if (newMember.guild.id !== GUILD_ID || newMember.user.bot) return;
   try {
-    await syncRolesFromGateway(normalizeMember(newMember));
+    const normalized = normalizeMember(newMember);
+    if (normalized.hasTrackedRole) {
+      // Covers: gaining the tracked role for the first time, reactivation,
+      // and routine profile/role-list refreshes for someone already tracked.
+      await upsertMemberFromGateway(normalized);
+    } else {
+      // No-op if they were never tracked to begin with.
+      await markMemberLeftFromGateway(normalized.discordId);
+    }
   } catch (err) {
     console.error("[bot] failed to handle guildMemberUpdate", err);
   }

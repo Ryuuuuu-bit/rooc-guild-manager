@@ -1,14 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { listDiscordRoles, listMembers } from "@/lib/data";
-import { RankBadge, StatusBadge } from "@/components/badges";
+import { StatusBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
-import { rankOrder, rankLabels } from "@/lib/ui";
+import { memberDisplayName } from "@/lib/ui";
 
 interface SearchParams {
   q?: string;
   status?: string;
-  rank?: string;
   role?: string;
 }
 
@@ -24,7 +23,6 @@ export default async function MembersPage({
     listMembers({
       search: params.q,
       status,
-      rank: params.rank,
       discordRoleId: params.role,
     }),
     listDiscordRoles(),
@@ -61,18 +59,6 @@ export default async function MembersPage({
             <option value="ALL">ทั้งหมด</option>
           </select>
           <select
-            name="rank"
-            defaultValue={params.rank ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
-          >
-            <option value="">ทุกยศ</option>
-            {rankOrder.map((rank) => (
-              <option key={rank} value={rank}>
-                {rankLabels[rank]}
-              </option>
-            ))}
-          </select>
-          <select
             name="role"
             defaultValue={params.role ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
@@ -100,7 +86,6 @@ export default async function MembersPage({
               <th className="px-5 py-3 font-medium">สมาชิก</th>
               <th className="px-5 py-3 font-medium">ชื่อในเกม</th>
               <th className="px-5 py-3 font-medium">คลาส / เลเวล</th>
-              <th className="px-5 py-3 font-medium">ยศ</th>
               <th className="px-5 py-3 font-medium">Discord role</th>
               <th className="px-5 py-3 font-medium">สถานะ</th>
               <th className="px-5 py-3 font-medium">เข้าร่วมเมื่อ</th>
@@ -109,7 +94,7 @@ export default async function MembersPage({
           <tbody className="divide-y divide-zinc-800">
             {membersList.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-zinc-500">
+                <td colSpan={6} className="px-5 py-10 text-center text-zinc-500">
                   ไม่พบสมาชิกที่ตรงกับเงื่อนไข
                 </td>
               </tr>
@@ -128,7 +113,7 @@ export default async function MembersPage({
                     />
                     <div className="min-w-0">
                       <div className="truncate font-medium text-zinc-100">
-                        {member.discordGlobalName ?? member.discordUsername}
+                        {memberDisplayName(member)}
                       </div>
                       <div className="truncate text-xs text-zinc-500">
                         @{member.discordUsername}
@@ -140,9 +125,6 @@ export default async function MembersPage({
                 <td className="px-5 py-3 text-zinc-300">
                   {member.characterClass ?? "—"}
                   {member.level ? ` · Lv.${member.level}` : ""}
-                </td>
-                <td className="px-5 py-3">
-                  <RankBadge rank={member.guildRank} />
                 </td>
                 <td className="px-5 py-3">
                   <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />

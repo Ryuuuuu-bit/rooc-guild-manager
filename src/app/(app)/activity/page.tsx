@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getRecentActivity } from "@/lib/data";
-import { eventLabels } from "@/lib/ui";
+import { eventLabels, memberDisplayName } from "@/lib/ui";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function ActivityPage() {
@@ -38,7 +38,7 @@ export default async function ActivityPage() {
                   href={`/members/${member.id}`}
                   className="truncate text-sm font-medium text-zinc-100 hover:text-indigo-300"
                 >
-                  {member.discordGlobalName ?? member.discordUsername}
+                  {memberDisplayName(member)}
                 </Link>
                 <p className="text-xs text-zinc-500">
                   {eventLabels[event.type] ?? event.type}

@@ -115,8 +115,10 @@ DATABASE_URL="<connection string จาก Railway Postgres>" npm run db:migrate
 | `DISCORD_GUILD_ID` | web + bot | Server ID ของกิลด์ |
 | `DISCORD_ADMIN_ROLE_IDS` | web | Role ID (คั่นด้วย comma) ที่ให้สิทธิ์แอดมิน |
 | `DISCORD_ADMIN_USER_IDS` | web | User ID (คั่นด้วย comma) ที่ให้สิทธิ์แอดมินเสมอ (ไม่บังคับ) |
+| `DISCORD_TRACKED_ROLE_NAME` | web + bot | ชื่อ Discord role ที่ใช้กรองว่าใครคือ "สมาชิกกิลด์" ใน roster (ไม่บังคับ, ค่า default คือ `Rooc`) |
 | `AUTH_SECRET` | web | สุ่มด้วย `openssl rand -base64 32` |
-| `AUTH_URL` | web | ใส่เฉพาะถ้า Auth.js เดาโดเมนผิด (เช่น `https://your-app.up.railway.app`) |
+| `AUTH_URL` | web | **ต้องใส่เสมอใน production** — Railway proxy ทำให้ Auth.js เดา URL ของตัวเองผิด (เช่น `https://your-app.up.railway.app`) ถ้าไม่ใส่จะเจอ error `Configuration` ตอน login |
+| `AUTH_TRUST_HOST` | web | **ต้องใส่เสมอใน production** — ตั้งเป็น `true` คู่กับ `AUTH_URL` ด้านบน |
 
 ---
 

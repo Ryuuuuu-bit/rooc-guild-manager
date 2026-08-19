@@ -5,17 +5,10 @@ import {
   integer,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
-
-export const guildRankEnum = pgEnum("guild_rank", [
-  "LEADER",
-  "OFFICER",
-  "VETERAN",
-  "MEMBER",
-  "RECRUIT",
-]);
 
 export const memberStatusEnum = pgEnum("member_status", [
   "ACTIVE",
@@ -42,6 +35,9 @@ export const members = pgTable(
     discordId: text("discord_id").notNull().unique(),
     discordUsername: text("discord_username").notNull(),
     discordGlobalName: text("discord_global_name"),
+    // Server-specific nickname ("nick" in Discord's API) — distinct from the
+    // account's global display name. Preferred for display when present.
+    discordNickname: text("discord_nickname"),
     discordAvatar: text("discord_avatar"),
     discordRoles: text("discord_roles")
       .array()
@@ -57,7 +53,6 @@ export const members = pgTable(
     inGameName: text("in_game_name"),
     characterClass: text("character_class"),
     level: integer("level"),
-    guildRank: guildRankEnum("guild_rank").notNull().default("RECRUIT"),
     status: memberStatusEnum("status").notNull().default("ACTIVE"),
     notes: text("notes"),
 
@@ -68,10 +63,7 @@ export const members = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [
-    index("members_status_idx").on(table.status),
-    index("members_guild_rank_idx").on(table.guildRank),
-  ]
+  (table) => [index("members_status_idx").on(table.status)]
 );
 
 // Cache of the guild's Discord roles (id -> name/color/position), synced by
@@ -109,6 +101,64 @@ export const membershipEvents = pgTable(
   ]
 );
 
+// --- Party / event roster board ---
+// A single always-current board (per the requested "one roster, overwritten
+// in place" model) of who is placed in which party for the guild's
+// activities, mirroring the admin's previous Excel sheet: a "Main Stage"
+// of 8 parties, and a "Sub Stage" of 8 parties split into two groups of 4
+// under two named leaders — 5 member slots per party — plus a free-form
+// "Busy" list for members sitting out this round.
+
+export const partySectionEnum = pgEnum("party_section", ["MAIN", "SUB"]);
+
+export const partySlots = pgTable(
+  "party_slots",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    section: partySectionEnum("section").notNull(),
+    partyNumber: integer("party_number").notNull(), // 1-8
+    slotIndex: integer("slot_index").notNull(), // 0-4
+    memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
+    className: text("class_name"),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("party_slots_position_idx").on(
+      table.section,
+      table.partyNumber,
+      table.slotIndex
+    ),
+    index("party_slots_member_id_idx").on(table.memberId),
+  ]
+);
+
+// Two named leaders for the Sub Stage's two 4-party groups.
+export const partyLeaders = pgTable("party_leaders", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  leaderGroup: integer("leader_group").notNull().unique(), // 1 (parties 1-4) or 2 (parties 5-8)
+  name: text("name"),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// Members sitting out this round ("Busy" / on leave). A member can only be
+// in one place at a time, so being added here removes them from any slot.
+export const partyBusyEntries = pgTable("party_busy_entries", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  memberId: text("member_id")
+    .notNull()
+    .unique()
+    .references(() => members.id, { onDelete: "cascade" }),
+  className: text("class_name"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
 }));
@@ -129,3 +179,7 @@ export type MembershipEvent = typeof membershipEvents.$inferSelect;
 export type NewMembershipEvent = typeof membershipEvents.$inferInsert;
 export type DiscordRole = typeof discordRoles.$inferSelect;
 export type NewDiscordRole = typeof discordRoles.$inferInsert;
+export type PartySlot = typeof partySlots.$inferSelect;
+export type NewPartySlot = typeof partySlots.$inferInsert;
+export type PartyLeader = typeof partyLeaders.$inferSelect;
+export type PartyBusyEntry = typeof partyBusyEntries.$inferSelect;

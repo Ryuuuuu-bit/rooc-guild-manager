@@ -2,7 +2,6 @@
 
 import { useActionState } from "react";
 import type { Member } from "@/db/schema";
-import { rankOrder, rankLabels } from "@/lib/ui";
 import { updateMemberProfile, type UpdateMemberResult } from "@/app/actions/members";
 
 interface Props {
@@ -46,20 +45,6 @@ export function MemberEditForm({ member }: Props) {
             defaultValue={member.level ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">ยศในกิลด์</span>
-          <select
-            name="guildRank"
-            defaultValue={member.guildRank}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
-          >
-            {rankOrder.map((rank) => (
-              <option key={rank} value={rank}>
-                {rankLabels[rank]}
-              </option>
-            ))}
-          </select>
         </label>
       </div>
 

@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members, membershipEvents } from "@/db/schema";
+import { members, membershipEvents, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
-import { rankOrder } from "@/lib/ui";
 
 export interface UpdateMemberResult {
   ok: boolean;
@@ -22,15 +21,10 @@ export async function updateMemberProfile(
   const characterClass = (formData.get("characterClass") as string | null)?.trim() || null;
   const levelRaw = (formData.get("level") as string | null)?.trim();
   const level = levelRaw ? Number(levelRaw) : null;
-  const guildRank = formData.get("guildRank") as string | null;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
   if (level !== null && (Number.isNaN(level) || level < 0 || level > 9999)) {
     return { ok: false, error: "เลเวลไม่ถูกต้อง" };
-  }
-
-  if (!guildRank || !rankOrder.includes(guildRank as (typeof rankOrder)[number])) {
-    return { ok: false, error: "ยศไม่ถูกต้อง" };
   }
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
@@ -42,25 +36,22 @@ export async function updateMemberProfile(
       inGameName,
       characterClass,
       level,
-      guildRank: guildRank as (typeof rankOrder)[number],
       notes,
       updatedAt: new Date(),
     })
     .where(eq(members.id, memberId));
 
-  const changedRank = existing.guildRank !== guildRank;
   await db.insert(membershipEvents).values({
     memberId,
-    type: changedRank ? "RANK_UPDATE" : "PROFILE_UPDATE",
-    detail: changedRank
-      ? `${existing.guildRank} → ${guildRank} โดย ${session.user.username}`
-      : `แก้ไขโปรไฟล์โดย ${session.user.username}`,
+    type: "PROFILE_UPDATE",
+    detail: `แก้ไขโปรไฟล์โดย ${session.user.username}`,
     actor: session.user.username,
   });
 
   revalidatePath(`/members/${memberId}`);
   revalidatePath("/members");
   revalidatePath("/");
+  revalidatePath("/party");
 
   return { ok: true };
 }
@@ -75,6 +66,11 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .update(members)
     .set({ status: "KICKED", leftDiscordAt: new Date(), updatedAt: new Date() })
     .where(eq(members.id, memberId));
+  await db
+    .update(partySlots)
+    .set({ memberId: null, className: null, updatedAt: new Date() })
+    .where(eq(partySlots.memberId, memberId));
+  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
 
   await db.insert(membershipEvents).values({
     memberId,
@@ -86,6 +82,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   revalidatePath(`/members/${memberId}`);
   revalidatePath("/members");
   revalidatePath("/");
+  revalidatePath("/party");
 
   return { ok: true };
 }
@@ -108,6 +105,7 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
   revalidatePath(`/members/${memberId}`);
   revalidatePath("/members");
   revalidatePath("/");
+  revalidatePath("/party");
 
   return { ok: true };
 }
