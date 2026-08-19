@@ -74,6 +74,19 @@ export const members = pgTable(
   ]
 );
 
+// Cache of the guild's Discord roles (id -> name/color/position), synced by
+// the bot. Discord's member payload only carries role IDs, so this table is
+// what lets the UI show and filter by human-readable role names.
+export const discordRoles = pgTable("discord_roles", {
+  id: text("id").primaryKey(), // Discord role ID (snowflake)
+  name: text("name").notNull(),
+  color: integer("color").notNull().default(0),
+  position: integer("position").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export const membershipEvents = pgTable(
   "membership_events",
   {
@@ -114,3 +127,5 @@ export type Member = typeof members.$inferSelect;
 export type NewMember = typeof members.$inferInsert;
 export type MembershipEvent = typeof membershipEvents.$inferSelect;
 export type NewMembershipEvent = typeof membershipEvents.$inferInsert;
+export type DiscordRole = typeof discordRoles.$inferSelect;
+export type NewDiscordRole = typeof discordRoles.$inferInsert;

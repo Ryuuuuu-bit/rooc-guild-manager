@@ -1,11 +1,13 @@
 import { db } from "@/db";
-import { members, membershipEvents } from "@/db/schema";
-import { and, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
+import { discordRoles, members, membershipEvents } from "@/db/schema";
+import { and, arrayContains, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 
 export interface MemberFilters {
   search?: string;
   status?: "ACTIVE" | "LEFT" | "KICKED" | "ALL";
   rank?: string;
+  /** Discord role ID — only members carrying this role in `discordRoles`. */
+  discordRoleId?: string;
 }
 
 export async function listMembers(filters: MemberFilters = {}) {
@@ -32,11 +34,20 @@ export async function listMembers(filters: MemberFilters = {}) {
     conditions.push(eq(members.guildRank, filters.rank as (typeof members.$inferSelect)["guildRank"]));
   }
 
+  if (filters.discordRoleId) {
+    conditions.push(arrayContains(members.discordRoles, [filters.discordRoleId]));
+  }
+
   return db
     .select()
     .from(members)
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(members.guildRank, members.discordUsername);
+}
+
+/** All cached Discord roles for the guild, ordered highest-position first (as Discord shows them). */
+export async function listDiscordRoles() {
+  return db.select().from(discordRoles).orderBy(desc(discordRoles.position));
 }
 
 export async function getMemberById(id: string) {

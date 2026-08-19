@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
-import type { Guild, GuildMember } from "discord.js";
+import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
-import { members, membershipEvents } from "../src/db/schema";
+import { discordRoles, members, membershipEvents } from "../src/db/schema";
 
 interface NormalizedMember {
   discordId: string;
@@ -120,12 +120,49 @@ export async function syncRolesFromGateway(normalized: NormalizedMember) {
   }
 }
 
+/** Upsert the cached name/color/position for a single Discord role. */
+export async function upsertRole(role: Role) {
+  await db
+    .insert(discordRoles)
+    .values({
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      position: role.position,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: discordRoles.id,
+      set: {
+        name: role.name,
+        color: role.color,
+        position: role.position,
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function removeRole(roleId: string) {
+  await db.delete(discordRoles).where(eq(discordRoles.id, roleId));
+}
+
+/** Refresh the full role cache (id -> name/color/position) for the guild. */
+export async function syncGuildRoles(guild: Guild) {
+  const roles = [...guild.roles.cache.values()].filter((r) => r.id !== guild.id);
+  for (const role of roles) {
+    await upsertRole(role);
+  }
+  return roles.length;
+}
+
 /**
  * Full roster reconciliation: fetches every current guild member and diffs
  * it against the database. Run once on bot startup and periodically as a
  * safety net for events the bot may have missed while offline.
  */
 export async function runFullSync(guild: Guild) {
+  await syncGuildRoles(guild);
+
   const discordMembers = await guild.members.fetch();
   const normalizedList = [...discordMembers.values()]
     .filter((m) => !m.user.bot)

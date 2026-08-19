@@ -7,6 +7,8 @@ import {
   upsertMemberFromGateway,
   markMemberLeftFromGateway,
   syncRolesFromGateway,
+  upsertRole,
+  removeRole,
 } from "./sync";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
@@ -69,6 +71,33 @@ client.on(Events.GuildMemberUpdate, async (_old, newMember) => {
     await syncRolesFromGateway(normalizeMember(newMember));
   } catch (err) {
     console.error("[bot] failed to handle guildMemberUpdate", err);
+  }
+});
+
+client.on(Events.GuildRoleCreate, async (role) => {
+  if (role.guild.id !== GUILD_ID) return;
+  try {
+    await upsertRole(role);
+  } catch (err) {
+    console.error("[bot] failed to handle guildRoleCreate", err);
+  }
+});
+
+client.on(Events.GuildRoleUpdate, async (_old, newRole) => {
+  if (newRole.guild.id !== GUILD_ID) return;
+  try {
+    await upsertRole(newRole);
+  } catch (err) {
+    console.error("[bot] failed to handle guildRoleUpdate", err);
+  }
+});
+
+client.on(Events.GuildRoleDelete, async (role) => {
+  if (role.guild.id !== GUILD_ID) return;
+  try {
+    await removeRole(role.id);
+  } catch (err) {
+    console.error("[bot] failed to handle guildRoleDelete", err);
   }
 });
 

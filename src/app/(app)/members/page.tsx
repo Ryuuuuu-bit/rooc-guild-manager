@@ -1,13 +1,15 @@
 import Link from "next/link";
 import Image from "next/image";
-import { listMembers } from "@/lib/data";
+import { listDiscordRoles, listMembers } from "@/lib/data";
 import { RankBadge, StatusBadge } from "@/components/badges";
+import { RoleChips } from "@/components/role-chips";
 import { rankOrder, rankLabels } from "@/lib/ui";
 
 interface SearchParams {
   q?: string;
   status?: string;
   rank?: string;
+  role?: string;
 }
 
 export default async function MembersPage({
@@ -18,11 +20,17 @@ export default async function MembersPage({
   const params = await searchParams;
   const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
 
-  const membersList = await listMembers({
-    search: params.q,
-    status,
-    rank: params.rank,
-  });
+  const [membersList, discordRoleList] = await Promise.all([
+    listMembers({
+      search: params.q,
+      status,
+      rank: params.rank,
+      discordRoleId: params.role,
+    }),
+    listDiscordRoles(),
+  ]);
+
+  const rolesById = new Map(discordRoleList.map((r) => [r.id, r]));
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,6 +72,18 @@ export default async function MembersPage({
               </option>
             ))}
           </select>
+          <select
+            name="role"
+            defaultValue={params.role ?? ""}
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+          >
+            <option value="">ทุก Discord role</option>
+            {discordRoleList.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
           <button
             type="submit"
             className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
@@ -81,6 +101,7 @@ export default async function MembersPage({
               <th className="px-5 py-3 font-medium">ชื่อในเกม</th>
               <th className="px-5 py-3 font-medium">คลาส / เลเวล</th>
               <th className="px-5 py-3 font-medium">ยศ</th>
+              <th className="px-5 py-3 font-medium">Discord role</th>
               <th className="px-5 py-3 font-medium">สถานะ</th>
               <th className="px-5 py-3 font-medium">เข้าร่วมเมื่อ</th>
             </tr>
@@ -88,7 +109,7 @@ export default async function MembersPage({
           <tbody className="divide-y divide-zinc-800">
             {membersList.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-zinc-500">
+                <td colSpan={7} className="px-5 py-10 text-center text-zinc-500">
                   ไม่พบสมาชิกที่ตรงกับเงื่อนไข
                 </td>
               </tr>
@@ -122,6 +143,9 @@ export default async function MembersPage({
                 </td>
                 <td className="px-5 py-3">
                   <RankBadge rank={member.guildRank} />
+                </td>
+                <td className="px-5 py-3">
+                  <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />
                 </td>
                 <td className="px-5 py-3">
                   <StatusBadge status={member.status} />
