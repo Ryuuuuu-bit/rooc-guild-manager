@@ -25,18 +25,16 @@ export function PartySlot({ id, member, className, isAdmin, onClassChange, onCle
       }`}
     >
       {member ? (
-        <div className="flex w-full items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <MemberChip member={member} className={className} draggable={isAdmin} compact showClassBadge={!isAdmin} />
-          </div>
+        <div className="flex w-full flex-col gap-1">
+          <MemberChip member={member} className={className} draggable={isAdmin} compact showClassBadge={!isAdmin} />
           {isAdmin && (
-            <>
+            <div className="flex items-center gap-1">
               <select
                 value={className ?? ""}
                 onChange={(e) => onClassChange(e.target.value)}
-                className="w-[68px] shrink-0 rounded border border-zinc-700 bg-zinc-900 px-1 py-1 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
               >
-                <option value="">-</option>
+                <option value="">- class -</option>
                 {CLASS_OPTIONS.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -47,11 +45,11 @@ export function PartySlot({ id, member, className, isAdmin, onClassChange, onCle
                 type="button"
                 onClick={onClear}
                 title="เอาออกจากปาตี้"
-                className="shrink-0 rounded px-1 text-zinc-500 transition hover:text-rose-400"
+                className="shrink-0 rounded px-1.5 py-1 text-[10px] text-zinc-500 transition hover:text-rose-400"
               >
                 ✕
               </button>
-            </>
+            </div>
           )}
         </div>
       ) : (
