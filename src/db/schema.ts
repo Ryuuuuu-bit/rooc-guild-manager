@@ -101,22 +101,60 @@ export const membershipEvents = pgTable(
   ]
 );
 
-// --- Party / event roster board ---
-// A single always-current board (per the requested "one roster, overwritten
-// in place" model) of who is placed in which party for the guild's
-// activities, mirroring the admin's previous Excel sheet: a "Main Stage"
-// of 8 parties, and a "Sub Stage" of 8 parties split into two groups of 4
-// under two named leaders — 5 member slots per party — plus a free-form
-// "Busy" list for members sitting out this round.
+// --- Party / event roster boards ---
+// Fully flexible: the admin can have multiple independent boards (e.g.
+// "ปกติ" and "GVG"), each with its own set of freely-named groups (no
+// fixed "Main Stage"/"Sub Stage" concept — a group's name IS its label,
+// so a leader's name can just be the group name), and each group holds
+// however many parties the admin adds. Every party has 5 member slots
+// (fixed — matches the game's actual party size). Assignment and the
+// Busy/leave list are scoped per board, so the same member can hold an
+// independent spot on each board (e.g. different rosters for different
+// content on different days). Each board is a single always-current
+// sheet, overwritten in place — no per-event history.
 
-export const partySectionEnum = pgEnum("party_section", ["MAIN", "SUB"]);
+export const partyBoards = pgTable("party_boards", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const partyGroups = pgTable(
+  "party_groups",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    boardId: text("board_id")
+      .notNull()
+      .references(() => partyBoards.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("party_groups_board_id_idx").on(table.boardId)]
+);
+
+export const partyGroupParties = pgTable(
+  "party_group_parties",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    groupId: text("group_id")
+      .notNull()
+      .references(() => partyGroups.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [index("party_group_parties_group_id_idx").on(table.groupId)]
+);
 
 export const partySlots = pgTable(
   "party_slots",
   {
     id: text("id").primaryKey().$defaultFn(() => createId()),
-    section: partySectionEnum("section").notNull(),
-    partyNumber: integer("party_number").notNull(), // 1-8
+    partyId: text("party_id")
+      .notNull()
+      .references(() => partyGroupParties.id, { onDelete: "cascade" }),
     slotIndex: integer("slot_index").notNull(), // 0-4
     memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
     className: text("class_name"),
@@ -125,39 +163,30 @@ export const partySlots = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("party_slots_position_idx").on(
-      table.section,
-      table.partyNumber,
-      table.slotIndex
-    ),
+    uniqueIndex("party_slots_position_idx").on(table.partyId, table.slotIndex),
     index("party_slots_member_id_idx").on(table.memberId),
   ]
 );
 
-// Two named leaders for the Sub Stage's two 4-party groups.
-export const partyLeaders = pgTable("party_leaders", {
-  id: text("id").primaryKey().$defaultFn(() => createId()),
-  leaderGroup: integer("leader_group").notNull().unique(), // 1 (parties 1-4) or 2 (parties 5-8)
-  name: text("name"),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
-// Members sitting out this round ("Busy" / on leave). A member can only be
-// in one place at a time, so being added here removes them from any slot.
-export const partyBusyEntries = pgTable("party_busy_entries", {
-  id: text("id").primaryKey().$defaultFn(() => createId()),
-  memberId: text("member_id")
-    .notNull()
-    .unique()
-    .references(() => members.id, { onDelete: "cascade" }),
-  className: text("class_name"),
-  sortOrder: integer("sort_order").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+// Members sitting out this round ("Busy" / on leave), scoped per board. A
+// member can only be in one place at a time within a given board, so being
+// added here removes them from any slot on the same board.
+export const partyBusyEntries = pgTable(
+  "party_busy_entries",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    boardId: text("board_id")
+      .notNull()
+      .references(() => partyBoards.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    className: text("class_name"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("party_busy_board_member_idx").on(table.boardId, table.memberId)]
+);
 
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
@@ -179,7 +208,9 @@ export type MembershipEvent = typeof membershipEvents.$inferSelect;
 export type NewMembershipEvent = typeof membershipEvents.$inferInsert;
 export type DiscordRole = typeof discordRoles.$inferSelect;
 export type NewDiscordRole = typeof discordRoles.$inferInsert;
+export type PartyBoardRow = typeof partyBoards.$inferSelect;
+export type PartyGroup = typeof partyGroups.$inferSelect;
+export type PartyGroupParty = typeof partyGroupParties.$inferSelect;
 export type PartySlot = typeof partySlots.$inferSelect;
 export type NewPartySlot = typeof partySlots.$inferInsert;
-export type PartyLeader = typeof partyLeaders.$inferSelect;
 export type PartyBusyEntry = typeof partyBusyEntries.$inferSelect;

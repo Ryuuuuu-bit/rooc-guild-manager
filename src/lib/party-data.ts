@@ -1,11 +1,9 @@
 import { db } from "@/db";
-import { members, partyBusyEntries, partyLeaders, partySlots } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { members, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
+import { asc, eq, inArray } from "drizzle-orm";
 import { memberDisplayName } from "@/lib/ui";
 import type { Member } from "@/db/schema";
 
-const MAIN_PARTY_COUNT = 8;
-const SUB_PARTIES_PER_GROUP = 4;
 const SLOTS_PER_PARTY = 5;
 
 export interface PartyBoardMemberRef {
@@ -21,19 +19,26 @@ export interface PartySlotView {
 }
 
 export interface PartyView {
-  partyNumber: number;
+  id: string;
+  label: string;
   slots: PartySlotView[];
 }
 
-export interface PartySubGroupView {
-  leaderGroup: number;
-  leaderName: string | null;
+export interface PartyGroupView {
+  id: string;
+  name: string;
   parties: PartyView[];
 }
 
-export interface PartyBoard {
-  mainParties: PartyView[];
-  subGroups: PartySubGroupView[];
+export interface PartyBoardListItem {
+  id: string;
+  name: string;
+}
+
+export interface PartyBoardDetail {
+  id: string;
+  name: string;
+  groups: PartyGroupView[];
   busy: { member: PartyBoardMemberRef; className: string | null }[];
   unassigned: PartyBoardMemberRef[];
 }
@@ -46,54 +51,76 @@ function toRef(member: Member): PartyBoardMemberRef {
   };
 }
 
-export async function getPartyBoard(): Promise<PartyBoard> {
-  const [activeMembers, slots, leaders, busyRows] = await Promise.all([
+/** All boards (e.g. "ปกติ", "GVG"), in display order. */
+export async function listPartyBoards(): Promise<PartyBoardListItem[]> {
+  return db
+    .select({ id: partyBoards.id, name: partyBoards.name })
+    .from(partyBoards)
+    .orderBy(asc(partyBoards.sortOrder), asc(partyBoards.createdAt));
+}
+
+/** Full nested detail for one board: groups → parties → slots, plus busy list and unassigned pool. */
+export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDetail | null> {
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  if (!board) return null;
+
+  const [activeMembers, groups, busyRows] = await Promise.all([
     db.select().from(members).where(eq(members.status, "ACTIVE")),
-    db.select().from(partySlots),
-    db.select().from(partyLeaders),
-    db.select().from(partyBusyEntries),
+    db.select().from(partyGroups).where(eq(partyGroups.boardId, boardId)).orderBy(asc(partyGroups.sortOrder)),
+    db.select().from(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId)),
   ]);
 
   const membersById = new Map(activeMembers.map((m) => [m.id, m]));
   const placedMemberIds = new Set<string>();
 
-  const slotByKey = new Map(
-    slots.map((s) => [`${s.section}:${s.partyNumber}:${s.slotIndex}`, s])
-  );
+  const groupIds = groups.map((g) => g.id);
+  const parties = groupIds.length
+    ? await db
+        .select()
+        .from(partyGroupParties)
+        .where(inArray(partyGroupParties.groupId, groupIds))
+        .orderBy(asc(partyGroupParties.sortOrder))
+    : [];
 
-  function buildParty(section: "MAIN" | "SUB", partyNumber: number): PartyView {
-    const slotViews: PartySlotView[] = [];
-    for (let slotIndex = 0; slotIndex < SLOTS_PER_PARTY; slotIndex++) {
-      const row = slotByKey.get(`${section}:${partyNumber}:${slotIndex}`);
-      const member = row?.memberId ? membersById.get(row.memberId) ?? null : null;
-      if (member) placedMemberIds.add(member.id);
-      slotViews.push({
-        slotIndex,
-        member: member ? toRef(member) : null,
-        className: member ? row?.className ?? null : null,
-      });
-    }
-    return { partyNumber, slots: slotViews };
+  const partyIds = parties.map((p) => p.id);
+  const slots = partyIds.length
+    ? await db.select().from(partySlots).where(inArray(partySlots.partyId, partyIds))
+    : [];
+
+  const slotsByParty = new Map<string, typeof slots>();
+  for (const s of slots) {
+    const arr = slotsByParty.get(s.partyId) ?? [];
+    arr.push(s);
+    slotsByParty.set(s.partyId, arr);
   }
 
-  const mainParties: PartyView[] = [];
-  for (let p = 1; p <= MAIN_PARTY_COUNT; p++) {
-    mainParties.push(buildParty("MAIN", p));
+  const partiesByGroup = new Map<string, typeof parties>();
+  for (const p of parties) {
+    const arr = partiesByGroup.get(p.groupId) ?? [];
+    arr.push(p);
+    partiesByGroup.set(p.groupId, arr);
   }
 
-  const leaderByGroup = new Map(leaders.map((l) => [l.leaderGroup, l]));
-  const subGroups: PartySubGroupView[] = [1, 2].map((leaderGroup) => {
-    const startParty = (leaderGroup - 1) * SUB_PARTIES_PER_GROUP + 1;
-    const parties: PartyView[] = [];
-    for (let i = 0; i < SUB_PARTIES_PER_GROUP; i++) {
-      parties.push(buildParty("SUB", startParty + i));
-    }
-    return {
-      leaderGroup,
-      leaderName: leaderByGroup.get(leaderGroup)?.name ?? null,
-      parties,
-    };
-  });
+  const groupViews: PartyGroupView[] = groups.map((g) => ({
+    id: g.id,
+    name: g.name,
+    parties: (partiesByGroup.get(g.id) ?? []).map((p) => {
+      const partySlotRows = slotsByParty.get(p.id) ?? [];
+      const slotByIndex = new Map(partySlotRows.map((s) => [s.slotIndex, s]));
+      const slotViews: PartySlotView[] = [];
+      for (let i = 0; i < SLOTS_PER_PARTY; i++) {
+        const row = slotByIndex.get(i);
+        const member = row?.memberId ? membersById.get(row.memberId) ?? null : null;
+        if (member) placedMemberIds.add(member.id);
+        slotViews.push({
+          slotIndex: i,
+          member: member ? toRef(member) : null,
+          className: member ? row?.className ?? null : null,
+        });
+      }
+      return { id: p.id, label: p.label, slots: slotViews };
+    }),
+  }));
 
   const busy = busyRows
     .slice()
@@ -111,5 +138,5 @@ export async function getPartyBoard(): Promise<PartyBoard> {
     .map(toRef)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
-  return { mainParties, subGroups, busy, unassigned };
+  return { id: board.id, name: board.name, groups: groupViews, busy, unassigned };
 }

@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { members, partyBusyEntries, partyLeaders, partySlots } from "@/db/schema";
+import { members, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { CLASS_OPTIONS } from "@/lib/classes";
 
@@ -12,8 +12,12 @@ export interface ActionResult {
   error?: string;
 }
 
+export interface ActionResultWithId extends ActionResult {
+  id?: string;
+}
+
 export type PartyDestination =
-  | { type: "slot"; section: "MAIN" | "SUB"; partyNumber: number; slotIndex: number }
+  | { type: "slot"; partyId: string; slotIndex: number }
   | { type: "busy" }
   | { type: "unassigned" };
 
@@ -21,13 +25,134 @@ function isValidClassName(className: string | null | undefined): className is st
   return Boolean(className) && (CLASS_OPTIONS as readonly string[]).includes(className!);
 }
 
+/** All party (group_parties) ids belonging to a board, via its groups. */
+async function getPartyIdsForBoard(boardId: string): Promise<string[]> {
+  const groups = await db
+    .select({ id: partyGroups.id })
+    .from(partyGroups)
+    .where(eq(partyGroups.boardId, boardId));
+  const groupIds = groups.map((g) => g.id);
+  if (!groupIds.length) return [];
+  const parties = await db
+    .select({ id: partyGroupParties.id })
+    .from(partyGroupParties)
+    .where(inArray(partyGroupParties.groupId, groupIds));
+  return parties.map((p) => p.id);
+}
+
+// --- Board management ---
+
+export async function createBoard(name: string): Promise<ActionResultWithId> {
+  await requireAdmin();
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกระดาน" };
+
+  const [{ maxOrder } = { maxOrder: -1 }] = await db
+    .select({ maxOrder: sql<number>`coalesce(max(${partyBoards.sortOrder}), -1)::int` })
+    .from(partyBoards);
+
+  const [inserted] = await db
+    .insert(partyBoards)
+    .values({ name: trimmed, sortOrder: maxOrder + 1 })
+    .returning({ id: partyBoards.id });
+
+  revalidatePath("/party");
+  return { ok: true, id: inserted.id };
+}
+
+export async function renameBoard(boardId: string, name: string): Promise<ActionResult> {
+  await requireAdmin();
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกระดาน" };
+
+  await db.update(partyBoards).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+export async function deleteBoard(boardId: string): Promise<ActionResult> {
+  await requireAdmin();
+  await db.delete(partyBoards).where(eq(partyBoards.id, boardId));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+// --- Group management ---
+
+export async function createGroup(boardId: string, name: string): Promise<ActionResultWithId> {
+  await requireAdmin();
+  const trimmed = name.trim() || "กลุ่มใหม่";
+
+  const [{ maxOrder } = { maxOrder: -1 }] = await db
+    .select({ maxOrder: sql<number>`coalesce(max(${partyGroups.sortOrder}), -1)::int` })
+    .from(partyGroups)
+    .where(eq(partyGroups.boardId, boardId));
+
+  const [inserted] = await db
+    .insert(partyGroups)
+    .values({ boardId, name: trimmed, sortOrder: maxOrder + 1 })
+    .returning({ id: partyGroups.id });
+
+  revalidatePath("/party");
+  return { ok: true, id: inserted.id };
+}
+
+export async function renameGroup(groupId: string, name: string): Promise<ActionResult> {
+  await requireAdmin();
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกลุ่ม" };
+
+  await db.update(partyGroups).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyGroups.id, groupId));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+export async function deleteGroup(groupId: string): Promise<ActionResult> {
+  await requireAdmin();
+  await db.delete(partyGroups).where(eq(partyGroups.id, groupId));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+// --- Party (within a group) management ---
+
+export async function createParty(groupId: string): Promise<ActionResultWithId> {
+  await requireAdmin();
+
+  const [{ maxOrder, partyCount } = { maxOrder: -1, partyCount: 0 }] = await db
+    .select({
+      maxOrder: sql<number>`coalesce(max(${partyGroupParties.sortOrder}), -1)::int`,
+      partyCount: sql<number>`count(*)::int`,
+    })
+    .from(partyGroupParties)
+    .where(eq(partyGroupParties.groupId, groupId));
+
+  const [inserted] = await db
+    .insert(partyGroupParties)
+    .values({ groupId, label: `Party ${partyCount + 1}`, sortOrder: maxOrder + 1 })
+    .returning({ id: partyGroupParties.id });
+
+  revalidatePath("/party");
+  return { ok: true, id: inserted.id };
+}
+
+export async function deleteParty(partyId: string): Promise<ActionResult> {
+  await requireAdmin();
+  await db.delete(partyGroupParties).where(eq(partyGroupParties.id, partyId));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+// --- Member placement (scoped per board) ---
+
 /**
- * Moves a member to a new place on the party board (a slot, the "busy"
- * list, or back out to the unassigned pool) — clearing them from wherever
- * they currently sit first, since a member can only be in one place at a
- * time. Powers drag-and-drop on the /party page.
+ * Moves a member to a new place on a board (a slot, the "busy" list, or
+ * back out to the unassigned pool) — clearing them from wherever they
+ * currently sit on THIS board first (a member can hold an independent spot
+ * on each board, but only one place within a given board).
  */
 export async function moveMember(
+  boardId: string,
   memberId: string,
   destination: PartyDestination,
   className?: string | null
@@ -39,123 +164,107 @@ export async function moveMember(
     return { ok: false, error: "ไม่พบสมาชิก หรือสมาชิกไม่ได้อยู่ในกิลด์แล้ว" };
   }
 
-  // Remember their previous class assignment (if any) so moving a member
-  // between slots doesn't forget which class they were playing.
-  const [prevSlot] = await db
-    .select({ className: partySlots.className })
-    .from(partySlots)
-    .where(eq(partySlots.memberId, memberId));
+  const partyIds = await getPartyIdsForBoard(boardId);
+
+  const [prevSlot] = partyIds.length
+    ? await db
+        .select({ className: partySlots.className })
+        .from(partySlots)
+        .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)))
+    : [];
   const [prevBusy] = await db
     .select({ className: partyBusyEntries.className })
     .from(partyBusyEntries)
-    .where(eq(partyBusyEntries.memberId, memberId));
+    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
+
   const carriedClassName = prevSlot?.className ?? prevBusy?.className ?? null;
   const resolvedClassName = className !== undefined ? className : carriedClassName;
   const finalClassName = isValidClassName(resolvedClassName) ? resolvedClassName : null;
 
-  // Clear from wherever they currently are.
+  if (partyIds.length) {
+    await db
+      .update(partySlots)
+      .set({ memberId: null, className: null, updatedAt: new Date() })
+      .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
+  }
   await db
-    .update(partySlots)
-    .set({ memberId: null, className: null, updatedAt: new Date() })
-    .where(eq(partySlots.memberId, memberId));
-  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+    .delete(partyBusyEntries)
+    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
 
   if (destination.type === "slot") {
-    const { section, partyNumber, slotIndex } = destination;
     await db
       .insert(partySlots)
       .values({
-        section,
-        partyNumber,
-        slotIndex,
+        partyId: destination.partyId,
+        slotIndex: destination.slotIndex,
         memberId,
         className: finalClassName,
       })
       .onConflictDoUpdate({
-        target: [partySlots.section, partySlots.partyNumber, partySlots.slotIndex],
+        target: [partySlots.partyId, partySlots.slotIndex],
         set: { memberId, className: finalClassName, updatedAt: new Date() },
       });
   } else if (destination.type === "busy") {
     const [{ maxOrder } = { maxOrder: 0 }] = await db
       .select({ maxOrder: sql<number>`coalesce(max(${partyBusyEntries.sortOrder}), 0)::int` })
-      .from(partyBusyEntries);
+      .from(partyBusyEntries)
+      .where(eq(partyBusyEntries.boardId, boardId));
     await db.insert(partyBusyEntries).values({
+      boardId,
       memberId,
       className: finalClassName,
       sortOrder: maxOrder + 1,
     });
   }
-  // destination.type === "unassigned": nothing further to do, already cleared.
 
   revalidatePath("/party");
   return { ok: true };
 }
 
-/** Updates just the class shown for a member already placed on the board, without moving them. */
-export async function setMemberClass(memberId: string, className: string | null): Promise<ActionResult> {
+/** Updates just the class shown for a member already placed on this board, without moving them. */
+export async function setMemberClass(boardId: string, memberId: string, className: string | null): Promise<ActionResult> {
   await requireAdmin();
 
   const finalClassName = isValidClassName(className) ? className : null;
+  const partyIds = await getPartyIdsForBoard(boardId);
 
-  await db
-    .update(partySlots)
-    .set({ className: finalClassName, updatedAt: new Date() })
-    .where(eq(partySlots.memberId, memberId));
+  if (partyIds.length) {
+    await db
+      .update(partySlots)
+      .set({ className: finalClassName, updatedAt: new Date() })
+      .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
+  }
   await db
     .update(partyBusyEntries)
     .set({ className: finalClassName })
-    .where(eq(partyBusyEntries.memberId, memberId));
+    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
 
   revalidatePath("/party");
   return { ok: true };
 }
 
 /** Clears whatever slot currently sits at this position (if occupied). */
-export async function clearSlot(
-  section: "MAIN" | "SUB",
-  partyNumber: number,
-  slotIndex: number
-): Promise<ActionResult> {
+export async function clearSlot(partyId: string, slotIndex: number): Promise<ActionResult> {
   await requireAdmin();
 
   await db
     .update(partySlots)
     .set({ memberId: null, className: null, updatedAt: new Date() })
-    .where(
-      and(
-        eq(partySlots.section, section),
-        eq(partySlots.partyNumber, partyNumber),
-        eq(partySlots.slotIndex, slotIndex)
-      )
-    );
+    .where(and(eq(partySlots.partyId, partyId), eq(partySlots.slotIndex, slotIndex)));
 
   revalidatePath("/party");
   return { ok: true };
 }
 
-/** Sets the display name for one of the two Sub Stage leader groups. */
-export async function setLeaderName(leaderGroup: 1 | 2, name: string): Promise<ActionResult> {
+/** Clears an entire board back to empty — every slot and its busy list. */
+export async function resetPartyBoard(boardId: string): Promise<ActionResult> {
   await requireAdmin();
 
-  const trimmed = name.trim() || null;
-  await db
-    .insert(partyLeaders)
-    .values({ leaderGroup, name: trimmed })
-    .onConflictDoUpdate({
-      target: partyLeaders.leaderGroup,
-      set: { name: trimmed, updatedAt: new Date() },
-    });
-
-  revalidatePath("/party");
-  return { ok: true };
-}
-
-/** Clears the entire board back to empty — every slot and the busy list. */
-export async function resetPartyBoard(): Promise<ActionResult> {
-  await requireAdmin();
-
-  await db.delete(partySlots);
-  await db.delete(partyBusyEntries);
+  const partyIds = await getPartyIdsForBoard(boardId);
+  if (partyIds.length) {
+    await db.delete(partySlots).where(inArray(partySlots.partyId, partyIds));
+  }
+  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId));
 
   revalidatePath("/party");
   return { ok: true };
