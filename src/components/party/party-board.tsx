@@ -27,6 +27,8 @@ interface BoardState {
   unassigned: PartyBoardMemberRef[];
 }
 
+type TabKey = "MAIN" | "SUB";
+
 const MAIN_PARTIES = [1, 2, 3, 4, 5, 6, 7, 8];
 const SUB_GROUPS = [
   { leaderGroup: 1, parties: [1, 2, 3, 4] },
@@ -129,6 +131,7 @@ export function PartyBoardView({ initialBoard, isAdmin }: { initialBoard: PartyB
     2: initialBoard.subGroups.find((g) => g.leaderGroup === 2)?.leaderName ?? "",
   });
   const [activeMember, setActiveMember] = useState<PartyBoardMemberRef | null>(null);
+  const [tab, setTab] = useState<TabKey>("MAIN");
   const [, startTransition] = useTransition();
 
   const sensors = useSensors(
@@ -205,14 +208,24 @@ export function PartyBoardView({ initialBoard, isAdmin }: { initialBoard: PartyB
     if (result.ok) window.location.reload();
   }
 
-  const placedCount = useMemo(
-    () => Object.values(board.slots).filter((s) => s.member).length,
+  const mainFilled = useMemo(
+    () => Object.entries(board.slots).filter(([key, s]) => key.startsWith("MAIN:") && s.member).length,
     [board.slots]
   );
+  const subFilled = useMemo(
+    () => Object.entries(board.slots).filter(([key, s]) => key.startsWith("SUB:") && s.member).length,
+    [board.slots]
+  );
+  const placedCount = mainFilled + subFilled;
+
+  const tabs: { key: TabKey; label: string; count: string }[] = [
+    { key: "MAIN", label: "Main Stage", count: `${mainFilled}/40` },
+    { key: "SUB", label: "Sub Stage", count: `${subFilled}/40` },
+  ];
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
           <span>
             ลงปาตี้แล้ว {placedCount} คน · ว่าง {board.unassigned.length} คน · ลา/ไม่ว่าง {board.busy.length} คน
@@ -228,95 +241,94 @@ export function PartyBoardView({ initialBoard, isAdmin }: { initialBoard: PartyB
           )}
         </div>
 
-        {/* Unassigned pool */}
-        <section>
-          <h2 className="mb-2 text-sm font-medium text-zinc-300">
-            รอลงปาตี้ ({board.unassigned.length})
-          </h2>
-          <DroppableZone id="unassigned" label="รอลงปาตี้">
-            {board.unassigned.length === 0 && (
-              <span className="px-1 py-1 text-xs text-zinc-600">ไม่มีใครรอลงปาตี้</span>
-            )}
-            {board.unassigned.map((member) => (
-              <MemberChip key={member.id} member={member} draggable={isAdmin} showClassBadge={false} />
-            ))}
-          </DroppableZone>
-        </section>
-
-        {/* Main Stage */}
-        <section>
-          <h2 className="mb-2 text-sm font-medium text-zinc-300">Main Stage</h2>
-          <div className="overflow-x-auto rounded-xl border border-zinc-800">
-            <div className="grid min-w-[1100px] grid-cols-8 gap-px bg-zinc-800">
-              {MAIN_PARTIES.map((partyNumber) => (
-                <div key={partyNumber} className="bg-sky-500/10 px-2 py-1.5 text-center text-xs font-semibold text-sky-300">
-                  Party {partyNumber}
-                </div>
-              ))}
-              {SLOT_INDEXES.map((slotIndex) =>
-                MAIN_PARTIES.map((partyNumber) => {
-                  const key = slotKey("MAIN", partyNumber, slotIndex);
-                  const slot = board.slots[key] ?? { member: null, className: null };
-                  return (
-                    <div key={key} className="bg-zinc-950 p-1">
-                      <PartySlot
-                        id={`slot:MAIN:${partyNumber}:${slotIndex}`}
-                        member={slot.member}
-                        className={slot.className}
-                        isAdmin={isAdmin}
-                        onClassChange={(value) => handleClassChange("MAIN", partyNumber, slotIndex, value)}
-                        onClear={() => handleClear("MAIN", partyNumber, slotIndex)}
-                      />
-                    </div>
-                  );
-                })
+        {/* Unassigned pool + Busy list — always visible above the tabs, never scroll out of view */}
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <section>
+            <h2 className="mb-2 text-sm font-medium text-zinc-300">
+              รอลงปาตี้ ({board.unassigned.length})
+            </h2>
+            <DroppableZone id="unassigned" label="รอลงปาตี้">
+              {board.unassigned.length === 0 && (
+                <span className="px-1 py-1 text-xs text-zinc-600">ไม่มีใครรอลงปาตี้</span>
               )}
-            </div>
-          </div>
-        </section>
+              {board.unassigned.map((member) => (
+                <MemberChip key={member.id} member={member} draggable={isAdmin} showClassBadge={false} />
+              ))}
+            </DroppableZone>
+          </section>
 
-        {/* Sub Stage */}
-        <section>
-          <h2 className="mb-2 text-sm font-medium text-zinc-300">Sub Stage</h2>
-          <div className="flex flex-col gap-4">
-            {SUB_GROUPS.map((group) => (
-              <div key={group.leaderGroup} className="overflow-x-auto rounded-xl border border-zinc-800">
-                <div className="flex items-center gap-2 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-300">
-                  <span>หัวหน้า:</span>
-                  {isAdmin ? (
-                    <input
-                      type="text"
-                      defaultValue={leaderNames[group.leaderGroup] ?? ""}
-                      placeholder="ใส่ชื่อหัวหน้าทีม..."
-                      onBlur={(e) => {
-                        setLeaderNames((prev) => ({ ...prev, [group.leaderGroup]: e.target.value }));
-                        handleLeaderNameBlur(group.leaderGroup as 1 | 2, e.target.value);
-                      }}
-                      className="rounded border border-violet-900/50 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-violet-500 focus:outline-none"
-                    />
-                  ) : (
-                    <span className="text-zinc-200">{leaderNames[group.leaderGroup] || "—"}</span>
+          <section>
+            <h2 className="mb-2 text-sm font-medium text-zinc-300">
+              Busy / ลา ({board.busy.length})
+            </h2>
+            <DroppableZone id="busy" label="Busy หรือ ลา">
+              {board.busy.length === 0 && (
+                <span className="px-1 py-1 text-xs text-zinc-600">
+                  ลากรายชื่อมาวางที่นี่เพื่อบอกว่าไม่ว่าง/ลารอบนี้
+                </span>
+              )}
+              {board.busy.map(({ member, className }) => (
+                <div key={member.id} className="flex items-center gap-1">
+                  <MemberChip member={member} className={className} draggable={isAdmin} />
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleBusyRemove(member.id)}
+                      title="เอาออกจากรายชื่อลา"
+                      className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
-                <div className="grid min-w-[600px] grid-cols-4 gap-px bg-zinc-800">
-                  {group.parties.map((partyNumber) => (
+              ))}
+            </DroppableZone>
+          </section>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-zinc-800">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition ${
+                tab === t.key
+                  ? "border-indigo-500 text-indigo-300"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {t.label}{" "}
+              <span className="ml-1 text-xs text-zinc-500">{t.count}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Active tab content — bounded height with its own scroll, so the pool + tabs never scroll out of view */}
+        <div className="max-h-[65vh] overflow-y-auto rounded-xl">
+          {tab === "MAIN" && (
+            <section>
+              <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                <div className="grid min-w-[1100px] grid-cols-8 gap-px bg-zinc-800">
+                  {MAIN_PARTIES.map((partyNumber) => (
                     <div key={partyNumber} className="bg-sky-500/10 px-2 py-1.5 text-center text-xs font-semibold text-sky-300">
                       Party {partyNumber}
                     </div>
                   ))}
                   {SLOT_INDEXES.map((slotIndex) =>
-                    group.parties.map((partyNumber) => {
-                      const key = slotKey("SUB", partyNumber, slotIndex);
+                    MAIN_PARTIES.map((partyNumber) => {
+                      const key = slotKey("MAIN", partyNumber, slotIndex);
                       const slot = board.slots[key] ?? { member: null, className: null };
                       return (
                         <div key={key} className="bg-zinc-950 p-1">
                           <PartySlot
-                            id={`slot:SUB:${partyNumber}:${slotIndex}`}
+                            id={`slot:MAIN:${partyNumber}:${slotIndex}`}
                             member={slot.member}
                             className={slot.className}
                             isAdmin={isAdmin}
-                            onClassChange={(value) => handleClassChange("SUB", partyNumber, slotIndex, value)}
-                            onClear={() => handleClear("SUB", partyNumber, slotIndex)}
+                            onClassChange={(value) => handleClassChange("MAIN", partyNumber, slotIndex, value)}
+                            onClear={() => handleClear("MAIN", partyNumber, slotIndex)}
                           />
                         </div>
                       );
@@ -324,36 +336,60 @@ export function PartyBoardView({ initialBoard, isAdmin }: { initialBoard: PartyB
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-        </section>
+            </section>
+          )}
 
-        {/* Busy / on leave */}
-        <section>
-          <h2 className="mb-2 text-sm font-medium text-zinc-300">
-            Busy / ลา ({board.busy.length})
-          </h2>
-          <DroppableZone id="busy" label="Busy หรือ ลา">
-            {board.busy.length === 0 && (
-              <span className="px-1 py-1 text-xs text-zinc-600">ลากรายชื่อมาวางที่นี่เพื่อบอกว่าไม่ว่าง/ลารอบนี้</span>
-            )}
-            {board.busy.map(({ member, className }) => (
-              <div key={member.id} className="flex items-center gap-1">
-                <MemberChip member={member} className={className} draggable={isAdmin} />
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => handleBusyRemove(member.id)}
-                    title="เอาออกจากรายชื่อลา"
-                    className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-          </DroppableZone>
-        </section>
+          {tab === "SUB" && (
+            <section className="flex flex-col gap-4">
+              {SUB_GROUPS.map((group) => (
+                <div key={group.leaderGroup} className="overflow-x-auto rounded-xl border border-zinc-800">
+                  <div className="flex items-center gap-2 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-300">
+                    <span>หัวหน้า:</span>
+                    {isAdmin ? (
+                      <input
+                        type="text"
+                        defaultValue={leaderNames[group.leaderGroup] ?? ""}
+                        placeholder="ใส่ชื่อหัวหน้าทีม..."
+                        onBlur={(e) => {
+                          setLeaderNames((prev) => ({ ...prev, [group.leaderGroup]: e.target.value }));
+                          handleLeaderNameBlur(group.leaderGroup as 1 | 2, e.target.value);
+                        }}
+                        className="rounded border border-violet-900/50 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-violet-500 focus:outline-none"
+                      />
+                    ) : (
+                      <span className="text-zinc-200">{leaderNames[group.leaderGroup] || "—"}</span>
+                    )}
+                  </div>
+                  <div className="grid min-w-[600px] grid-cols-4 gap-px bg-zinc-800">
+                    {group.parties.map((partyNumber) => (
+                      <div key={partyNumber} className="bg-sky-500/10 px-2 py-1.5 text-center text-xs font-semibold text-sky-300">
+                        Party {partyNumber}
+                      </div>
+                    ))}
+                    {SLOT_INDEXES.map((slotIndex) =>
+                      group.parties.map((partyNumber) => {
+                        const key = slotKey("SUB", partyNumber, slotIndex);
+                        const slot = board.slots[key] ?? { member: null, className: null };
+                        return (
+                          <div key={key} className="bg-zinc-950 p-1">
+                            <PartySlot
+                              id={`slot:SUB:${partyNumber}:${slotIndex}`}
+                              member={slot.member}
+                              className={slot.className}
+                              isAdmin={isAdmin}
+                              onClassChange={(value) => handleClassChange("SUB", partyNumber, slotIndex, value)}
+                              onClear={() => handleClear("SUB", partyNumber, slotIndex)}
+                            />
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
+        </div>
       </div>
 
       <DragOverlay>
