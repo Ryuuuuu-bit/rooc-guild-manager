@@ -12,9 +12,14 @@ interface PartySlotProps {
   isAdmin: boolean;
   onClassChange: (value: string) => void;
   onClear: () => void;
+  /** Sends the currently-assigned member straight to the Busy/ลา list (skips "unassigned"). */
+  onSendBusy?: () => void;
   /** Unassigned members offered in the "pick a member" popover shown on an empty slot. */
   pickableMembers?: PartyBoardMemberRef[];
   onAssign?: (memberId: string) => void;
+  /** Controlled open state for the empty-slot member picker — lets the parent auto-advance to the next empty slot. */
+  pickerOpen?: boolean;
+  onPickerOpenChange?: (open: boolean) => void;
 }
 
 export function PartySlot({
@@ -23,15 +28,18 @@ export function PartySlot({
   isAdmin,
   onClassChange,
   onClear,
+  onSendBusy,
   pickableMembers = [],
   onAssign,
+  pickerOpen,
+  onPickerOpenChange,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
 
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[32px] items-center gap-1 rounded-md border border-dashed px-1 py-1 transition ${
+      className={`flex min-h-[40px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
         isOver ? "border-indigo-400 bg-indigo-500/10" : "border-zinc-800"
       }`}
     >
@@ -43,7 +51,7 @@ export function PartySlot({
               <select
                 value={member.className ?? ""}
                 onChange={(e) => onClassChange(e.target.value)}
-                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
               >
                 <option value="">- class -</option>
                 {CLASS_OPTIONS.map((c) => (
@@ -52,11 +60,21 @@ export function PartySlot({
                   </option>
                 ))}
               </select>
+              {onSendBusy && (
+                <button
+                  type="button"
+                  onClick={onSendBusy}
+                  title="ย้ายไปรายชื่อลา/ไม่ว่าง"
+                  className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-amber-400"
+                >
+                  ลา
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClear}
                 title="เอาออกจากปาตี้"
-                className="shrink-0 rounded px-1.5 py-1 text-[10px] text-zinc-500 transition hover:text-rose-400"
+                className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-rose-400"
               >
                 ✕
               </button>
@@ -68,8 +86,10 @@ export function PartySlot({
           members={pickableMembers}
           onSelect={onAssign}
           emptyLabel="ไม่มีคนว่างแล้ว"
+          open={pickerOpen}
+          onOpenChange={onPickerOpenChange}
           trigger={
-            <span className="block w-full cursor-pointer select-none rounded px-1 py-1 text-center text-[10px] text-zinc-600 transition hover:text-indigo-300">
+            <span className="block w-full cursor-pointer select-none rounded px-1 py-1.5 text-center text-[10px] text-zinc-600 transition hover:text-indigo-300">
               + เลือกสมาชิก
             </span>
           }

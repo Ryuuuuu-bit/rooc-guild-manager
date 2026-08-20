@@ -118,27 +118,45 @@ interface PartyCardProps {
   onClassChange: (memberId: string, value: string) => void;
   onClear: (partyId: string, slotIndex: number) => void;
   onAssign: (partyId: string, slotIndex: number, memberId: string) => void;
+  onSendBusy: (partyId: string, slotIndex: number) => void;
   onDelete: (partyId: string, label: string) => void;
 }
 
 /** One party as a self-contained card (header + 5 slot rows) so cards can wrap freely regardless of party count. */
-function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onDelete }: PartyCardProps) {
+function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onSendBusy, onDelete }: PartyCardProps) {
+  // Which empty slot's "pick a member" popover is open. Controlled here (rather
+  // than left uncontrolled inside each PartySlot) so a successful pick can
+  // auto-advance straight to the next empty slot for fast sequential filling.
+  const [openSlotIndex, setOpenSlotIndex] = useState<number | null>(null);
+  const filledCount = party.slots.filter((s) => s.member).length;
+
+  function handleAssign(slotIndex: number, memberId: string) {
+    onAssign(party.id, slotIndex, memberId);
+    const next = [0, 1, 2, 3, 4].find(
+      (i) => i > slotIndex && !party.slots.find((s) => s.slotIndex === i)?.member
+    );
+    setOpenSlotIndex(next ?? null);
+  }
+
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-      <div className="flex items-center justify-between gap-1 bg-sky-500/10 px-2 py-1.5 text-xs font-semibold text-sky-300">
+    <div className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-950">
+      <div className="flex items-center justify-between gap-1 rounded-t-lg bg-sky-500/10 px-2.5 py-2 text-xs font-semibold text-sky-300">
         <span className="truncate">{party.label}</span>
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => onDelete(party.id, party.label)}
-            className="shrink-0 text-sky-400/60 hover:text-rose-400"
-            title={`ลบ ${party.label}`}
-          >
-            ✕
-          </button>
-        )}
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="font-normal text-sky-400/70">{filledCount}/5</span>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => onDelete(party.id, party.label)}
+              className="text-sky-400/60 hover:text-rose-400"
+              title={`ลบ ${party.label}`}
+            >
+              ✕
+            </button>
+          )}
+        </span>
       </div>
-      <div className="flex flex-col gap-1 p-1">
+      <div className="flex flex-col gap-1.5 p-1.5">
         {[0, 1, 2, 3, 4].map((slotIndex) => {
           const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null };
           const memberId = slot.member?.id;
@@ -150,8 +168,11 @@ function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, on
               isAdmin={isAdmin}
               onClassChange={(value) => memberId && onClassChange(memberId, value)}
               onClear={() => onClear(party.id, slotIndex)}
+              onSendBusy={memberId ? () => onSendBusy(party.id, slotIndex) : undefined}
               pickableMembers={pickableMembers}
-              onAssign={(selectedMemberId) => onAssign(party.id, slotIndex, selectedMemberId)}
+              onAssign={(selectedMemberId) => handleAssign(slotIndex, selectedMemberId)}
+              pickerOpen={openSlotIndex === slotIndex}
+              onPickerOpenChange={(open) => setOpenSlotIndex(open ? slotIndex : null)}
             />
           );
         })}
@@ -254,6 +275,20 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     }
     if (!member) return;
     placeMember(member, { type: "unassigned" });
+  }
+
+  function handleSendBusy(partyId: string, slotIndex: number) {
+    if (!board) return;
+    let member: PartyBoardMemberRef | null = null;
+    for (const g of board.groups) {
+      for (const p of g.parties) {
+        if (p.id !== partyId) continue;
+        const slot = p.slots.find((s) => s.slotIndex === slotIndex);
+        if (slot?.member) member = slot.member;
+      }
+    }
+    if (!member) return;
+    placeMember(member, { type: "busy" });
   }
 
   function handleBusyRemove(memberId: string) {
@@ -592,7 +627,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     กลุ่มนี้ยังไม่มี party{isAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
                   </div>
                 ) : (
-                  <div className="grid max-h-[70vh] grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2 overflow-y-auto pr-1">
+                  <div className="grid max-h-[70vh] grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3 overflow-y-auto pr-1">
                     {activeGroup.parties.map((party) => (
                       <PartyCard
                         key={party.id}
@@ -602,6 +637,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onClassChange={handleClassChange}
                         onClear={handleClearSlot}
                         onAssign={handleAssignToSlot}
+                        onSendBusy={handleSendBusy}
                         onDelete={handleDeleteParty}
                       />
                     ))}
