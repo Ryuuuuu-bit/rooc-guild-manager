@@ -4,7 +4,6 @@ import { listDiscordRoles, listMembers } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
-import { ClassSyncPanel } from "@/components/class-sync-panel";
 import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
 import { memberDisplayName } from "@/lib/ui";
 
@@ -49,7 +48,6 @@ export default async function MembersPage({
 
         {session.user.isAdmin && (
           <div className="flex flex-wrap gap-2">
-            <ClassSyncPanel />
             <ClassSelectBroadcastPanel />
           </div>
         )}

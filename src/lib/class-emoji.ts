@@ -20,6 +20,7 @@ export const CLASS_EMOJI: Record<ClassOption, string> = {
   WizCC: "❄️",
   Paladin: "🛡️",
   Rouge: "⚡",
+  Assassin: "🗡️",
 };
 
 export const EMOJI_TO_CLASS: Record<string, ClassOption> = Object.fromEntries(

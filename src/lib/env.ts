@@ -67,16 +67,4 @@ export const env = {
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
   },
-  /**
-   * Google Sheet ID + tab (gid) that members' character class can be synced
-   * from ("ซิงค์จาก Sheet" button on the Members page). The sheet must be
-   * shared as "Anyone with the link can view". Defaults to the guild's
-   * "Ragnarok Origin Classic" tracking sheet, "Stats PVP" tab.
-   */
-  get classSyncSheetId(): string {
-    return (process.env.CLASS_SYNC_SHEET_ID ?? "1k180f6caJKSs9O64SM_MXXvZR0sRG5pS_fqC3gQUcv8").trim();
-  },
-  get classSyncSheetGid(): string {
-    return (process.env.CLASS_SYNC_SHEET_GID ?? "537863303").trim();
-  },
 };

@@ -12,8 +12,21 @@ export class DiscordApiError extends Error {
   }
 }
 
-/** Bot-token authenticated request (server-to-server, used by the bot worker). */
-export async function discordBotFetch(path: string, init: RequestInit = {}) {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Bot-token authenticated request (server-to-server, used by the bot worker).
+ * Discord's reaction endpoints in particular have a tight per-route rate
+ * limit (roughly 1 request/0.25s) — posting several reactions back-to-back
+ * (e.g. seeding all class emojis on a fresh message) reliably triggers a 429.
+ * On 429 we back off for the server-provided `retry_after` (falling back to
+ * a small default) and retry, up to a few attempts, rather than surfacing a
+ * transient rate-limit as a hard failure to the admin.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- callers rely on this being untyped JSON, same as before this helper gained retry logic.
+export async function discordBotFetch(path: string, init: RequestInit = {}, retriesLeft = 3): Promise<any> {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("DISCORD_BOT_TOKEN is not set");
 
@@ -25,6 +38,19 @@ export async function discordBotFetch(path: string, init: RequestInit = {}) {
       ...init.headers,
     },
   });
+
+  if (res.status === 429 && retriesLeft > 0) {
+    const body = await res.text().catch(() => "");
+    let retryAfterSeconds = 0.5;
+    try {
+      const parsed = body ? JSON.parse(body) : null;
+      if (typeof parsed?.retry_after === "number") retryAfterSeconds = parsed.retry_after;
+    } catch {
+      // Non-JSON body — fall back to the default backoff above.
+    }
+    await sleep(Math.ceil(retryAfterSeconds * 1000) + 50);
+    return discordBotFetch(path, init, retriesLeft - 1);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");

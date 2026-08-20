@@ -1,5 +1,6 @@
 import {
   Cross,
+  EyeOff,
   Flame,
   FlaskConical,
   Music2,
@@ -27,6 +28,7 @@ const classIconMap: Record<ClassOption, LucideIcon> = {
   WizCC: Snowflake,
   Paladin: ShieldCheck,
   Rouge: Zap,
+  Assassin: EyeOff,
 };
 
 interface ClassIconProps {

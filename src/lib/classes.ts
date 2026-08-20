@@ -12,6 +12,7 @@ export const CLASS_OPTIONS = [
   "WizCC",
   "Paladin",
   "Rouge",
+  "Assassin",
 ] as const;
 
 export type ClassOption = (typeof CLASS_OPTIONS)[number];
@@ -28,4 +29,5 @@ export const classColors: Record<string, string> = {
   WizCC: "bg-sky-400/15 text-sky-300 ring-1 ring-inset ring-sky-400/30",
   Paladin: "bg-fuchsia-400/15 text-fuchsia-300 ring-1 ring-inset ring-fuchsia-400/30",
   Rouge: "bg-indigo-400/15 text-indigo-300 ring-1 ring-inset ring-indigo-400/30",
+  Assassin: "bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/40",
 };
