@@ -6,16 +6,19 @@ import type { Member } from "@/db/schema";
 
 const SLOTS_PER_PARTY = 5;
 
+// A member's class (job) lives once on `members.characterClass` and is
+// carried on every PartyBoardMemberRef, so it's always in sync everywhere
+// that member shows up — no separate per-slot/per-board copy to drift.
 export interface PartyBoardMemberRef {
   id: string;
   displayName: string;
   discordAvatar: string | null;
+  className: string | null;
 }
 
 export interface PartySlotView {
   slotIndex: number;
   member: PartyBoardMemberRef | null;
-  className: string | null;
 }
 
 export interface PartyView {
@@ -39,7 +42,7 @@ export interface PartyBoardDetail {
   id: string;
   name: string;
   groups: PartyGroupView[];
-  busy: { member: PartyBoardMemberRef; className: string | null }[];
+  busy: PartyBoardMemberRef[];
   unassigned: PartyBoardMemberRef[];
 }
 
@@ -48,6 +51,7 @@ function toRef(member: Member): PartyBoardMemberRef {
     id: member.id,
     displayName: memberDisplayName(member),
     discordAvatar: member.discordAvatar,
+    className: member.characterClass,
   };
 }
 
@@ -112,11 +116,7 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         const row = slotByIndex.get(i);
         const member = row?.memberId ? membersById.get(row.memberId) ?? null : null;
         if (member) placedMemberIds.add(member.id);
-        slotViews.push({
-          slotIndex: i,
-          member: member ? toRef(member) : null,
-          className: member ? row?.className ?? null : null,
-        });
+        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null });
       }
       return { id: p.id, label: p.label, slots: slotViews };
     }),
@@ -129,9 +129,9 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
       const member = membersById.get(row.memberId);
       if (!member) return null;
       placedMemberIds.add(member.id);
-      return { member: toRef(member), className: row.className };
+      return toRef(member);
     })
-    .filter((v): v is { member: PartyBoardMemberRef; className: string | null } => v !== null);
+    .filter((v): v is PartyBoardMemberRef => v !== null);
 
   const unassigned = activeMembers
     .filter((m) => !placedMemberIds.has(m.id))

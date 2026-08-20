@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import type { Member } from "@/db/schema";
 import { updateMemberProfile, type UpdateMemberResult } from "@/app/actions/members";
+import { CLASS_OPTIONS } from "@/lib/classes";
 
 interface Props {
   member: Member;
@@ -30,11 +31,21 @@ export function MemberEditForm({ member }: Props) {
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-zinc-400">คลาส</span>
-          <input
+          <select
             name="characterClass"
             defaultValue={member.characterClass ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
-          />
+          >
+            <option value="">- ไม่ระบุ -</option>
+            {CLASS_OPTIONS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-zinc-500">
+            แก้จากหน้านี้หรือจากหน้าจัดปาตี้ก็ได้ ค่าเดียวกันใช้ทุกกระดาน
+          </span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-zinc-400">เลเวล</span>

@@ -14,6 +14,8 @@ import {
 } from "@dnd-kit/core";
 import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
+import { MemberPicker } from "./member-picker";
+import { CLASS_OPTIONS } from "@/lib/classes";
 import {
   createBoard,
   createGroup,
@@ -28,7 +30,7 @@ import {
   setMemberClass,
   type PartyDestination,
 } from "@/app/actions/party";
-import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef } from "@/lib/party-data";
+import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
 
 function parseDestination(id: string): PartyDestination | null {
   if (id === "busy") return { type: "busy" };
@@ -38,21 +40,17 @@ function parseDestination(id: string): PartyDestination | null {
   return null;
 }
 
-function computeNext(
-  prev: PartyBoardDetail,
-  member: PartyBoardMemberRef,
-  carriedClassName: string | null,
-  destination: PartyDestination
-): PartyBoardDetail {
+/** Moves a member (in local optimistic state) to a new place on the board. */
+function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destination: PartyDestination): PartyBoardDetail {
   let groups = prev.groups.map((g) => ({
     ...g,
     parties: g.parties.map((p) => ({
       ...p,
-      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null, className: null } : s)),
+      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null } : s)),
     })),
   }));
 
-  let busy = prev.busy.filter((b) => b.member.id !== member.id);
+  let busy = prev.busy.filter((b) => b.id !== member.id);
   let unassigned = prev.unassigned.filter((u) => u.id !== member.id);
 
   if (destination.type === "slot") {
@@ -66,19 +64,36 @@ function computeNext(
           slots: p.slots.map((s) => {
             if (s.slotIndex !== destination.slotIndex) return s;
             if (s.member && s.member.id !== member.id) bumpedOccupant = s.member;
-            return { slotIndex: s.slotIndex, member, className: carriedClassName };
+            return { slotIndex: s.slotIndex, member };
           }),
         };
       }),
     }));
     if (bumpedOccupant) unassigned = [...unassigned, bumpedOccupant];
   } else if (destination.type === "busy") {
-    busy = [...busy, { member, className: carriedClassName }];
+    busy = [...busy, member];
   } else {
     unassigned = [...unassigned, member];
   }
 
   return { ...prev, groups, busy, unassigned };
+}
+
+/** Patches a member's className everywhere they currently appear on the board (optimistic update). */
+function patchMemberClass(prev: PartyBoardDetail, memberId: string, className: string | null): PartyBoardDetail {
+  const patch = (m: PartyBoardMemberRef) => (m.id === memberId ? { ...m, className } : m);
+  return {
+    ...prev,
+    groups: prev.groups.map((g) => ({
+      ...g,
+      parties: g.parties.map((p) => ({
+        ...p,
+        slots: p.slots.map((s) => (s.member ? { ...s, member: patch(s.member) } : s)),
+      })),
+    })),
+    busy: prev.busy.map(patch),
+    unassigned: prev.unassigned.map(patch),
+  };
 }
 
 function DroppableZone({ id, children, label }: { id: string; children: React.ReactNode; label?: string }) {
@@ -96,6 +111,55 @@ function DroppableZone({ id, children, label }: { id: string; children: React.Re
   );
 }
 
+interface PartyCardProps {
+  party: PartyGroupView["parties"][number];
+  isAdmin: boolean;
+  pickableMembers: PartyBoardMemberRef[];
+  onClassChange: (memberId: string, value: string) => void;
+  onClear: (partyId: string, slotIndex: number) => void;
+  onAssign: (partyId: string, slotIndex: number, memberId: string) => void;
+  onDelete: (partyId: string, label: string) => void;
+}
+
+/** One party as a self-contained card (header + 5 slot rows) so cards can wrap freely regardless of party count. */
+function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onDelete }: PartyCardProps) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
+      <div className="flex items-center justify-between gap-1 bg-sky-500/10 px-2 py-1.5 text-xs font-semibold text-sky-300">
+        <span className="truncate">{party.label}</span>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => onDelete(party.id, party.label)}
+            className="shrink-0 text-sky-400/60 hover:text-rose-400"
+            title={`ลบ ${party.label}`}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-1 p-1">
+        {[0, 1, 2, 3, 4].map((slotIndex) => {
+          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null };
+          const memberId = slot.member?.id;
+          return (
+            <PartySlot
+              key={slotIndex}
+              id={`slot:${party.id}:${slotIndex}`}
+              member={slot.member}
+              isAdmin={isAdmin}
+              onClassChange={(value) => memberId && onClassChange(memberId, value)}
+              onClear={() => onClear(party.id, slotIndex)}
+              pickableMembers={pickableMembers}
+              onAssign={(selectedMemberId) => onAssign(party.id, slotIndex, selectedMemberId)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface PartyBoardViewProps {
   boards: PartyBoardListItem[];
   selectedBoardId: string | null;
@@ -108,6 +172,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   const [board, setBoard] = useState<PartyBoardDetail | null>(initialBoard);
   const [activeMember, setActiveMember] = useState<PartyBoardMemberRef | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialBoard?.groups[0]?.id ?? null);
+  const [poolQuery, setPoolQuery] = useState("");
+  const [poolClassFilter, setPoolClassFilter] = useState("");
   const [, startTransition] = useTransition();
 
   // Structural edits (create/rename/delete board/group/party) go through
@@ -125,6 +191,18 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
+  function placeMember(member: PartyBoardMemberRef, destination: PartyDestination) {
+    if (!selectedBoardId) return;
+    setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
+    startTransition(async () => {
+      const result = await moveMember(selectedBoardId, member.id, destination);
+      if (!result.ok) {
+        alert(result.error ?? "ย้ายสมาชิกไม่สำเร็จ ลองใหม่อีกครั้ง");
+        router.refresh();
+      }
+    });
+  }
+
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current as { member?: PartyBoardMemberRef } | undefined;
     setActiveMember(data?.member ?? null);
@@ -133,55 +211,39 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   function handleDragEnd(event: DragEndEvent) {
     setActiveMember(null);
     const { active, over } = event;
-    if (!over || !board || !selectedBoardId) return;
+    if (!over || !board) return;
 
-    const data = active.data.current as { member: PartyBoardMemberRef; className: string | null } | undefined;
+    const data = active.data.current as { member: PartyBoardMemberRef } | undefined;
     if (!data) return;
     const destination = parseDestination(String(over.id));
     if (!destination) return;
 
-    setBoard((prev) => (prev ? computeNext(prev, data.member, data.className, destination) : prev));
-
-    startTransition(async () => {
-      const result = await moveMember(selectedBoardId, data.member.id, destination, data.className ?? undefined);
-      if (!result.ok) {
-        alert(result.error ?? "ย้ายสมาชิกไม่สำเร็จ ลองใหม่อีกครั้ง");
-        router.refresh();
-      }
-    });
+    placeMember(data.member, destination);
   }
 
-  function handleClassChange(partyId: string, slotIndex: number, value: string) {
-    if (!board || !selectedBoardId) return;
-    let memberId: string | null = null;
-    setBoard((prev) => {
-      if (!prev) return prev;
-      const groups = prev.groups.map((g) => ({
-        ...g,
-        parties: g.parties.map((p) => {
-          if (p.id !== partyId) return p;
-          return {
-            ...p,
-            slots: p.slots.map((s) => {
-              if (s.slotIndex !== slotIndex || !s.member) return s;
-              memberId = s.member.id;
-              return { ...s, className: value || null };
-            }),
-          };
-        }),
-      }));
-      return { ...prev, groups };
+  function handleAssignToSlot(partyId: string, slotIndex: number, memberId: string) {
+    const member = board?.unassigned.find((m) => m.id === memberId);
+    if (!member) return;
+    placeMember(member, { type: "slot", partyId, slotIndex });
+  }
+
+  function handleAssignBusy(memberId: string) {
+    const member = board?.unassigned.find((m) => m.id === memberId);
+    if (!member) return;
+    placeMember(member, { type: "busy" });
+  }
+
+  function handleClassChange(memberId: string, value: string) {
+    if (!board) return;
+    const className = value || null;
+    setBoard((prev) => (prev ? patchMemberClass(prev, memberId, className) : prev));
+    startTransition(async () => {
+      await setMemberClass(memberId, className);
     });
-    if (memberId) {
-      const id = memberId as string;
-      startTransition(async () => {
-        await setMemberClass(selectedBoardId, id, value || null);
-      });
-    }
   }
 
   function handleClearSlot(partyId: string, slotIndex: number) {
-    if (!board || !selectedBoardId) return;
+    if (!board) return;
     let member: PartyBoardMemberRef | null = null;
     for (const g of board.groups) {
       for (const p of g.parties) {
@@ -191,21 +253,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       }
     }
     if (!member) return;
-    const m = member;
-    setBoard((prev) => (prev ? computeNext(prev, m, null, { type: "unassigned" }) : prev));
-    startTransition(async () => {
-      await moveMember(selectedBoardId, m.id, { type: "unassigned" });
-    });
+    placeMember(member, { type: "unassigned" });
   }
 
   function handleBusyRemove(memberId: string) {
-    if (!board || !selectedBoardId) return;
-    const entry = board.busy.find((b) => b.member.id === memberId);
-    if (!entry) return;
-    setBoard((prev) => (prev ? computeNext(prev, entry.member, entry.className, { type: "unassigned" }) : prev));
-    startTransition(async () => {
-      await moveMember(selectedBoardId, memberId, { type: "unassigned" });
-    });
+    if (!board) return;
+    const member = board.busy.find((b) => b.id === memberId);
+    if (!member) return;
+    placeMember(member, { type: "unassigned" });
   }
 
   async function handleReset() {
@@ -290,6 +345,16 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     );
   }, [board]);
 
+  const filteredUnassigned = useMemo(() => {
+    if (!board) return [];
+    const q = poolQuery.trim().toLowerCase();
+    return board.unassigned.filter((m) => {
+      if (poolClassFilter && m.className !== poolClassFilter) return false;
+      if (q && !m.displayName.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [board, poolQuery, poolClassFilter]);
+
   const activeGroup = board?.groups.find((g) => g.id === activeGroupId) ?? null;
 
   return (
@@ -363,37 +428,92 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
             {/* Unassigned pool + Busy list — always visible, never scroll out of view */}
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               <section>
-                <h2 className="mb-2 text-sm font-medium text-zinc-300">รอลงปาตี้ ({board.unassigned.length})</h2>
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-medium text-zinc-300">
+                    รอลงปาตี้ ({filteredUnassigned.length}
+                    {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
+                  </h2>
+                  <input
+                    type="text"
+                    value={poolQuery}
+                    onChange={(e) => setPoolQuery(e.target.value)}
+                    placeholder="ค้นหาชื่อ..."
+                    className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none sm:max-w-40"
+                  />
+                  <select
+                    value={poolClassFilter}
+                    onChange={(e) => setPoolClassFilter(e.target.value)}
+                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="">ทุก class</option>
+                    {CLASS_OPTIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <DroppableZone id="unassigned" label="รอลงปาตี้">
-                  {board.unassigned.length === 0 && (
-                    <span className="px-1 py-1 text-xs text-zinc-600">ไม่มีใครรอลงปาตี้</span>
+                  {filteredUnassigned.length === 0 && (
+                    <span className="px-1 py-1 text-xs text-zinc-600">
+                      {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
+                    </span>
                   )}
-                  {board.unassigned.map((member) => (
-                    <MemberChip key={member.id} member={member} draggable={isAdmin} showClassBadge={false} />
+                  {filteredUnassigned.map((member) => (
+                    <MemberChip key={member.id} member={member} draggable={isAdmin} />
                   ))}
                 </DroppableZone>
               </section>
 
               <section>
-                <h2 className="mb-2 text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
+                  {isAdmin && (
+                    <MemberPicker
+                      members={board.unassigned}
+                      onSelect={handleAssignBusy}
+                      emptyLabel="ไม่มีคนว่างแล้ว"
+                      align="right"
+                      trigger={
+                        <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300">
+                          + เพิ่มคนลา
+                        </span>
+                      }
+                    />
+                  )}
+                </div>
                 <DroppableZone id="busy" label="Busy หรือ ลา">
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      ลากรายชื่อมาวางที่นี่เพื่อบอกว่าไม่ว่าง/ลารอบนี้
+                      ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้
                     </span>
                   )}
-                  {board.busy.map(({ member, className }) => (
-                    <div key={member.id} className="flex items-center gap-1">
-                      <MemberChip member={member} className={className} draggable={isAdmin} />
+                  {board.busy.map((member) => (
+                    <div key={member.id} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 py-1 pl-1.5 pr-1">
+                      <MemberChip member={member} draggable={isAdmin} compact showClassBadge={!isAdmin} />
                       {isAdmin && (
-                        <button
-                          type="button"
-                          onClick={() => handleBusyRemove(member.id)}
-                          title="เอาออกจากรายชื่อลา"
-                          className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
-                        >
-                          ✕
-                        </button>
+                        <>
+                          <select
+                            value={member.className ?? ""}
+                            onChange={(e) => handleClassChange(member.id, e.target.value)}
+                            className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                          >
+                            <option value="">- class -</option>
+                            {CLASS_OPTIONS.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => handleBusyRemove(member.id)}
+                            title="เอาออกจากรายชื่อลา"
+                            className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
+                          >
+                            ✕
+                          </button>
+                        </>
                       )}
                     </div>
                   ))}
@@ -467,60 +587,26 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   )}
                 </div>
 
-                <div className="max-h-[60vh] overflow-auto rounded-xl border border-zinc-800">
-                  {activeGroup.parties.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-zinc-500">
-                      กลุ่มนี้ยังไม่มี party{isAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
-                    </div>
-                  ) : (
-                    <div
-                      className="grid gap-px bg-zinc-800"
-                      style={{
-                        gridTemplateColumns: `repeat(${activeGroup.parties.length}, minmax(150px, 1fr))`,
-                      }}
-                    >
-                      {activeGroup.parties.map((party) => (
-                        <div
-                          key={party.id}
-                          className="flex items-center justify-center gap-1 bg-sky-500/10 px-2 py-1.5 text-center text-xs font-semibold text-sky-300"
-                        >
-                          <span>{party.label}</span>
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteParty(party.id, party.label)}
-                              className="text-sky-400/60 hover:text-rose-400"
-                              title={`ลบ ${party.label}`}
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      {[0, 1, 2, 3, 4].map((slotIndex) =>
-                        activeGroup.parties.map((party) => {
-                          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? {
-                            slotIndex,
-                            member: null,
-                            className: null,
-                          };
-                          return (
-                            <div key={`${party.id}:${slotIndex}`} className="bg-zinc-950 p-1">
-                              <PartySlot
-                                id={`slot:${party.id}:${slotIndex}`}
-                                member={slot.member}
-                                className={slot.className}
-                                isAdmin={isAdmin}
-                                onClassChange={(value) => handleClassChange(party.id, slotIndex, value)}
-                                onClear={() => handleClearSlot(party.id, slotIndex)}
-                              />
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
+                {activeGroup.parties.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                    กลุ่มนี้ยังไม่มี party{isAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
+                  </div>
+                ) : (
+                  <div className="grid max-h-[70vh] grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2 overflow-y-auto pr-1">
+                    {activeGroup.parties.map((party) => (
+                      <PartyCard
+                        key={party.id}
+                        party={party}
+                        isAdmin={isAdmin}
+                        pickableMembers={board.unassigned}
+                        onClassChange={handleClassChange}
+                        onClear={handleClearSlot}
+                        onAssign={handleAssignToSlot}
+                        onDelete={handleDeleteParty}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>

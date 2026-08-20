@@ -2,7 +2,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
-import { StatusBadge } from "@/components/badges";
+import { StatusBadge, ClassBadge } from "@/components/badges";
 import { eventLabels, memberDisplayName } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
@@ -56,7 +56,9 @@ export default async function MemberDetailPage({
                 </div>
                 <div>
                   <dt className="text-xs text-zinc-500">คลาส</dt>
-                  <dd className="text-sm text-zinc-200">{member.characterClass ?? "—"}</dd>
+                  <dd className="text-sm text-zinc-200">
+                    <ClassBadge className={member.characterClass} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs text-zinc-500">เลเวล</dt>

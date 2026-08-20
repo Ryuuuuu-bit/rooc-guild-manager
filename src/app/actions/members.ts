@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { members, membershipEvents, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
+import { CLASS_OPTIONS } from "@/lib/classes";
 
 export interface UpdateMemberResult {
   ok: boolean;
@@ -18,7 +19,7 @@ export async function updateMemberProfile(
   const session = await requireAdmin();
 
   const inGameName = (formData.get("inGameName") as string | null)?.trim() || null;
-  const characterClass = (formData.get("characterClass") as string | null)?.trim() || null;
+  const characterClassRaw = (formData.get("characterClass") as string | null)?.trim() || null;
   const levelRaw = (formData.get("level") as string | null)?.trim();
   const level = levelRaw ? Number(levelRaw) : null;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
@@ -26,6 +27,10 @@ export async function updateMemberProfile(
   if (level !== null && (Number.isNaN(level) || level < 0 || level > 9999)) {
     return { ok: false, error: "เลเวลไม่ถูกต้อง" };
   }
+  if (characterClassRaw && !(CLASS_OPTIONS as readonly string[]).includes(characterClassRaw)) {
+    return { ok: false, error: "Class ไม่ถูกต้อง" };
+  }
+  const characterClass = characterClassRaw;
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!existing) return { ok: false, error: "ไม่พบสมาชิก" };
@@ -68,7 +73,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .where(eq(members.id, memberId));
   await db
     .update(partySlots)
-    .set({ memberId: null, className: null, updatedAt: new Date() })
+    .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
 

@@ -7,7 +7,7 @@ import { discordRoles, members, membershipEvents, partyBusyEntries, partySlots }
 async function clearPartyAssignments(memberId: string) {
   await db
     .update(partySlots)
-    .set({ memberId: null, className: null, updatedAt: new Date() })
+    .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
 }

@@ -149,13 +149,13 @@ export async function deleteParty(partyId: string): Promise<ActionResult> {
  * Moves a member to a new place on a board (a slot, the "busy" list, or
  * back out to the unassigned pool) — clearing them from wherever they
  * currently sit on THIS board first (a member can hold an independent spot
- * on each board, but only one place within a given board).
+ * on each board, but only one place within a given board). A member's class
+ * is a profile-level attribute (see setMemberClass), not part of this move.
  */
 export async function moveMember(
   boardId: string,
   memberId: string,
-  destination: PartyDestination,
-  className?: string | null
+  destination: PartyDestination
 ): Promise<ActionResult> {
   await requireAdmin();
 
@@ -166,25 +166,10 @@ export async function moveMember(
 
   const partyIds = await getPartyIdsForBoard(boardId);
 
-  const [prevSlot] = partyIds.length
-    ? await db
-        .select({ className: partySlots.className })
-        .from(partySlots)
-        .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)))
-    : [];
-  const [prevBusy] = await db
-    .select({ className: partyBusyEntries.className })
-    .from(partyBusyEntries)
-    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
-
-  const carriedClassName = prevSlot?.className ?? prevBusy?.className ?? null;
-  const resolvedClassName = className !== undefined ? className : carriedClassName;
-  const finalClassName = isValidClassName(resolvedClassName) ? resolvedClassName : null;
-
   if (partyIds.length) {
     await db
       .update(partySlots)
-      .set({ memberId: null, className: null, updatedAt: new Date() })
+      .set({ memberId: null, updatedAt: new Date() })
       .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
   }
   await db
@@ -198,11 +183,10 @@ export async function moveMember(
         partyId: destination.partyId,
         slotIndex: destination.slotIndex,
         memberId,
-        className: finalClassName,
       })
       .onConflictDoUpdate({
         target: [partySlots.partyId, partySlots.slotIndex],
-        set: { memberId, className: finalClassName, updatedAt: new Date() },
+        set: { memberId, updatedAt: new Date() },
       });
   } else if (destination.type === "busy") {
     const [{ maxOrder } = { maxOrder: 0 }] = await db
@@ -212,7 +196,6 @@ export async function moveMember(
     await db.insert(partyBusyEntries).values({
       boardId,
       memberId,
-      className: finalClassName,
       sortOrder: maxOrder + 1,
     });
   }
@@ -221,25 +204,26 @@ export async function moveMember(
   return { ok: true };
 }
 
-/** Updates just the class shown for a member already placed on this board, without moving them. */
-export async function setMemberClass(boardId: string, memberId: string, className: string | null): Promise<ActionResult> {
+/**
+ * Sets a member's class (job). This is a profile-level attribute (stored on
+ * `members.characterClass`), shared across every board/party/slot the
+ * member appears in — so picking it once from any party slot keeps it in
+ * sync everywhere, including the member's own profile page.
+ */
+export async function setMemberClass(memberId: string, className: string | null): Promise<ActionResult> {
   await requireAdmin();
 
   const finalClassName = isValidClassName(className) ? className : null;
-  const partyIds = await getPartyIdsForBoard(boardId);
+  if (className && !finalClassName) return { ok: false, error: "Class ไม่ถูกต้อง" };
 
-  if (partyIds.length) {
-    await db
-      .update(partySlots)
-      .set({ className: finalClassName, updatedAt: new Date() })
-      .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
-  }
   await db
-    .update(partyBusyEntries)
-    .set({ className: finalClassName })
-    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
+    .update(members)
+    .set({ characterClass: finalClassName, updatedAt: new Date() })
+    .where(eq(members.id, memberId));
 
   revalidatePath("/party");
+  revalidatePath(`/members/${memberId}`);
+  revalidatePath("/members");
   return { ok: true };
 }
 
@@ -249,7 +233,7 @@ export async function clearSlot(partyId: string, slotIndex: number): Promise<Act
 
   await db
     .update(partySlots)
-    .set({ memberId: null, className: null, updatedAt: new Date() })
+    .set({ memberId: null, updatedAt: new Date() })
     .where(and(eq(partySlots.partyId, partyId), eq(partySlots.slotIndex, slotIndex)));
 
   revalidatePath("/party");

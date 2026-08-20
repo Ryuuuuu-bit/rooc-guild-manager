@@ -111,7 +111,9 @@ export const membershipEvents = pgTable(
 // Busy/leave list are scoped per board, so the same member can hold an
 // independent spot on each board (e.g. different rosters for different
 // content on different days). Each board is a single always-current
-// sheet, overwritten in place — no per-event history.
+// sheet, overwritten in place — no per-event history. A member's class
+// (job) is NOT stored per-slot — it lives once on `members.characterClass`
+// and is shared everywhere that member appears, on every board.
 
 export const partyBoards = pgTable("party_boards", {
   id: text("id").primaryKey().$defaultFn(() => createId()),
@@ -157,7 +159,6 @@ export const partySlots = pgTable(
       .references(() => partyGroupParties.id, { onDelete: "cascade" }),
     slotIndex: integer("slot_index").notNull(), // 0-4
     memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
-    className: text("class_name"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -181,7 +182,6 @@ export const partyBusyEntries = pgTable(
     memberId: text("member_id")
       .notNull()
       .references(() => members.id, { onDelete: "cascade" }),
-    className: text("class_name"),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
