@@ -1,12 +1,15 @@
 import { db } from "@/db";
 import { discordRoles, members, membershipEvents } from "@/db/schema";
 import { and, arrayContains, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
+import { env } from "@/lib/env";
 
 export interface MemberFilters {
   search?: string;
   status?: "ACTIVE" | "LEFT" | "KICKED" | "ALL";
   /** Discord role ID — only members carrying this role in `discordRoles`. */
   discordRoleId?: string;
+  /** "benched" = only benched members, "active" = only non-benched, undefined = no filter. */
+  benched?: "benched" | "active";
 }
 
 export async function listMembers(filters: MemberFilters = {}) {
@@ -34,6 +37,12 @@ export async function listMembers(filters: MemberFilters = {}) {
     conditions.push(arrayContains(members.discordRoles, [filters.discordRoleId]));
   }
 
+  if (filters.benched === "benched") {
+    conditions.push(eq(members.benched, true));
+  } else if (filters.benched === "active") {
+    conditions.push(eq(members.benched, false));
+  }
+
   return db
     .select()
     .from(members)
@@ -41,9 +50,18 @@ export async function listMembers(filters: MemberFilters = {}) {
     .orderBy(members.discordUsername);
 }
 
-/** All cached Discord roles for the guild, ordered highest-position first (as Discord shows them). */
+/**
+ * Cached Discord roles for the guild, ordered highest-position first (as
+ * Discord shows them) — filtered down to just the roles relevant to guild
+ * management (see `env.managementRoleNames`). The Discord server is a
+ * shared multi-game community with many other roles (bots, other games,
+ * general community tiers) that would just be noise in this app's role
+ * filter/badges.
+ */
 export async function listDiscordRoles() {
-  return db.select().from(discordRoles).orderBy(desc(discordRoles.position));
+  const rows = await db.select().from(discordRoles).orderBy(desc(discordRoles.position));
+  const allowed = new Set(env.managementRoleNames);
+  return rows.filter((r) => allowed.has(r.name.trim().toLowerCase()));
 }
 
 export async function getMemberById(id: string) {

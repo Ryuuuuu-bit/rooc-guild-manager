@@ -2,7 +2,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
-import { StatusBadge, ClassBadge } from "@/components/badges";
+import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { eventLabels, memberDisplayName } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
@@ -39,6 +39,7 @@ export default async function MemberDetailPage({
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={member.status} />
+          {member.benched && <BenchedBadge />}
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { members, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { memberDisplayName } from "@/lib/ui";
 import type { Member } from "@/db/schema";
 
@@ -69,7 +69,9 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
   if (!board) return null;
 
   const [activeMembers, groups, busyRows] = await Promise.all([
-    db.select().from(members).where(eq(members.status, "ACTIVE")),
+    // Benched members are still ACTIVE (still in Discord with the tracked
+    // role) but flagged out of party/event management entirely.
+    db.select().from(members).where(and(eq(members.status, "ACTIVE"), eq(members.benched, false))),
     db.select().from(partyGroups).where(eq(partyGroups.boardId, boardId)).orderBy(asc(partyGroups.sortOrder)),
     db.select().from(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId)),
   ]);

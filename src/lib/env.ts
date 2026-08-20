@@ -53,4 +53,18 @@ export const env = {
   get trackedRoleName(): string {
     return (process.env.DISCORD_TRACKED_ROLE_NAME ?? "Rooc").trim();
   },
+  /**
+   * Comma-separated Discord role names to surface in the app's role filter
+   * and role badges (case-insensitive). The guild's Discord server is a
+   * shared multi-game community with many roles (other games, bots,
+   * general community roles) that are just noise for guild management —
+   * this keeps the UI scoped to roles that actually matter here. Defaults
+   * to the guild-management roles identified when this was set up.
+   */
+  get managementRoleNames(): string[] {
+    return (process.env.DISCORD_MANAGEMENT_ROLE_NAMES ?? "ADMIN,MOD,Rooc,Strategist")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+  },
 };

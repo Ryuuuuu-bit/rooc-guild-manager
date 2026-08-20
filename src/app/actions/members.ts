@@ -114,3 +114,43 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
 
   return { ok: true };
 }
+
+/**
+ * Flags a member as "benched" (still in Discord/holding the tracked role,
+ * but not currently playing) or clears that flag. Independent of `status`
+ * — the bot's role sync never touches this, only an admin can. Benching
+ * someone clears them from every party board (they'd otherwise vanish from
+ * the unassigned pool but leave a dangling slot/busy-entry reference).
+ */
+export async function setMemberBenched(memberId: string, benched: boolean): Promise<UpdateMemberResult> {
+  const session = await requireAdmin();
+
+  const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!existing) return { ok: false, error: "ไม่พบสมาชิก" };
+
+  await db.update(members).set({ benched, updatedAt: new Date() }).where(eq(members.id, memberId));
+
+  if (benched) {
+    await db
+      .update(partySlots)
+      .set({ memberId: null, updatedAt: new Date() })
+      .where(eq(partySlots.memberId, memberId));
+    await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+  }
+
+  await db.insert(membershipEvents).values({
+    memberId,
+    type: "NOTE",
+    detail: benched
+      ? `พักการเล่น (ไม่รวมในระบบจัดปาตี้) โดย ${session.user.username}`
+      : `เลิกพักการเล่น โดย ${session.user.username}`,
+    actor: session.user.username,
+  });
+
+  revalidatePath(`/members/${memberId}`);
+  revalidatePath("/members");
+  revalidatePath("/");
+  revalidatePath("/party");
+
+  return { ok: true };
+}

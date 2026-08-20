@@ -6,6 +6,7 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
@@ -54,6 +55,11 @@ export const members = pgTable(
     characterClass: text("character_class"),
     level: integer("level"),
     status: memberStatusEnum("status").notNull().default("ACTIVE"),
+    // Still an active Discord/Rooc-role member, but flagged by an admin as
+    // not currently playing — excluded from party boards and other active
+    // "management" screens without touching their Discord role/status.
+    // Independent of `status`: NOT auto-managed by the bot's role sync.
+    benched: boolean("benched").notNull().default(false),
     notes: text("notes"),
 
     createdAt: timestamp("created_at", { withTimezone: true })

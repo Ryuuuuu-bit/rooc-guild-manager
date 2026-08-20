@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { listDiscordRoles, listMembers } from "@/lib/data";
-import { StatusBadge, ClassBadge } from "@/components/badges";
+import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
 import { memberDisplayName } from "@/lib/ui";
 
@@ -9,6 +9,7 @@ interface SearchParams {
   q?: string;
   status?: string;
   role?: string;
+  benched?: string;
 }
 
 export default async function MembersPage({
@@ -18,12 +19,14 @@ export default async function MembersPage({
 }) {
   const params = await searchParams;
   const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
+  const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
 
   const [membersList, discordRoleList] = await Promise.all([
     listMembers({
       search: params.q,
       status,
       discordRoleId: params.role,
+      benched,
     }),
     listDiscordRoles(),
   ]);
@@ -69,6 +72,15 @@ export default async function MembersPage({
                 {role.name}
               </option>
             ))}
+          </select>
+          <select
+            name="benched"
+            defaultValue={benched ?? ""}
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+          >
+            <option value="">กำลังเล่น + พักการเล่น</option>
+            <option value="active">กำลังเล่นเท่านั้น</option>
+            <option value="benched">เฉพาะคนพักการเล่น</option>
           </select>
           <button
             type="submit"
@@ -132,7 +144,10 @@ export default async function MembersPage({
                   <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />
                 </td>
                 <td className="px-5 py-3">
-                  <StatusBadge status={member.status} />
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge status={member.status} />
+                    {member.benched && <BenchedBadge />}
+                  </div>
                 </td>
                 <td className="px-5 py-3 text-zinc-400">
                   {member.joinedDiscordAt

@@ -50,6 +50,13 @@
       "when": 1787156070003,
       "tag": "0006_drop_party_class_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787194659919,
+      "tag": "0007_add_member_benched_flag",
+      "breakpoints": true
     }
   ]
 }

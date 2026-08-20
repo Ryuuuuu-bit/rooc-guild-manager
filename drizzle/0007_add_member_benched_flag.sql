@@ -1,0 +1,1 @@
+ALTER TABLE "members" ADD COLUMN "benched" boolean DEFAULT false NOT NULL;
