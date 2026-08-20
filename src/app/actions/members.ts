@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members, membershipEvents, partyBusyEntries, partySlots } from "@/db/schema";
+import { members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { CLASS_OPTIONS } from "@/lib/classes";
 import { env } from "@/lib/env";
@@ -111,6 +111,36 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   revalidatePath("/party");
 
   return discordWarning ? { ok: true, warning: discordWarning } : { ok: true };
+}
+
+/**
+ * Adds a timestamped internal comment to a member (e.g. "AFK ใน GVG 20/8").
+ * Admin-only to write AND to read — kept in its own table rather than
+ * mixed into the membershipEvents audit feed, since that feed is shown
+ * more broadly and these notes are meant to stay private to admins.
+ */
+export async function addMemberNote(memberId: string, body: string): Promise<UpdateMemberResult> {
+  const session = await requireAdmin();
+
+  const trimmed = body.trim();
+  if (!trimmed) return { ok: false, error: "กรุณากรอกข้อความ" };
+  if (trimmed.length > 1000) return { ok: false, error: "ข้อความยาวเกินไป (สูงสุด 1000 ตัวอักษร)" };
+
+  await db.insert(memberNotes).values({
+    memberId,
+    body: trimmed,
+    authorUsername: session.user.username,
+  });
+
+  revalidatePath(`/members/${memberId}`);
+  return { ok: true };
+}
+
+export async function deleteMemberNote(noteId: string, memberId: string): Promise<UpdateMemberResult> {
+  await requireAdmin();
+  await db.delete(memberNotes).where(eq(memberNotes.id, noteId));
+  revalidatePath(`/members/${memberId}`);
+  return { ok: true };
 }
 
 export async function restoreMemberStatus(memberId: string): Promise<UpdateMemberResult> {

@@ -6,6 +6,7 @@ import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { eventLabels, memberDisplayName } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
+import { MemberNotes } from "@/components/member-notes";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function MemberDetailPage({
@@ -18,7 +19,7 @@ export default async function MemberDetailPage({
   const data = await getMemberById(id);
   if (!data) notFound();
 
-  const { member, events } = data;
+  const { member, events, notes } = data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -130,6 +131,14 @@ export default async function MemberDetailPage({
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-4 font-medium text-zinc-100">การจัดการสมาชิก</h2>
               <MemberStatusActions member={member} />
+            </section>
+          )}
+
+          {session.user.isAdmin && (
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+              <h2 className="mb-1 font-medium text-zinc-100">บันทึกภายใน</h2>
+              <p className="mb-4 text-xs text-zinc-500">เห็นเฉพาะแอดมิน — เช่น AFK ในกิจกรรม, พูดคุยแจ้งเตือนแล้ว</p>
+              <MemberNotes memberId={member.id} notes={notes} />
             </section>
           )}
         </div>

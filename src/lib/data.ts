@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { discordRoles, members, membershipEvents } from "@/db/schema";
+import { discordRoles, members, membershipEvents, memberNotes } from "@/db/schema";
 import { and, arrayContains, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 
@@ -77,7 +77,15 @@ export async function getMemberById(id: string) {
     .orderBy(desc(membershipEvents.createdAt))
     .limit(50);
 
-  return { member, events };
+  // Admin-only internal comment log (e.g. "AFK ใน GVG 20/8") — the caller
+  // decides whether to actually render this to the current user.
+  const notes = await db
+    .select()
+    .from(memberNotes)
+    .where(eq(memberNotes.memberId, id))
+    .orderBy(desc(memberNotes.createdAt));
+
+  return { member, events, notes };
 }
 
 export async function getRecentActivity(limit = 30) {

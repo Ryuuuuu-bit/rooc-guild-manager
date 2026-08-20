@@ -64,6 +64,13 @@
       "when": 1787198072613,
       "tag": "0008_drop_level_add_sheet_class_raw",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787200012254,
+      "tag": "0009_add_member_notes",
+      "breakpoints": true
     }
   ]
 }

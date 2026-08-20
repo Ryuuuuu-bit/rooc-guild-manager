@@ -201,8 +201,28 @@ export const partyBusyEntries = pgTable(
   (table) => [uniqueIndex("party_busy_board_member_idx").on(table.boardId, table.memberId)]
 );
 
+// Free-form, admin-only comment log on a member (e.g. "AFK ใน GVG 20/8") —
+// distinct from `membershipEvents`, which is an audit trail of status
+// changes shown more broadly. This is an append-only running log meant only
+// for admins to jot down observations over time; nothing here is ever
+// touched by the bot.
+export const memberNotes = pgTable(
+  "member_notes",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    authorUsername: text("author_username").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("member_notes_member_id_idx").on(table.memberId)]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
+  notes: many(memberNotes),
 }));
 
 export const membershipEventsRelations = relations(
@@ -219,6 +239,8 @@ export type Member = typeof members.$inferSelect;
 export type NewMember = typeof members.$inferInsert;
 export type MembershipEvent = typeof membershipEvents.$inferSelect;
 export type NewMembershipEvent = typeof membershipEvents.$inferInsert;
+export type MemberNote = typeof memberNotes.$inferSelect;
+export type NewMemberNote = typeof memberNotes.$inferInsert;
 export type DiscordRole = typeof discordRoles.$inferSelect;
 export type NewDiscordRole = typeof discordRoles.$inferInsert;
 export type PartyBoardRow = typeof partyBoards.$inferSelect;
