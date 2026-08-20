@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { classColors } from "@/lib/classes";
+import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
 
@@ -40,6 +40,7 @@ export function MemberPicker({
   open: controlledOpen,
   onOpenChange,
 }: MemberPickerProps) {
+  const { colorClassOf } = useJobClasses();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
@@ -169,9 +170,7 @@ export function MemberPicker({
                   <span className="min-w-0 flex-1 truncate">{m.displayName}</span>
                   {m.className && (
                     <span
-                      className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${
-                        classColors[m.className] ?? "bg-zinc-700 text-zinc-300"
-                      }`}
+                      className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium ${colorClassOf(m.className)}`}
                     >
                       <ClassIcon job={m.className} size={9} />
                       {m.className}

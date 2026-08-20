@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
-import { CLASS_OPTIONS } from "@/lib/classes";
+import { isValidJobClassName } from "@/lib/job-classes";
 import { env } from "@/lib/env";
 import { DiscordApiError, kickGuildMember } from "@/lib/discord";
 
@@ -28,7 +28,7 @@ export async function updateMemberProfile(
   const characterClassRaw = (formData.get("characterClass") as string | null)?.trim() || null;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
-  if (characterClassRaw && !(CLASS_OPTIONS as readonly string[]).includes(characterClassRaw)) {
+  if (characterClassRaw && !(await isValidJobClassName(characterClassRaw))) {
     return { ok: false, error: "Class ไม่ถูกต้อง" };
   }
   const characterClass = characterClassRaw;

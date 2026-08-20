@@ -5,7 +5,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
-import { CLASS_OPTIONS } from "@/lib/classes";
+import { isValidJobClassName } from "@/lib/job-classes";
 
 export interface ActionResult {
   ok: boolean;
@@ -20,10 +20,6 @@ export type PartyDestination =
   | { type: "slot"; partyId: string; slotIndex: number }
   | { type: "busy" }
   | { type: "unassigned" };
-
-function isValidClassName(className: string | null | undefined): className is string {
-  return Boolean(className) && (CLASS_OPTIONS as readonly string[]).includes(className!);
-}
 
 /** All party (group_parties) ids belonging to a board, via its groups. */
 async function getPartyIdsForBoard(boardId: string): Promise<string[]> {
@@ -238,7 +234,7 @@ export async function moveMember(
 export async function setMemberClass(memberId: string, className: string | null): Promise<ActionResult> {
   const session = await requireAdmin();
 
-  const finalClassName = isValidClassName(className) ? className : null;
+  const finalClassName = className && (await isValidJobClassName(className)) ? className : null;
   if (className && !finalClassName) return { ok: false, error: "Class ไม่ถูกต้อง" };
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });

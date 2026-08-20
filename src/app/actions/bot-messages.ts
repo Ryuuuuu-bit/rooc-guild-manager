@@ -14,8 +14,8 @@ import {
   listGuildTextChannels,
   type DiscordChannel,
 } from "@/lib/discord";
-import { CLASS_OPTIONS } from "@/lib/classes";
-import { ATTENDANCE_EMOJI, CLASS_EMOJI } from "@/lib/class-emoji";
+import { listJobClasses } from "@/lib/job-classes";
+import { ATTENDANCE_EMOJI } from "@/lib/class-emoji";
 
 export interface ActionResult {
   ok: boolean;
@@ -87,7 +87,8 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
   await requireAdmin();
   if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
 
-  const lines = CLASS_OPTIONS.map((c) => `${CLASS_EMOJI[c]} — ${c}`).join("\n");
+  const jobClassesList = await listJobClasses();
+  const lines = jobClassesList.map((c) => `${c.emoji} — ${c.name}`).join("\n");
   const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วยนะครับ — คลิกขวาที่ชื่อตัวเองในเซิร์ฟเวอร์นี้ > Edit Server Profile`;
 
   const previous = await getCurrentMessage("CLASS_SELECT", null);
@@ -132,11 +133,11 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
   // seed reactions one at a time with a small gap between each rather than
   // firing them back-to-back, on top of discordBotFetch's own 429 retry.
   const failedEmojis: string[] = [];
-  for (const c of CLASS_OPTIONS) {
+  for (const c of jobClassesList) {
     try {
-      await addMessageReaction(channelId, messageId, CLASS_EMOJI[c]);
+      await addMessageReaction(channelId, messageId, c.emoji);
     } catch {
-      failedEmojis.push(CLASS_EMOJI[c]);
+      failedEmojis.push(c.emoji);
     }
     await sleep(300);
   }

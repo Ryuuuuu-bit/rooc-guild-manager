@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { discordRoles, members, membershipEvents, memberNotes } from "@/db/schema";
 import { and, arrayContains, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
+import { listJobClasses } from "@/lib/job-classes";
 
 export interface MemberFilters {
   search?: string;
@@ -113,6 +114,80 @@ export async function getRecentActivity(limit = 30, days?: number) {
     .limit(limit);
 }
 
+/**
+ * Per-member ลา counts within a period, sorted most-ลา-first — answers "who
+ * takes leave the most" at a glance. Deliberately just a raw count rather
+ * than a percentage: a "rate" would need an "expected attendance" concept
+ * (how many events did they have the chance to attend) that this app's
+ * board model doesn't track (boards are a single always-current sheet
+ * reused across events, not one row per historical event), so a rate would
+ * be more misleading than informative. Only counts currently-ACTIVE members
+ * — someone who's left the guild isn't meaningful to rank here.
+ */
+export async function getAttendanceStats(days?: number) {
+  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE")];
+  if (days) {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    conditions.push(gte(membershipEvents.createdAt, cutoff));
+  }
+
+  const rows = await db
+    .select({
+      memberId: membershipEvents.memberId,
+      leaveCount: sql<number>`count(*)::int`,
+    })
+    .from(membershipEvents)
+    .where(and(...conditions))
+    .groupBy(membershipEvents.memberId);
+
+  const leaveCountByMember = new Map(rows.map((r) => [r.memberId, r.leaveCount]));
+
+  const activeMembers = await db.select().from(members).where(eq(members.status, "ACTIVE"));
+
+  const stats = activeMembers
+    .map((m) => ({ member: m, leaveCount: leaveCountByMember.get(m.id) ?? 0 }))
+    .sort((a, b) => b.leaveCount - a.leaveCount || a.member.discordUsername.localeCompare(b.member.discordUsername));
+
+  const totalLeaveEvents = rows.reduce((sum, r) => sum + r.leaveCount, 0);
+
+  return { stats, totalLeaveEvents };
+}
+
+/**
+ * Class breakdown across active, non-benched members — for the dashboard's
+ * "who plays what" bar chart. Members with no class set are surfaced
+ * separately (unassignedCount) rather than silently dropped, since a big
+ * chunk of "no class" is itself useful signal (a lot of the roster still
+ * needs to self-select via the Discord class-select message).
+ */
+export async function getClassDistribution() {
+  const rows = await db
+    .select({
+      className: members.characterClass,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(members)
+    .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)))
+    .groupBy(members.characterClass);
+
+  const classesList = await listJobClasses();
+  const byName = new Map(classesList.map((c) => [c.name, c]));
+
+  const known = rows
+    .filter((r): r is { className: string; count: number } => Boolean(r.className))
+    .map((r) => ({
+      name: r.className,
+      count: r.count,
+      emoji: byName.get(r.className)?.emoji ?? "",
+      colorKey: byName.get(r.className)?.colorKey ?? "stone",
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const unassignedCount = rows.find((r) => !r.className)?.count ?? 0;
+
+  return { known, unassignedCount };
+}
+
 export async function getDashboardStats() {
   const [totals] = await db
     .select({
@@ -120,6 +195,7 @@ export async function getDashboardStats() {
       active: sql<number>`count(*) filter (where ${members.status} = 'ACTIVE')::int`,
       left: sql<number>`count(*) filter (where ${members.status} = 'LEFT')::int`,
       kicked: sql<number>`count(*) filter (where ${members.status} = 'KICKED')::int`,
+      benched: sql<number>`count(*) filter (where ${members.status} = 'ACTIVE' and ${members.benched} = true)::int`,
     })
     .from(members);
 
@@ -147,6 +223,7 @@ export async function getDashboardStats() {
     active: totals?.active ?? 0,
     left: totals?.left ?? 0,
     kicked: totals?.kicked ?? 0,
+    benched: totals?.benched ?? 0,
     joinsLast7Days: recentJoins?.count ?? 0,
     leavesLast7Days: recentLeaves?.count ?? 0,
   };

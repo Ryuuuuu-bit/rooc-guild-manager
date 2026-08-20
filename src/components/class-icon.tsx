@@ -1,43 +1,6 @@
-import {
-  BookOpen,
-  BowArrow,
-  Cross,
-  EyeOff,
-  Flame,
-  FlaskConical,
-  Hammer,
-  HandFist,
-  Music2,
-  PawPrint,
-  ShieldCheck,
-  Snowflake,
-  Swords,
-  Wand2,
-  Zap,
-  type LucideIcon,
-} from "lucide-react";
-import type { ClassOption } from "@/lib/classes";
+"use client";
 
-// Generic stand-in icons per class archetype (not game assets — avoids any
-// copyright issue with Ragnarok Origin's actual job icons) so each class
-// reads as a consistent little pictogram wherever it shows up in the UI.
-const classIconMap: Record<ClassOption, LucideIcon> = {
-  Bio: FlaskConical,
-  "B/D": Music2,
-  DoramSTR: PawPrint,
-  DoramINT: Wand2,
-  Knight: Swords,
-  Priest: Cross,
-  WizMeteo: Flame,
-  WizCC: Snowflake,
-  Paladin: ShieldCheck,
-  Rouge: Zap,
-  Assassin: EyeOff,
-  Sage: BookOpen,
-  Champion: HandFist,
-  Sniper: BowArrow,
-  Blacksmith: Hammer,
-};
+import { useJobClasses } from "@/components/job-classes-provider";
 
 interface ClassIconProps {
   job: string | null | undefined;
@@ -45,8 +8,15 @@ interface ClassIconProps {
   className?: string;
 }
 
+/** Renders a class's admin-configured emoji (see /classes) as its visual marker wherever a class is shown. */
 export function ClassIcon({ job, size = 12, className }: ClassIconProps) {
-  const Icon = job ? classIconMap[job as ClassOption] : undefined;
-  if (!Icon) return null;
-  return <Icon size={size} className={className} strokeWidth={2.25} />;
+  const { emojiOf } = useJobClasses();
+  if (!job) return null;
+  const emoji = emojiOf(job);
+  if (!emoji) return null;
+  return (
+    <span style={{ fontSize: size, lineHeight: 1 }} className={className}>
+      {emoji}
+    </span>
+  );
 }

@@ -85,6 +85,13 @@
       "when": 1787203053652,
       "tag": "0011_add_activity_log_event_types",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787207064504,
+      "tag": "0012_sloppy_trish_tilby",
+      "breakpoints": true
     }
   ]
 }

@@ -16,7 +16,8 @@ import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
 import { PostAttendanceButton } from "./post-attendance-button";
-import { CLASS_OPTIONS } from "@/lib/classes";
+import { NewBoardFromTemplateButton } from "./new-board-from-template-button";
+import { useJobClasses } from "@/components/job-classes-provider";
 import {
   createBoard,
   createGroup,
@@ -31,6 +32,7 @@ import {
   setMemberClass,
   type PartyDestination,
 } from "@/app/actions/party";
+import { saveBoardAsTemplate } from "@/app/actions/party-templates";
 import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
 
 function parseDestination(id: string): PartyDestination | null {
@@ -206,6 +208,7 @@ interface PartyBoardViewProps {
 
 export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin }: PartyBoardViewProps) {
   const router = useRouter();
+  const { options: classOptions } = useJobClasses();
   const [board, setBoard] = useState<PartyBoardDetail | null>(initialBoard);
   const [activeMember, setActiveMember] = useState<PartyBoardMemberRef | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialBoard?.groups[0]?.id ?? null);
@@ -347,6 +350,15 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     else if (result.error) alert(result.error);
   }
 
+  async function handleSaveAsTemplate() {
+    if (!selectedBoardId) return;
+    const name = window.prompt("ชื่อ Template (เช่น ผัง GVG มาตรฐาน):");
+    if (!name) return;
+    const result = await saveBoardAsTemplate(selectedBoardId, name);
+    if (result.ok) alert("บันทึก Template แล้ว — ใช้ตอนสร้างกระดานใหม่ได้จากปุ่ม \"+ จาก Template\"");
+    else if (result.error) alert(result.error);
+  }
+
   async function handleDeleteBoard() {
     if (!board || !selectedBoardId) return;
     if (!confirm(`ลบกระดาน "${board.name}" ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้`)) return;
@@ -433,13 +445,16 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
             </button>
           ))}
           {effectiveAdmin && (
-            <button
-              type="button"
-              onClick={handleCreateBoard}
-              className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
-            >
-              + กระดานใหม่
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleCreateBoard}
+                className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+              >
+                + กระดานใหม่
+              </button>
+              <NewBoardFromTemplateButton />
+            </>
           )}
         </div>
 
@@ -477,6 +492,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
                       >
                         เปลี่ยนชื่อกระดาน
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveAsTemplate}
+                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+                        title="บันทึกผังกลุ่ม/Party ของกระดานนี้ไว้ใช้สร้างกระดานใหม่ในอนาคต"
+                      >
+                        บันทึกเป็น Template
                       </button>
                       <button
                         type="button"
@@ -524,7 +547,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="">ทุก class</option>
-                    {CLASS_OPTIONS.map((c) => (
+                    {classOptions.map((c) => (
                       <option key={c} value={c}>
                         {c}
                       </option>
@@ -671,7 +694,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                             className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
                           >
                             <option value="">- class -</option>
-                            {CLASS_OPTIONS.map((c) => (
+                            {classOptions.map((c) => (
                               <option key={c} value={c}>
                                 {c}
                               </option>

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useDraggable } from "@dnd-kit/core";
-import { classColors } from "@/lib/classes";
+import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
 
@@ -15,6 +15,7 @@ interface MemberChipProps {
 
 /** A draggable chip representing one member, used in the pool, busy list, and party slots. */
 export function MemberChip({ member, draggable = true, compact = false, showClassBadge = true }: MemberChipProps) {
+  const { colorClassOf } = useJobClasses();
   const className = member.className;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `member-${member.id}`,
@@ -54,9 +55,7 @@ export function MemberChip({ member, draggable = true, compact = false, showClas
       <span className="min-w-0 flex-1 truncate font-medium text-zinc-100">{member.displayName}</span>
       {showClassBadge && className && (
         <span
-          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${
-            classColors[className] ?? "bg-zinc-700 text-zinc-300"
-          }`}
+          className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${colorClassOf(className)}`}
         >
           <ClassIcon job={className} size={10} />
           {className}

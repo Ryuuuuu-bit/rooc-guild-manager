@@ -13,9 +13,11 @@ const links = [
   { href: "/members", label: "สมาชิก" },
   { href: "/party", label: "จัดปาตี้" },
   { href: "/activity", label: "ประวัติกิจกรรม" },
+  { href: "/attendance", label: "สถิติการลา" },
 ];
 
 export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
+  const navLinks = isAdmin ? [...links, { href: "/classes", label: "จัดการอาชีพ" }] : links;
   return (
     <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
@@ -27,7 +29,7 @@ export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
             ROOC Guild
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
-            {links.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -70,7 +72,7 @@ export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
         </div>
       </div>
       <nav className="flex items-center gap-1 overflow-x-auto px-4 pb-2 sm:hidden">
-        {links.map((link) => (
+        {navLinks.map((link) => (
           <Link
             key={link.href}
             href={link.href}

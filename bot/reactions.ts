@@ -11,7 +11,8 @@ import {
   partyGroups,
   partySlots,
 } from "../src/db/schema";
-import { ATTENDANCE_EMOJI, EMOJI_TO_CLASS } from "../src/lib/class-emoji";
+import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
+import { getEmojiToClassMap } from "./job-classes";
 
 /** Ensures both the reaction and its parent message are fully loaded (both can arrive as partials). */
 async function resolve(reaction: MessageReaction | PartialMessageReaction): Promise<MessageReaction> {
@@ -74,7 +75,8 @@ export async function handleReactionAdd(
   }
 
   if (row.kind === "CLASS_SELECT") {
-    const className = EMOJI_TO_CLASS[emojiName];
+    const emojiToClass = await getEmojiToClassMap();
+    const className = emojiToClass[emojiName];
     if (!className) {
       await reaction.users.remove(user.id).catch(() => {});
       return;
@@ -90,7 +92,7 @@ export async function handleReactionAdd(
     // class emoji on this message so only their latest click remains.
     for (const [, other] of reaction.message.reactions.cache) {
       if (other.emoji.name === emojiName) continue;
-      if (!EMOJI_TO_CLASS[other.emoji.name ?? ""]) continue;
+      if (!emojiToClass[other.emoji.name ?? ""]) continue;
       try {
         await other.users.remove(user.id);
       } catch {

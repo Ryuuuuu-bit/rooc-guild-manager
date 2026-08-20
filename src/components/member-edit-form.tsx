@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import type { Member } from "@/db/schema";
 import { updateMemberProfile, type UpdateMemberResult } from "@/app/actions/members";
-import { CLASS_OPTIONS } from "@/lib/classes";
+import { useJobClasses } from "@/components/job-classes-provider";
 
 interface Props {
   member: Member;
@@ -12,6 +12,7 @@ interface Props {
 const initialState: UpdateMemberResult = { ok: true };
 
 export function MemberEditForm({ member }: Props) {
+  const { options: classOptions } = useJobClasses();
   const boundAction = updateMemberProfile.bind(null, member.id);
   const [state, formAction, pending] = useActionState(
     async (_prev: UpdateMemberResult, formData: FormData) => boundAction(formData),
@@ -37,7 +38,7 @@ export function MemberEditForm({ member }: Props) {
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
           >
             <option value="">- ไม่ระบุ -</option>
-            {CLASS_OPTIONS.map((c) => (
+            {classOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>

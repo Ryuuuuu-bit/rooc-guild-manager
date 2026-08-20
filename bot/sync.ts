@@ -120,6 +120,12 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
       discordNickname: normalized.nickname,
       discordAvatar: normalized.avatarUrl,
       discordRoles: normalized.roles,
+      // Per the guild's policy, members rename their Discord nickname to
+      // match their in-game name — so the nickname is treated as the
+      // authoritative source for inGameName too, kept in sync automatically
+      // on every sync. Falls back to whatever was already stored if the
+      // member currently has no nickname set (never overwrite with null).
+      inGameName: normalized.nickname || existing.inGameName,
       status: "ACTIVE",
       leftDiscordAt: null,
       lastSyncedAt: new Date(),
@@ -243,6 +249,7 @@ export async function runFullSync(guild: Guild) {
         discordNickname: normalized.nickname,
         discordAvatar: normalized.avatarUrl,
         discordRoles: normalized.roles,
+        inGameName: normalized.nickname || existing.inGameName,
         status: "ACTIVE",
         leftDiscordAt: null,
         lastSyncedAt: new Date(),

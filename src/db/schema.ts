@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   boolean,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
@@ -60,13 +61,9 @@ export const members = pgTable(
     // --- In-game / guild data (managed by admins) ---
     inGameName: text("in_game_name"),
     characterClass: text("character_class"),
-    // The raw "Class" cell value last read from the guild's Google Sheet for
-    // this member (e.g. "Wiz", "Doram") when characterClass was last set via
-    // a sheet sync. Some sheet class labels map ambiguously to more than one
-    // of our CLASS_OPTIONS (e.g. "Wiz" -> WizMeteo or WizCC), so an admin has
-    // to pick the right one manually the first time — storing the raw value
-    // here lets a future sync skip re-asking as long as the sheet cell for
-    // that member hasn't changed. Null for members never synced from the sheet.
+    // Vestigial: used by the Google Sheet class-sync tool, which was removed
+    // in favor of the Discord emoji class-select system. Left as a nullable
+    // column rather than a migration to drop it — no code reads/writes it.
     sheetClassRaw: text("sheet_class_raw"),
     status: memberStatusEnum("status").notNull().default("ACTIVE"),
     // Still an active Discord/Rooc-role member, but flagged by an admin as
@@ -248,6 +245,45 @@ export const botReactionMessages = pgTable(
   ]
 );
 
+// Admin-managed list of in-game classes — replaces what used to be a
+// hard-coded constant in src/lib/classes.ts so an admin can add/rename/
+// remove/recolor classes from the web UI without a code change + deploy.
+// `emoji` is reused both for the web UI's badge/icon and as the literal
+// Discord reaction emoji on the "เลือกอาชีพ" message, so the two always
+// stay visually in sync. `colorKey` indexes into a fixed palette of
+// pre-defined Tailwind class strings (see src/lib/job-class-colors.ts) —
+// NOT a free-form Tailwind class string itself, since Tailwind's build-time
+// scanner only picks up classes that appear as literal text somewhere in
+// source, not ones assembled at runtime from a DB value.
+export const jobClasses = pgTable(
+  "job_classes",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    name: text("name").notNull().unique(),
+    emoji: text("emoji").notNull(),
+    colorKey: text("color_key").notNull().default("stone"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("job_classes_sort_order_idx").on(table.sortOrder)]
+);
+
+// A reusable party-board "shape" (group names + how many parties each holds)
+// an admin can save from an existing board and apply when creating a new
+// one — e.g. a standard GVG layout — instead of manually recreating groups
+// and parties every time. Deliberately does NOT store member assignments
+// (a template is a skeleton, not a saved roster) or per-slot data, so a
+// single jsonb column is enough rather than a full relational mirror of
+// party_groups/party_group_parties.
+export const partyTemplates = pgTable("party_templates", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  name: text("name").notNull(),
+  // Array of { name: string; partyCount: number }, one entry per group.
+  structure: jsonb("structure").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -279,3 +315,7 @@ export type NewPartySlot = typeof partySlots.$inferInsert;
 export type PartyBusyEntry = typeof partyBusyEntries.$inferSelect;
 export type BotReactionMessage = typeof botReactionMessages.$inferSelect;
 export type NewBotReactionMessage = typeof botReactionMessages.$inferInsert;
+export type JobClassRow = typeof jobClasses.$inferSelect;
+export type NewJobClassRow = typeof jobClasses.$inferInsert;
+export type PartyTemplateRow = typeof partyTemplates.$inferSelect;
+export type NewPartyTemplateRow = typeof partyTemplates.$inferInsert;

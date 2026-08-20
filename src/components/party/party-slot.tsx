@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { MemberChip } from "./member-chip";
 import { MemberPicker } from "./member-picker";
-import { CLASS_OPTIONS } from "@/lib/classes";
+import { useJobClasses } from "@/components/job-classes-provider";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
 
 interface PartySlotProps {
@@ -35,6 +35,7 @@ export function PartySlot({
   onPickerOpenChange,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
+  const { options: classOptions } = useJobClasses();
 
   return (
     <div
@@ -54,7 +55,7 @@ export function PartySlot({
                 className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
               >
                 <option value="">- class -</option>
-                {CLASS_OPTIONS.map((c) => (
+                {classOptions.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>

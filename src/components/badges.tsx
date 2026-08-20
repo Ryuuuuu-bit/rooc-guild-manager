@@ -1,6 +1,8 @@
+"use client";
+
 import type { Member } from "@/db/schema";
 import { statusColors, statusLabels } from "@/lib/ui";
-import { classColors } from "@/lib/classes";
+import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
 
 export function StatusBadge({ status }: { status: Member["status"] }) {
@@ -21,12 +23,11 @@ export function BenchedBadge() {
 }
 
 export function ClassBadge({ className }: { className: string | null }) {
+  const { colorClassOf } = useJobClasses();
   if (!className) return <span className="text-zinc-500">—</span>;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        classColors[className] ?? "bg-zinc-700 text-zinc-300"
-      }`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${colorClassOf(className)}`}
     >
       <ClassIcon job={className} size={12} />
       {className}
