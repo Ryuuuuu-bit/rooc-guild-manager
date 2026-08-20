@@ -14,6 +14,7 @@ const links = [
   { href: "/party", label: "จัดปาตี้" },
   { href: "/activity", label: "ประวัติกิจกรรม" },
   { href: "/attendance", label: "สถิติการลา" },
+  { href: "/random", label: "สุ่มสมาชิก" },
 ];
 
 export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
