@@ -21,6 +21,10 @@ export interface ActionResult {
   error?: string;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Text channels the admin can pick from when posting a reaction message — populates a <select>, no hard-coded channel. */
 export async function listDiscordChannels(): Promise<{ ok: boolean; channels?: DiscordChannel[]; error?: string }> {
   await requireAdmin();
@@ -91,20 +95,43 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
   const lines = CLASS_OPTIONS.map((c) => `${CLASS_EMOJI[c]} — ${c}`).join("\n");
   const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วยนะครับ — คลิกขวาที่ชื่อตัวเองในเซิร์ฟเวอร์นี้ > Edit Server Profile`;
 
+  let messageId: string;
   try {
-    const messageId = await createChannelMessage(channelId, content);
-    for (const c of CLASS_OPTIONS) {
-      await addMessageReaction(channelId, messageId, CLASS_EMOJI[c]);
-    }
-    await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
+    messageId = await createChannelMessage(channelId, content);
   } catch (err) {
     return {
       ok: false,
-      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages"/"Add Reactions" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
+      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
     };
   }
 
+  // Track the message the moment it exists — even if seeding reactions
+  // below partially fails, the message stays trackable so a repost cleanly
+  // replaces it instead of leaving an orphaned, untracked message behind
+  // in the channel (previously: a reaction failure aborted before this
+  // insert ran, so the message could never be found/deleted again).
+  await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
+
+  // Discord's reaction-add endpoint has a tight per-message rate limit —
+  // seed reactions one at a time with a small gap between each rather than
+  // firing them back-to-back, on top of discordBotFetch's own 429 retry.
+  const failedEmojis: string[] = [];
+  for (const c of CLASS_OPTIONS) {
+    try {
+      await addMessageReaction(channelId, messageId, CLASS_EMOJI[c]);
+    } catch {
+      failedEmojis.push(CLASS_EMOJI[c]);
+    }
+    await sleep(300);
+  }
+
   revalidatePath("/members");
+  if (failedEmojis.length > 0) {
+    return {
+      ok: true,
+      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่ครบ (ขาด: ${failedEmojis.join(" ")}) — ลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
+    };
+  }
   return { ok: true };
 }
 
@@ -130,17 +157,27 @@ export async function postAttendanceMessage(boardId: string, channelId: string):
 
   const content = `📋 **${board.name}** — ถ้า**ลา/ไม่สะดวก**รอบนี้ กด ${ATTENDANCE_EMOJI} (ไม่กด = เข้าร่วมตามปกติ) เอาอิโมจิออกได้ถ้ากลับมาเข้าร่วม`;
 
+  let messageId: string;
   try {
-    const messageId = await createChannelMessage(channelId, content);
-    await addMessageReaction(channelId, messageId, ATTENDANCE_EMOJI);
-    await db.insert(botReactionMessages).values({ kind: "ATTENDANCE", boardId, channelId, messageId });
+    messageId = await createChannelMessage(channelId, content);
   } catch (err) {
     return {
       ok: false,
-      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages"/"Add Reactions" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
+      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
     };
   }
 
+  // Track before seeding the reaction — same reasoning as postClassSelectMessage above.
+  await db.insert(botReactionMessages).values({ kind: "ATTENDANCE", boardId, channelId, messageId });
+
   revalidatePath("/party");
+  try {
+    await addMessageReaction(channelId, messageId, ATTENDANCE_EMOJI);
+  } catch {
+    return {
+      ok: true,
+      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่สำเร็จ — ลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
+    };
+  }
   return { ok: true };
 }

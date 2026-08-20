@@ -50,6 +50,9 @@ export function ClassSelectBroadcastPanel() {
       setError(res.error ?? "โพสต์ไม่สำเร็จ");
       return;
     }
+    // ok can still carry a warning (e.g. some emojis failed to seed) —
+    // surface it rather than silently discarding it.
+    if (res.error) setError(res.error);
     const fresh = await getClassSelectStatus();
     setStatus(fresh);
   }

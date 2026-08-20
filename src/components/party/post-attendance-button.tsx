@@ -49,6 +49,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
       setError(res.error ?? "โพสต์ไม่สำเร็จ");
       return;
     }
+    if (res.error) setError(res.error);
     const fresh = await getAttendanceStatus(boardId);
     setStatus(fresh);
   }

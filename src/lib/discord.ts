@@ -26,7 +26,7 @@ function sleep(ms: number) {
  * transient rate-limit as a hard failure to the admin.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- callers rely on this being untyped JSON, same as before this helper gained retry logic.
-export async function discordBotFetch(path: string, init: RequestInit = {}, retriesLeft = 3): Promise<any> {
+export async function discordBotFetch(path: string, init: RequestInit = {}, retriesLeft = 5): Promise<any> {
   const token = process.env.DISCORD_BOT_TOKEN;
   if (!token) throw new Error("DISCORD_BOT_TOKEN is not set");
 
