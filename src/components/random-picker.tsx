@@ -118,9 +118,16 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
             />
             <div className="text-center">
               <p className="text-2xl font-semibold text-zinc-50">{memberDisplayName(current)}</p>
-              {current.inGameName && (
-                <p className="text-sm text-zinc-500">ในเกม: {current.inGameName}</p>
-              )}
+              {/* Always render this line (reserving its height) instead of
+                  conditionally showing it only for members who have an
+                  in-game name set — during the spin, current cycles rapidly
+                  through the pool, and members with vs. without an in-game
+                  name would otherwise make the card grow/shrink every ~70ms,
+                  reading as the whole card "shaking". Content itself is
+                  still only revealed once the spin settles. */}
+              <p className="text-sm text-zinc-500">
+                {!spinning && current.inGameName ? `ในเกม: ${current.inGameName}` : " "}
+              </p>
             </div>
             {!spinning && (
               <div className="flex items-center gap-2">

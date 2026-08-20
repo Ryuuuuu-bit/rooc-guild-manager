@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { getAttendanceStats } from "@/lib/data";
+import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
 
 const DAY_OPTIONS = [
@@ -19,6 +20,7 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const session = await requireUser();
   const params = await searchParams;
   const daysParam = DAY_OPTIONS.some((o) => o.value === params.days) ? params.days : "30";
   const days = daysParam === "all" ? undefined : Number(daysParam);
@@ -35,6 +37,12 @@ export default async function AttendancePage({
             จำนวนครั้งที่แต่ละสมาชิกกด &quot;ลา&quot; ในช่วงเวลาที่เลือก — รวม {totalLeaveEvents} ครั้งทั้งหมด
             เรียงจากลาบ่อยสุดไปน้อยสุด
           </p>
+          {session.user.isAdmin && (
+            <p className="mt-1 text-xs text-zinc-500">
+              ต้องการแก้ไข/ลบรายการลาของใครสักคน (เช่น ข้อมูลทดสอบ)? กดชื่อสมาชิกด้านล่างเพื่อไปหน้าโปรไฟล์ แล้วลบรายการที่ต้องการออกจาก
+              &quot;ประวัติกิจกรรม&quot; ได้เลย
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
           {DAY_OPTIONS.map((opt) => (
