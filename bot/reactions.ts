@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gte, isNull } from "drizzle-orm";
 import type { MessageReaction, PartialMessageReaction, User, PartialUser } from "discord.js";
 import { db } from "../src/db";
 import {
@@ -32,6 +32,64 @@ async function logEvent(
   extra?: { boardId?: string | null; confirmedAt?: Date | null }
 ) {
   await db.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions", ...extra });
+}
+
+// Purely informational display hint next to the temporary leave
+// confirmation below — NOT enforced anywhere (nothing blocks a member from
+// leaving more than this). Guild rule is roughly 2/month per the admin as
+// of Aug 2026; bump this if that changes.
+const MONTHLY_LEAVE_LIMIT = 2;
+
+/** Start of the current calendar month at Thai-local midnight, as a UTC instant (mirrors the noon-Thailand pin used for manual leave entries). */
+function startOfThaiMonth(): Date {
+  const nowThai = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  const year = nowThai.getUTCFullYear();
+  const month = nowThai.getUTCMonth();
+  return new Date(Date.UTC(year, month, 1, 0, 0, 0) - 7 * 60 * 60 * 1000);
+}
+
+/** How many ATTENDANCE_LEAVE events (confirmed or still-pending) this member has logged so far this calendar month, including one just inserted. */
+async function countLeavesThisMonth(memberId: string): Promise<number> {
+  const rows = await db
+    .select({ id: membershipEvents.id })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.memberId, memberId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        gte(membershipEvents.createdAt, startOfThaiMonth())
+      )
+    );
+  return rows.length;
+}
+
+/**
+ * Posts a short-lived confirmation in the same channel so a member (and
+ * anyone else watching) can see the exact date they just logged a leave on,
+ * plus a rough running count against the guild's monthly-leave guideline.
+ * Auto-deletes itself after a bit so it doesn't clutter the channel
+ * long-term. Best-effort — a missing "Send Messages"/"Manage Messages"
+ * permission just means no confirmation shows up, nothing else breaks.
+ */
+async function sendTempLeaveConfirmation(
+  reaction: MessageReaction,
+  displayName: string,
+  boardName: string,
+  leaveCount: number
+) {
+  const channel = reaction.message.channel;
+  if (!channel.isTextBased() || !("send" in channel)) return;
+  try {
+    const dateStr = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+    const sent = await channel.send(
+      `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr} (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้)`
+    );
+    setTimeout(() => {
+      sent.delete().catch(() => {});
+    }, 30_000);
+  } catch {
+    // Non-fatal — the leave itself is already logged regardless.
+  }
 }
 
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
@@ -138,6 +196,11 @@ export async function handleReactionAdd(
       `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
       { boardId, confirmedAt: null }
     );
+
+    const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
+    const leaveCount = await countLeavesThisMonth(member.id);
+    // Fire-and-forget — don't hold up the reaction handler on a channel post.
+    void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount);
   }
 }
 

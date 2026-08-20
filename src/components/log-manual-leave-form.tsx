@@ -41,7 +41,7 @@ export function LogManualLeaveForm({ memberId, todayStr }: { memberId: string; t
             name="date"
             max={todayStr}
             required
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+            className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
           />
         </div>
         <div className="flex min-w-32 flex-1 flex-col gap-1">
