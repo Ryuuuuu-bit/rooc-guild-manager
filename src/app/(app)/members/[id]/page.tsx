@@ -7,6 +7,7 @@ import { memberDisplayName } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
 import { MemberNotes } from "@/components/member-notes";
+import { LogManualLeaveForm } from "@/components/log-manual-leave-form";
 import { ActivityListItem } from "@/components/activity-list-item";
 import { formatDistanceToNow } from "date-fns";
 
@@ -126,6 +127,16 @@ export default async function MemberDetailPage({
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-4 font-medium text-zinc-100">การจัดการสมาชิก</h2>
               <MemberStatusActions member={member} />
+            </section>
+          )}
+
+          {session.user.isAdmin && (
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+              <h2 className="mb-1 font-medium text-zinc-100">บันทึกการลาย้อนหลัง</h2>
+              <p className="mb-4 text-xs text-zinc-500">
+                สำหรับกรณีสมาชิกแจ้งลาส่วนตัว (เช่นทาง DM) ที่ไม่ได้กด reaction ในดิสคอร์ด
+              </p>
+              <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} />
             </section>
           )}
 
