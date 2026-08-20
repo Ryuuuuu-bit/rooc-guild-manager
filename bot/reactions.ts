@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { MessageReaction, PartialMessageReaction, User, PartialUser } from "discord.js";
 import { db } from "../src/db";
 import {
@@ -25,8 +25,13 @@ async function findTrackedMessage(messageId: string) {
   return db.query.botReactionMessages.findFirst({ where: eq(botReactionMessages.messageId, messageId) });
 }
 
-async function logEvent(memberId: string, type: (typeof membershipEvents.$inferInsert)["type"], detail: string) {
-  await db.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions" });
+async function logEvent(
+  memberId: string,
+  type: (typeof membershipEvents.$inferInsert)["type"],
+  detail: string,
+  extra?: { boardId?: string | null; confirmedAt?: Date | null }
+) {
+  await db.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions", ...extra });
 }
 
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
@@ -122,10 +127,16 @@ export async function handleReactionAdd(
     await clearMemberSlotOnBoard(member.id, boardId);
 
     const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    // Logged right away so it shows in the activity feed immediately, but
+    // left unconfirmed (confirmedAt: null) — the /attendance stats page
+    // only counts it once it survives 30 minutes without being un-reacted
+    // (see confirmDueLeaves in attendance-confirm.ts). Un-reacting before
+    // then discards this row entirely, see handleReactionRemove below.
     await logEvent(
       member.id,
       "ATTENDANCE_LEAVE",
-      `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`
+      `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
+      { boardId, confirmedAt: null }
     );
   }
 }
@@ -151,6 +162,29 @@ export async function handleReactionRemove(
     .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, member.id)))
     .returning({ id: partyBusyEntries.id });
   if (deleted.length === 0) return; // wasn't actually marked ลา on this board — nothing to log
+
+  // If the leave that put them on this board hasn't been confirmed yet
+  // (< 30 min since they reacted), it never became a real, counted leave —
+  // discard it outright instead of logging a return, so a quick
+  // click-then-undo (e.g. someone testing the button) leaves no trace.
+  const [pendingLeave] = await db
+    .select({ id: membershipEvents.id })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.memberId, member.id),
+        eq(membershipEvents.boardId, row.boardId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        isNull(membershipEvents.confirmedAt)
+      )
+    )
+    .orderBy(desc(membershipEvents.createdAt))
+    .limit(1);
+
+  if (pendingLeave) {
+    await db.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
+    return;
+  }
 
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
   await logEvent(

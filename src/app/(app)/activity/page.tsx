@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getRecentActivity } from "@/lib/data";
+import { requireUser } from "@/lib/authz";
 import { ActivityListItem } from "@/components/activity-list-item";
 
 const DAY_OPTIONS = [
@@ -22,6 +23,7 @@ export default async function ActivityPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const session = await requireUser();
   const params = await searchParams;
   const daysParam = DAY_OPTIONS.some((o) => o.value === params.days) ? params.days : "30";
   const days = daysParam === "all" ? undefined : Number(daysParam);
@@ -62,7 +64,12 @@ export default async function ActivityPage({
             </li>
           )}
           {activity.map(({ event, member }) => (
-            <ActivityListItem key={event.id} event={event} member={member} />
+            <ActivityListItem
+              key={event.id}
+              event={event}
+              member={member}
+              isAdmin={session.user.isAdmin}
+            />
           ))}
         </ul>
         {activity.length === MAX_ROWS && (

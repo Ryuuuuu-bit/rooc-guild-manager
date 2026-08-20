@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getClassDistribution, getDashboardStats, getRecentActivity } from "@/lib/data";
+import { requireUser } from "@/lib/authz";
 import { StatCard } from "@/components/stat-card";
 import { ActivityListItem } from "@/components/activity-list-item";
 import { SWATCH_CLASS } from "@/lib/job-class-colors";
 
 export default async function DashboardPage() {
+  const session = await requireUser();
   const [stats, activity, classDistribution] = await Promise.all([
     getDashboardStats(),
     getRecentActivity(8),
@@ -87,7 +89,12 @@ export default async function DashboardPage() {
             </li>
           )}
           {activity.map(({ event, member }) => (
-            <ActivityListItem key={event.id} event={event} member={member} />
+            <ActivityListItem
+              key={event.id}
+              event={event}
+              member={member}
+              isAdmin={session.user.isAdmin}
+            />
           ))}
         </ul>
       </div>

@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { discordRoles, members, membershipEvents, memberNotes } from "@/db/schema";
-import { and, arrayContains, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, gte, ilike, isNotNull, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
 
@@ -125,7 +125,11 @@ export async function getRecentActivity(limit = 30, days?: number) {
  * — someone who's left the guild isn't meaningful to rank here.
  */
 export async function getAttendanceStats(days?: number) {
-  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE")];
+  // Only confirmed leaves count — a member has to leave the "ลา" reaction
+  // in place for 30 minutes before it's counted, so a quick test-click that
+  // gets un-reacted right away is discarded rather than ever showing up
+  // here (see confirmDueLeaves in bot/attendance-confirm.ts).
+  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
   if (days) {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     conditions.push(gte(membershipEvents.createdAt, cutoff));

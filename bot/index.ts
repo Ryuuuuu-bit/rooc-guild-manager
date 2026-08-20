@@ -10,9 +10,11 @@ import {
   removeRole,
 } from "./sync";
 import { handleReactionAdd, handleReactionRemove } from "./reactions";
+import { confirmDueLeaves } from "./attendance-confirm";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
+const LEAVE_CONFIRM_INTERVAL_MS = 5 * 60 * 1000; // sweep for ลา events due to confirm/discard
 
 if (!process.env.DISCORD_BOT_TOKEN) {
   throw new Error("DISCORD_BOT_TOKEN is not set");
@@ -43,6 +45,20 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   await runSync("startup");
   setInterval(() => runSync("periodic safety-net"), FULL_SYNC_INTERVAL_MS);
+
+  const runLeaveConfirmSweep = async () => {
+    try {
+      const { confirmed, discarded } = await confirmDueLeaves();
+      if (confirmed || discarded) {
+        console.log(`[bot] ลา confirm sweep: ${confirmed} confirmed, ${discarded} discarded`);
+      }
+    } catch (err) {
+      console.error("[bot] ลา confirm sweep failed", err);
+    }
+  };
+
+  await runLeaveConfirmSweep();
+  setInterval(runLeaveConfirmSweep, LEAVE_CONFIRM_INTERVAL_MS);
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {

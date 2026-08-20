@@ -108,6 +108,19 @@ export const membershipEvents = pgTable(
     detail: text("detail"),
     actor: text("actor"), // "bot:sync" or the admin's Discord username who made a manual change
 
+    // Only set for ATTENDANCE_LEAVE events tied to a specific party board —
+    // lets the 30-minute confirm sweep (bot/attendance-confirm.ts) check
+    // whether the member is still marked busy on that board before the
+    // leave counts toward /attendance stats.
+    boardId: text("board_id").references(() => partyBoards.id, { onDelete: "cascade" }),
+    // Null = pending confirmation (reacted "ลา" less than 30 minutes ago).
+    // Only confirmed ATTENDANCE_LEAVE rows count in getAttendanceStats() —
+    // this is what keeps a member's curious test-click from skewing the
+    // numbers, since un-reacting before confirmation discards the event
+    // entirely instead of logging a return (see handleReactionRemove in
+    // bot/reactions.ts). Every other event type just leaves this null.
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -115,6 +128,7 @@ export const membershipEvents = pgTable(
   (table) => [
     index("membership_events_member_id_idx").on(table.memberId),
     index("membership_events_created_at_idx").on(table.createdAt),
+    index("membership_events_pending_leave_idx").on(table.type, table.confirmedAt),
   ]
 );
 
