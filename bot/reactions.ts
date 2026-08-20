@@ -5,6 +5,7 @@ import {
   botReactionMessages,
   members,
   membershipEvents,
+  partyBoards,
   partyBusyEntries,
   partyGroupParties,
   partyGroups,
@@ -23,8 +24,8 @@ async function findTrackedMessage(messageId: string) {
   return db.query.botReactionMessages.findFirst({ where: eq(botReactionMessages.messageId, messageId) });
 }
 
-async function logEvent(memberId: string, detail: string) {
-  await db.insert(membershipEvents).values({ memberId, type: "PROFILE_UPDATE", detail, actor: "bot:reactions" });
+async function logEvent(memberId: string, type: (typeof membershipEvents.$inferInsert)["type"], detail: string) {
+  await db.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions" });
 }
 
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
@@ -83,7 +84,7 @@ export async function handleReactionAdd(
       .update(members)
       .set({ characterClass: className, updatedAt: new Date() })
       .where(eq(members.id, member.id));
-    await logEvent(member.id, `เปลี่ยนอาชีพเป็น ${className} ผ่าน Discord reaction`);
+    await logEvent(member.id, "CLASS_CHANGE", `เปลี่ยนอาชีพเป็น ${className} ผ่าน Discord reaction`);
 
     // Enforce single choice — strip the user's reaction from every other
     // class emoji on this message so only their latest click remains.
@@ -117,6 +118,13 @@ export async function handleReactionAdd(
       .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, member.id)));
     await db.insert(partyBusyEntries).values({ boardId, memberId: member.id, sortOrder: 0 });
     await clearMemberSlotOnBoard(member.id, boardId);
+
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    await logEvent(
+      member.id,
+      "ATTENDANCE_LEAVE",
+      `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`
+    );
   }
 }
 
@@ -136,7 +144,16 @@ export async function handleReactionRemove(
   const member = await db.query.members.findFirst({ where: eq(members.discordId, user.id) });
   if (!member) return;
 
-  await db
+  const deleted = await db
     .delete(partyBusyEntries)
-    .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, member.id)));
+    .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, member.id)))
+    .returning({ id: partyBusyEntries.id });
+  if (deleted.length === 0) return; // wasn't actually marked ลา on this board — nothing to log
+
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
+  await logEvent(
+    member.id,
+    "ATTENDANCE_RETURN",
+    `ยกเลิกลาในกระดาน "${board?.name ?? row.boardId}" ผ่าน Discord reaction`
+  );
 }

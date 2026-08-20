@@ -23,19 +23,23 @@ export const statusColors: Record<Member["status"], string> = {
 };
 
 export const eventLabels: Record<string, string> = {
-  JOIN: "Joined Discord",
-  LEAVE: "Left Discord",
-  KICK: "Kicked from Discord",
-  ROLE_UPDATE: "Discord roles changed",
-  PROFILE_UPDATE: "Profile updated",
-  NOTE: "Note added",
+  JOIN: "เข้าร่วมกิลด์",
+  LEAVE: "ออกจากกิลด์",
+  KICK: "ถูกเตะออกจากกิลด์",
+  ROLE_UPDATE: "Discord role เปลี่ยนแปลง",
+  PROFILE_UPDATE: "แก้ไขโปรไฟล์",
+  NOTE: "บันทึกเพิ่มเติม",
+  ATTENDANCE_LEAVE: "ลากิจกรรม",
+  ATTENDANCE_RETURN: "ยกเลิกลา / กลับเข้าร่วม",
+  CLASS_CHANGE: "เปลี่ยนอาชีพ",
+  NAME_CHANGE: "เปลี่ยนชื่อ Discord",
 };
 
 /**
  * Color-codes the activity feed so it's scannable at a glance: green for
  * someone joining, red for someone leaving/being kicked, amber for
- * everything else (profile edits, role changes, admin notes — i.e. "an
- * update happened", not a membership change).
+ * everything else (profile edits, role changes, class/name changes, ลา —
+ * i.e. "an update happened", not a membership change).
  */
 export const eventTypeColors: Record<string, string> = {
   JOIN: "text-emerald-400",
@@ -44,6 +48,10 @@ export const eventTypeColors: Record<string, string> = {
   ROLE_UPDATE: "text-amber-400",
   PROFILE_UPDATE: "text-amber-400",
   NOTE: "text-amber-400",
+  ATTENDANCE_LEAVE: "text-amber-400",
+  ATTENDANCE_RETURN: "text-amber-400",
+  CLASS_CHANGE: "text-amber-400",
+  NAME_CHANGE: "text-amber-400",
 };
 
 export const eventTypeDotColors: Record<string, string> = {
@@ -53,4 +61,8 @@ export const eventTypeDotColors: Record<string, string> = {
   ROLE_UPDATE: "bg-amber-400",
   PROFILE_UPDATE: "bg-amber-400",
   NOTE: "bg-amber-400",
+  ATTENDANCE_LEAVE: "bg-amber-400",
+  ATTENDANCE_RETURN: "bg-amber-400",
+  CLASS_CHANGE: "bg-amber-400",
+  NAME_CHANGE: "bg-amber-400",
 };

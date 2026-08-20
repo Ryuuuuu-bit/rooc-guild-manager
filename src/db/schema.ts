@@ -25,6 +25,13 @@ export const eventTypeEnum = pgEnum("event_type", [
   "RANK_UPDATE",
   "PROFILE_UPDATE",
   "NOTE",
+  // Added for the activity log's ลา / เปลี่ยนอาชีพ / เปลี่ยนชื่อ tracking —
+  // split out from the generic PROFILE_UPDATE bucket so they're each their
+  // own scannable, filterable category in the feed.
+  "ATTENDANCE_LEAVE",
+  "ATTENDANCE_RETURN",
+  "CLASS_CHANGE",
+  "NAME_CHANGE",
 ]);
 
 export const members = pgTable(

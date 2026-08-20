@@ -63,6 +63,28 @@ async function logEvent(memberId: string, type: (typeof membershipEvents.$inferI
   });
 }
 
+/** Same priority as `memberDisplayName` in src/lib/ui.ts (kept local — that
+ * file isn't safe to import here, see class-emoji.ts's note on `@/` aliases
+ * not resolving under tsx). Used to detect an actual visible name change. */
+function displayNameOf(m: { nickname: string | null; globalName: string | null; username: string }): string {
+  return m.nickname || m.globalName || m.username;
+}
+
+/** Logs NAME_CHANGE only if the effective displayed name actually differs — not on every routine profile refresh. */
+async function maybeLogNameChange(
+  existing: { id: string; discordNickname: string | null; discordGlobalName: string | null; discordUsername: string },
+  normalized: NormalizedMember
+) {
+  const oldName = displayNameOf({
+    nickname: existing.discordNickname,
+    globalName: existing.discordGlobalName,
+    username: existing.discordUsername,
+  });
+  const newName = displayNameOf(normalized);
+  if (oldName === newName) return;
+  await logEvent(existing.id, "NAME_CHANGE", `เปลี่ยนชื่อ Discord จาก "${oldName}" เป็น "${newName}"`);
+}
+
 /** Upsert a single member on a live gateway event (join/update). Logs a JOIN event only for brand-new rows or reactivations. */
 export async function upsertMemberFromGateway(normalized: NormalizedMember) {
   const existing = await db.query.members.findFirst({
@@ -89,6 +111,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
   }
 
   const wasInactive = existing.status !== "ACTIVE";
+  await maybeLogNameChange(existing, normalized);
   await db
     .update(members)
     .set({
@@ -211,6 +234,7 @@ export async function runFullSync(guild: Guild) {
     }
 
     const wasInactive = existing.status !== "ACTIVE";
+    await maybeLogNameChange(existing, normalized);
     await db
       .update(members)
       .set({

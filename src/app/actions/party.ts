@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { members, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
+import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { CLASS_OPTIONS } from "@/lib/classes";
 
@@ -157,12 +157,19 @@ export async function moveMember(
   memberId: string,
   destination: PartyDestination
 ): Promise<ActionResult> {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!member || member.status !== "ACTIVE") {
     return { ok: false, error: "ไม่พบสมาชิก หรือสมาชิกไม่ได้อยู่ในกิลด์แล้ว" };
   }
+
+  // Checked before clearing below, so we know whether this move is a ลา (→
+  // busy, wasn't already), a return (busy → elsewhere), or neither — used
+  // to log ATTENDANCE_LEAVE/ATTENDANCE_RETURN only on an actual transition.
+  const wasBusy = await db.query.partyBusyEntries.findFirst({
+    where: and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)),
+  });
 
   const partyIds = await getPartyIdsForBoard(boardId);
 
@@ -175,6 +182,24 @@ export async function moveMember(
   await db
     .delete(partyBusyEntries)
     .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
+
+  if (destination.type === "busy" && !wasBusy) {
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    await db.insert(membershipEvents).values({
+      memberId,
+      type: "ATTENDANCE_LEAVE",
+      detail: `ลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
+      actor: session.user.username,
+    });
+  } else if (destination.type !== "busy" && wasBusy) {
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    await db.insert(membershipEvents).values({
+      memberId,
+      type: "ATTENDANCE_RETURN",
+      detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
+      actor: session.user.username,
+    });
+  }
 
   if (destination.type === "slot") {
     await db
@@ -211,15 +236,28 @@ export async function moveMember(
  * sync everywhere, including the member's own profile page.
  */
 export async function setMemberClass(memberId: string, className: string | null): Promise<ActionResult> {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   const finalClassName = isValidClassName(className) ? className : null;
   if (className && !finalClassName) return { ok: false, error: "Class ไม่ถูกต้อง" };
+
+  const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
 
   await db
     .update(members)
     .set({ characterClass: finalClassName, updatedAt: new Date() })
     .where(eq(members.id, memberId));
+
+  if (existing && existing.characterClass !== finalClassName) {
+    await db.insert(membershipEvents).values({
+      memberId,
+      type: "CLASS_CHANGE",
+      detail: finalClassName
+        ? `เปลี่ยนอาชีพเป็น ${finalClassName} โดยแอดมิน ${session.user.username} (จากหน้าจัดปาตี้)`
+        : `ล้างอาชีพโดยแอดมิน ${session.user.username} (จากหน้าจัดปาตี้)`,
+      actor: session.user.username,
+    });
+  }
 
   revalidatePath("/party");
   revalidatePath(`/members/${memberId}`);

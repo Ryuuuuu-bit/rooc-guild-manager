@@ -88,7 +88,19 @@ export async function getMemberById(id: string) {
   return { member, events, notes };
 }
 
-export async function getRecentActivity(limit = 30) {
+/**
+ * Recent activity feed (dashboard preview + full /activity page). `days`
+ * bounds it to events from the last N days (e.g. 30) — omit for no date
+ * bound at all (still capped by `limit` either way, since this table only
+ * grows and an unbounded feed on a guild active for a year+ would get slow).
+ */
+export async function getRecentActivity(limit = 30, days?: number) {
+  const conditions = [];
+  if (days) {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    conditions.push(gte(membershipEvents.createdAt, cutoff));
+  }
+
   return db
     .select({
       event: membershipEvents,
@@ -96,6 +108,7 @@ export async function getRecentActivity(limit = 30) {
     })
     .from(membershipEvents)
     .innerJoin(members, eq(membershipEvents.memberId, members.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(membershipEvents.createdAt))
     .limit(limit);
 }

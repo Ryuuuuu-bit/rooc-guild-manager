@@ -78,6 +78,13 @@
       "when": 1787200847097,
       "tag": "0010_add_bot_reaction_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787203053652,
+      "tag": "0011_add_activity_log_event_types",
+      "breakpoints": true
     }
   ]
 }

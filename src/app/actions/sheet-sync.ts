@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members } from "@/db/schema";
+import { members, membershipEvents } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
 import {
@@ -60,7 +60,7 @@ export interface ApplyClassSyncResult {
 
 /** Applies admin-confirmed class changes from a sheet sync review. */
 export async function applyClassSync(selections: ClassSyncSelection[]): Promise<ApplyClassSyncResult> {
-  await requireAdmin();
+  const session = await requireAdmin();
   if (selections.length === 0) return { ok: true, appliedCount: 0 };
 
   for (const sel of selections) {
@@ -76,6 +76,18 @@ export async function applyClassSync(selections: ClassSyncSelection[]): Promise<
         .set({ characterClass: sel.className, sheetClassRaw: sel.sheetClassRaw, updatedAt: new Date() })
         .where(eq(members.id, sel.memberId))
     )
+  );
+
+  // Every selection here already represents an actual change — the review
+  // panel only proposes rows where the sheet's class differs from what's
+  // currently stored — so these all get logged unconditionally.
+  await db.insert(membershipEvents).values(
+    selections.map((sel) => ({
+      memberId: sel.memberId,
+      type: "CLASS_CHANGE" as const,
+      detail: `เปลี่ยนอาชีพเป็น ${sel.className} ผ่านการซิงค์จาก Google Sheet โดยแอดมิน ${session.user.username}`,
+      actor: session.user.username,
+    }))
   );
 
   revalidatePath("/members");

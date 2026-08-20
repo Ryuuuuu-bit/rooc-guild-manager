@@ -46,6 +46,21 @@ export async function updateMemberProfile(
     })
     .where(eq(members.id, memberId));
 
+  // Class changes get their own event type (see schema's eventTypeEnum) so
+  // they're a distinct, filterable row in the activity feed regardless of
+  // which admin surface (here, the party board's per-slot dropdown, or the
+  // Sheet sync tool) made the change.
+  if (existing.characterClass !== characterClass) {
+    await db.insert(membershipEvents).values({
+      memberId,
+      type: "CLASS_CHANGE",
+      detail: characterClass
+        ? `เปลี่ยนอาชีพเป็น ${characterClass} โดยแอดมิน ${session.user.username}`
+        : `ล้างอาชีพโดยแอดมิน ${session.user.username}`,
+      actor: session.user.username,
+    });
+  }
+
   await db.insert(membershipEvents).values({
     memberId,
     type: "PROFILE_UPDATE",
