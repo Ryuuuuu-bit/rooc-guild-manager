@@ -139,6 +139,20 @@ export async function listGuildTextChannels(guildId: string): Promise<DiscordCha
     .sort((a, b) => a.position - b.position);
 }
 
+/**
+ * Edits a message's content in place (bots can always edit their own
+ * messages, no extra permission needed). Used to update a reaction message
+ * — e.g. adding a newly-introduced class — without deleting/recreating it,
+ * which would wipe every member's existing reaction and force everyone to
+ * re-click, not just members affected by the change.
+ */
+export async function editChannelMessage(channelId: string, messageId: string, content: string): Promise<void> {
+  await discordBotFetch(`/channels/${channelId}/messages/${messageId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
+  });
+}
+
 /** Posts a plain-text message to a channel via the bot, returning the created message's id. */
 export async function createChannelMessage(channelId: string, content: string): Promise<string> {
   const message = await discordBotFetch(`/channels/${channelId}/messages`, {

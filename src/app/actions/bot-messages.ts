@@ -10,6 +10,7 @@ import {
   addMessageReaction,
   createChannelMessage,
   deleteChannelMessage,
+  editChannelMessage,
   listGuildTextChannels,
   type DiscordChannel,
 } from "@/lib/discord";
@@ -86,31 +87,46 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
   await requireAdmin();
   if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
 
-  const previous = await getCurrentMessage("CLASS_SELECT", null);
-  if (previous) {
-    await deleteChannelMessage(previous.channelId, previous.messageId);
-    await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
-  }
-
   const lines = CLASS_OPTIONS.map((c) => `${CLASS_EMOJI[c]} — ${c}`).join("\n");
   const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วยนะครับ — คลิกขวาที่ชื่อตัวเองในเซิร์ฟเวอร์นี้ > Edit Server Profile`;
 
-  let messageId: string;
-  try {
-    messageId = await createChannelMessage(channelId, content);
-  } catch (err) {
-    return {
-      ok: false,
-      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
-    };
+  const previous = await getCurrentMessage("CLASS_SELECT", null);
+  let messageId: string | null = null;
+
+  // Prefer editing the existing message in place (e.g. re-posting just to
+  // add a newly-introduced class) — this keeps every member's existing
+  // reaction intact, so only people picking the *new* class need to react;
+  // nobody else is forced to re-click. Only falls back to delete+recreate
+  // when there's no previous message, it's in a different channel, or the
+  // edit itself fails (e.g. someone deleted the message manually).
+  if (previous && previous.channelId === channelId) {
+    try {
+      await editChannelMessage(previous.channelId, previous.messageId, content);
+      messageId = previous.messageId;
+    } catch {
+      // Fall through to delete+recreate below.
+    }
   }
 
-  // Track the message the moment it exists — even if seeding reactions
-  // below partially fails, the message stays trackable so a repost cleanly
-  // replaces it instead of leaving an orphaned, untracked message behind
-  // in the channel (previously: a reaction failure aborted before this
-  // insert ran, so the message could never be found/deleted again).
-  await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
+  if (!messageId) {
+    if (previous) {
+      await deleteChannelMessage(previous.channelId, previous.messageId);
+      await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
+    }
+    try {
+      messageId = await createChannelMessage(channelId, content);
+    } catch (err) {
+      return {
+        ok: false,
+        error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
+      };
+    }
+    // Track the message the moment it exists — even if seeding reactions
+    // below partially fails, the message stays trackable so a repost
+    // cleanly replaces/edits it instead of leaving an orphaned, untracked
+    // message behind in the channel.
+    await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
+  }
 
   // Discord's reaction-add endpoint has a tight per-message rate limit —
   // seed reactions one at a time with a small gap between each rather than

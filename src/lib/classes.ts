@@ -13,6 +13,10 @@ export const CLASS_OPTIONS = [
   "Paladin",
   "Rouge",
   "Assassin",
+  "Sage",
+  "Champion",
+  "Sniper",
+  "Blacksmith",
 ] as const;
 
 export type ClassOption = (typeof CLASS_OPTIONS)[number];
@@ -30,4 +34,8 @@ export const classColors: Record<string, string> = {
   Paladin: "bg-fuchsia-400/15 text-fuchsia-300 ring-1 ring-inset ring-fuchsia-400/30",
   Rouge: "bg-indigo-400/15 text-indigo-300 ring-1 ring-inset ring-indigo-400/30",
   Assassin: "bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/40",
+  Sage: "bg-teal-400/15 text-teal-300 ring-1 ring-inset ring-teal-400/30",
+  Champion: "bg-yellow-400/15 text-yellow-300 ring-1 ring-inset ring-yellow-400/30",
+  Sniper: "bg-lime-400/15 text-lime-300 ring-1 ring-inset ring-lime-400/30",
+  Blacksmith: "bg-stone-400/15 text-stone-300 ring-1 ring-inset ring-stone-400/30",
 };

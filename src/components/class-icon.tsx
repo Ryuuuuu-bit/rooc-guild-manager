@@ -1,8 +1,12 @@
 import {
+  BookOpen,
+  BowArrow,
   Cross,
   EyeOff,
   Flame,
   FlaskConical,
+  Hammer,
+  HandFist,
   Music2,
   PawPrint,
   ShieldCheck,
@@ -29,6 +33,10 @@ const classIconMap: Record<ClassOption, LucideIcon> = {
   Paladin: ShieldCheck,
   Rouge: Zap,
   Assassin: EyeOff,
+  Sage: BookOpen,
+  Champion: HandFist,
+  Sniper: BowArrow,
+  Blacksmith: Hammer,
 };
 
 interface ClassIconProps {

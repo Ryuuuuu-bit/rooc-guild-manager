@@ -92,7 +92,8 @@ export function ClassSelectBroadcastPanel() {
                     <a href={status.jumpUrl} target="_blank" rel="noreferrer" className="underline">
                       เปิดดูใน Discord
                     </a>
-                    {" "}— โพสต์ใหม่จะแทนที่อันเดิม
+                    {" "}— กด &quot;อัปเดต&quot; จะแก้ไขข้อความเดิม (เช่น เพิ่มอาชีพใหม่) โดยไม่ลบ reaction ของสมาชิกที่กดไว้แล้ว
+                    ถ้าเลือก channel อื่นจะโพสต์เป็นข้อความใหม่แทน
                   </p>
                 )}
 
@@ -119,7 +120,7 @@ export function ClassSelectBroadcastPanel() {
                     onClick={handlePost}
                     className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {posting ? "กำลังโพสต์..." : status ? "โพสต์ใหม่ (แทนที่อันเดิม)" : "โพสต์ข้อความ"}
+                    {posting ? "กำลังโพสต์..." : status ? "อัปเดตข้อความเดิม" : "โพสต์ข้อความ"}
                   </button>
                 </div>
               </div>
