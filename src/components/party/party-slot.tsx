@@ -41,7 +41,7 @@ export function PartySlot({
     <div
       ref={setNodeRef}
       className={`flex min-h-[40px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
-        isOver ? "border-indigo-400 bg-indigo-500/10" : "border-zinc-800"
+        isOver ? "border-amber-400 bg-amber-500/10" : "border-zinc-800"
       }`}
     >
       {member ? (
@@ -52,7 +52,7 @@ export function PartySlot({
               <select
                 value={member.className ?? ""}
                 onChange={(e) => onClassChange(e.target.value)}
-                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
               >
                 <option value="">- class -</option>
                 {classOptions.map((c) => (
@@ -90,7 +90,7 @@ export function PartySlot({
           open={pickerOpen}
           onOpenChange={onPickerOpenChange}
           trigger={
-            <span className="block w-full cursor-pointer select-none rounded px-1 py-1.5 text-center text-[10px] text-zinc-600 transition hover:text-indigo-300">
+            <span className="block w-full cursor-pointer select-none rounded px-1 py-1.5 text-center text-[10px] text-zinc-600 transition hover:text-amber-300">
               + เลือกสมาชิก
             </span>
           }

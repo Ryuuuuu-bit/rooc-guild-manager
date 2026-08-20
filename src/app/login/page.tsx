@@ -1,5 +1,6 @@
 import { signIn, auth } from "@/auth";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 
 const errorMessages: Record<string, string> = {
   NotAGuildMember:
@@ -28,11 +29,16 @@ export default async function LoginPage({
     <div className="flex min-h-screen flex-1 items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900/60 p-8 shadow-xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-2xl font-bold shadow-lg shadow-indigo-900/40">
-            R
-          </div>
+          <Image
+            src="/brand/divine-icon.png"
+            alt="Divine"
+            width={72}
+            height={72}
+            unoptimized
+            className="mx-auto mb-4 h-[72px] w-[72px] rounded-2xl object-cover shadow-lg shadow-amber-900/40 ring-1 ring-amber-500/40"
+          />
           <h1 className="text-xl font-semibold text-zinc-50">
-            ROOC Guild Manager
+            Divine Guild Manager
           </h1>
           <p className="mt-1 text-sm text-zinc-400">
             เข้าสู่ระบบด้วยบัญชี Discord ของกิลด์

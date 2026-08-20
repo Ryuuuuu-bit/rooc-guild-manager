@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ROOC Guild Manager",
-  description: "Member management for the ROOC guild, synced with Discord.",
+  title: "Divine Guild Manager",
+  description: "Member management for the Divine guild (ROOC), synced with Discord.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -78,7 +78,7 @@ export default async function DashboardPage() {
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50">
         <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
           <h2 className="font-medium text-zinc-100">กิจกรรมล่าสุด</h2>
-          <Link href="/activity" className="text-xs text-indigo-400 hover:text-indigo-300">
+          <Link href="/activity" className="text-xs text-amber-400 hover:text-amber-300">
             ดูทั้งหมด →
           </Link>
         </div>

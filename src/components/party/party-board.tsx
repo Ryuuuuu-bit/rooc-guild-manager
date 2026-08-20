@@ -118,7 +118,7 @@ function DroppableZone({
     <div
       ref={setNodeRef}
       className={`flex ${maxHeightClass} min-h-[52px] flex-wrap content-start gap-1.5 overflow-y-auto rounded-xl border p-2 transition ${
-        isOver ? "border-indigo-400 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/40"
+        isOver ? "border-amber-400 bg-amber-500/10" : "border-zinc-800 bg-zinc-900/40"
       }`}
       aria-label={label}
     >
@@ -426,7 +426,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               onClick={() => router.push(`/party?board=${b.id}`)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                 b.id === selectedBoardId
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-amber-600 text-white"
                   : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
               }`}
             >
@@ -438,7 +438,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               <button
                 type="button"
                 onClick={handleCreateBoard}
-                className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+                className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
               >
                 + กระดานใหม่
               </button>
@@ -465,7 +465,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     title="ซ่อนปุ่มจัดการทั้งหมด เหมาะสำหรับแคปภาพไปประกาศ"
                     className={`rounded-lg border px-2.5 py-1 text-xs transition ${
                       screenshotMode
-                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-300"
+                        ? "border-amber-500 bg-amber-500/10 text-amber-300"
                         : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                     }`}
                   >
@@ -519,12 +519,12 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     value={poolQuery}
                     onChange={(e) => setPoolQuery(e.target.value)}
                     placeholder="ค้นหาชื่อ..."
-                    className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none sm:max-w-40"
+                    className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
                   />
                   <select
                     value={poolClassFilter}
                     onChange={(e) => setPoolClassFilter(e.target.value)}
-                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
+                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
                   >
                     <option value="">ทุก class</option>
                     {classOptions.map((c) => (
@@ -556,7 +556,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   onClick={() => setActiveGroupId(g.id)}
                   className={`-mb-px rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition ${
                     g.id === activeGroupId
-                      ? "border-indigo-500 text-indigo-300"
+                      ? "border-amber-500 text-amber-300"
                       : "border-transparent text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
@@ -567,7 +567,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 <button
                   type="button"
                   onClick={handleCreateGroup}
-                  className="mb-1 rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+                  className="mb-1 rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
                 >
                   + กลุ่มใหม่
                 </button>
@@ -596,7 +596,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       <button
                         type="button"
                         onClick={() => handleCreateParty(activeGroup.id)}
-                        className="rounded-lg border border-dashed border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+                        className="rounded-lg border border-dashed border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
                       >
                         + เพิ่ม Party
                       </button>
@@ -650,7 +650,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       emptyLabel="ไม่มีคนว่างแล้ว"
                       align="right"
                       trigger={
-                        <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300">
+                        <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
                           + เพิ่มคนลา
                         </span>
                       }
@@ -671,7 +671,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                           <select
                             value={member.className ?? ""}
                             onChange={(e) => handleClassChange(member.id, e.target.value)}
-                            className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                            className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
                           >
                             <option value="">- class -</option>
                             {classOptions.map((c) => (

@@ -1,27 +1,17 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/* This app is always dark-themed (no light-mode toggle exists) — the
+ * body element in layout.tsx sets bg-zinc-950/text-zinc-100/font-sans
+ * directly via Tailwind utility classes, so no separate --background/
+ * --foreground variables or a plain `body {}` rule are needed here.
+ * (A previous version of this file DID declare an unlayered `body {}`
+ * rule — CSS cascade layers make ANY unlayered rule beat a Tailwind
+ * utility class on the same property regardless of specificity, so
+ * that rule was silently overriding bg-zinc-950 with a light/white
+ * background for any visitor whose OS/browser wasn't already in dark
+ * mode. Removed rather than reproduced.) */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans Thai", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

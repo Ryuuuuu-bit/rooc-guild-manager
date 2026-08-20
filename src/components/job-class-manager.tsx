@@ -73,7 +73,7 @@ function ClassForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="เช่น Sura, Guillotine Cross"
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
@@ -82,7 +82,7 @@ function ClassForm({
             value={emoji}
             onChange={(e) => setEmoji(e.target.value)}
             placeholder="🗡️"
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-center text-lg text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-center text-lg text-zinc-100 focus:border-amber-500 focus:outline-none"
           />
         </label>
       </div>
@@ -97,7 +97,7 @@ function ClassForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "กำลังบันทึก..." : submitLabel}
         </button>
@@ -202,7 +202,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                     <button
                       type="button"
                       onClick={() => setEditingId(c.id)}
-                      className="mr-3 text-xs text-indigo-400 transition hover:text-indigo-300"
+                      className="mr-3 text-xs text-amber-400 transition hover:text-amber-300"
                     >
                       แก้ไข
                     </button>
@@ -227,7 +227,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
         <button
           type="button"
           onClick={() => setShowAdd(true)}
-          className="self-start rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+          className="self-start rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
         >
           + เพิ่มอาชีพใหม่
         </button>

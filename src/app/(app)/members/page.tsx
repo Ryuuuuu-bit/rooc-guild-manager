@@ -58,12 +58,12 @@ export default async function MembersPage({
             name="q"
             defaultValue={params.q}
             placeholder="ค้นหาชื่อ Discord หรือชื่อในเกม..."
-            className="w-56 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+            className="w-56 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
           />
           <select
             name="status"
             defaultValue={status}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
             <option value="ACTIVE">ยังอยู่ในกิลด์</option>
             <option value="LEFT">ออกไปแล้ว</option>
@@ -73,7 +73,7 @@ export default async function MembersPage({
           <select
             name="role"
             defaultValue={params.role ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
             <option value="">ทุก Discord role</option>
             {discordRoleList.map((role) => (
@@ -85,7 +85,7 @@ export default async function MembersPage({
           <select
             name="benched"
             defaultValue={benched ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
             <option value="">กำลังเล่น + พักการเล่น</option>
             <option value="active">กำลังเล่นเท่านั้น</option>
@@ -93,7 +93,7 @@ export default async function MembersPage({
           </select>
           <button
             type="submit"
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
           >
             ค้นหา
           </button>

@@ -100,7 +100,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
                 <select
                   value={channelId}
                   onChange={(e) => setChannelId(e.target.value)}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
                 >
                   {(channels ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -114,7 +114,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
                     type="button"
                     disabled={!channelId || posting}
                     onClick={handlePost}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {posting ? "กำลังโพสต์..." : status ? "โพสต์ใหม่ (แทนที่อันเดิม)" : "โพสต์ข้อความ"}
                   </button>

@@ -62,7 +62,7 @@ export function ClassSelectBroadcastPanel() {
       <button
         type="button"
         onClick={handleOpen}
-        className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300"
+        className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
       >
         โพสต์เลือกอาชีพใน Discord
       </button>
@@ -104,7 +104,7 @@ export function ClassSelectBroadcastPanel() {
                 <select
                   value={channelId}
                   onChange={(e) => setChannelId(e.target.value)}
-                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-indigo-500 focus:outline-none"
+                  className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
                 >
                   {(channels ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -118,7 +118,7 @@ export function ClassSelectBroadcastPanel() {
                     type="button"
                     disabled={!channelId || posting}
                     onClick={handlePost}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {posting ? "กำลังโพสต์..." : status ? "อัปเดตข้อความเดิม" : "โพสต์ข้อความ"}
                   </button>

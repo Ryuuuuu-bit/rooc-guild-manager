@@ -27,7 +27,7 @@ export function MemberEditForm({ member }: Props) {
           <input
             name="inGameName"
             defaultValue={member.inGameName ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
@@ -35,7 +35,7 @@ export function MemberEditForm({ member }: Props) {
           <select
             name="characterClass"
             defaultValue={member.characterClass ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
             <option value="">- ไม่ระบุ -</option>
             {classOptions.map((c) => (
@@ -56,7 +56,7 @@ export function MemberEditForm({ member }: Props) {
           name="notes"
           rows={3}
           defaultValue={member.notes ?? ""}
-          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
+          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none"
         />
       </label>
 
@@ -68,7 +68,7 @@ export function MemberEditForm({ member }: Props) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
         </button>

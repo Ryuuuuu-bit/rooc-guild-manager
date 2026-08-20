@@ -55,7 +55,7 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="เช่น AFK ใน GVG วันที่ 20/8, พูดคุยแจ้งเตือนแล้ว..."
-          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none"
+          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
         />
         {error && <p className="text-xs text-rose-400">{error}</p>}
         <button

@@ -23,10 +23,15 @@ export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-semibold text-zinc-50">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold">
-              R
-            </span>
-            ROOC Guild
+            <Image
+              src="/brand/divine-icon.png"
+              alt="Divine"
+              width={32}
+              height={32}
+              unoptimized
+              className="h-8 w-8 rounded-lg object-cover ring-1 ring-amber-500/40"
+            />
+            Divine
           </Link>
           <nav className="hidden items-center gap-1 sm:flex">
             {navLinks.map((link) => (
@@ -43,7 +48,7 @@ export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
 
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <span className="hidden rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300 ring-1 ring-inset ring-violet-500/30 sm:inline-block">
+            <span className="hidden rounded-full bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/30 sm:inline-block">
               แอดมิน
             </span>
           )}

@@ -146,7 +146,7 @@ export function MemberPicker({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleInputKeyDown}
               placeholder="ค้นหาชื่อ / class... (Enter = เลือกคนแรก)"
-              className="mb-1.5 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none"
+              className="mb-1.5 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
             />
             <div className="max-h-56 overflow-auto">
               {filtered.length === 0 && <p className="px-2 py-2 text-xs text-zinc-500">{emptyLabel}</p>}

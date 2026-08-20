@@ -64,7 +64,7 @@ export function ActivityListItem({
       <div className="min-w-0 flex-1">
         <Link
           href={`/members/${member.id}`}
-          className="truncate text-sm font-medium text-zinc-100 hover:text-indigo-300"
+          className="truncate text-sm font-medium text-zinc-100 hover:text-amber-300"
         >
           {memberDisplayName(member)}
         </Link>
