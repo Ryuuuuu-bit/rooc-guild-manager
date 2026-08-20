@@ -20,13 +20,8 @@ export async function updateMemberProfile(
 
   const inGameName = (formData.get("inGameName") as string | null)?.trim() || null;
   const characterClassRaw = (formData.get("characterClass") as string | null)?.trim() || null;
-  const levelRaw = (formData.get("level") as string | null)?.trim();
-  const level = levelRaw ? Number(levelRaw) : null;
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
-  if (level !== null && (Number.isNaN(level) || level < 0 || level > 9999)) {
-    return { ok: false, error: "เลเวลไม่ถูกต้อง" };
-  }
   if (characterClassRaw && !(CLASS_OPTIONS as readonly string[]).includes(characterClassRaw)) {
     return { ok: false, error: "Class ไม่ถูกต้อง" };
   }
@@ -40,7 +35,6 @@ export async function updateMemberProfile(
     .set({
       inGameName,
       characterClass,
-      level,
       notes,
       updatedAt: new Date(),
     })

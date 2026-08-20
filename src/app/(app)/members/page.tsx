@@ -1,8 +1,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { listDiscordRoles, listMembers } from "@/lib/data";
+import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
+import { ClassSyncPanel } from "@/components/class-sync-panel";
 import { memberDisplayName } from "@/lib/ui";
 
 interface SearchParams {
@@ -17,6 +19,7 @@ export default async function MembersPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  const session = await requireUser();
   const params = await searchParams;
   const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
   const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
@@ -42,6 +45,8 @@ export default async function MembersPage({
             พบ {membersList.length} คน
           </p>
         </div>
+
+        {session.user.isAdmin && <ClassSyncPanel />}
 
         <form className="flex flex-wrap items-center gap-2" method="get">
           <input
@@ -97,7 +102,7 @@ export default async function MembersPage({
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="px-5 py-3 font-medium">สมาชิก</th>
               <th className="px-5 py-3 font-medium">ชื่อในเกม</th>
-              <th className="px-5 py-3 font-medium">คลาส / เลเวล</th>
+              <th className="px-5 py-3 font-medium">คลาส</th>
               <th className="px-5 py-3 font-medium">Discord role</th>
               <th className="px-5 py-3 font-medium">สถานะ</th>
               <th className="px-5 py-3 font-medium">เข้าร่วมเมื่อ</th>
@@ -135,10 +140,7 @@ export default async function MembersPage({
                 </td>
                 <td className="px-5 py-3 text-zinc-300">{member.inGameName ?? "—"}</td>
                 <td className="px-5 py-3 text-zinc-300">
-                  <div className="flex items-center gap-2">
-                    <ClassBadge className={member.characterClass} />
-                    {member.level ? <span className="text-xs text-zinc-500">Lv.{member.level}</span> : null}
-                  </div>
+                  <ClassBadge className={member.characterClass} />
                 </td>
                 <td className="px-5 py-3">
                   <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />

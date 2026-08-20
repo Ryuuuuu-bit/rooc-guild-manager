@@ -101,7 +101,7 @@ function DroppableZone({ id, children, label }: { id: string; children: React.Re
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[64px] flex-wrap gap-1.5 rounded-xl border p-2 transition ${
+      className={`flex max-h-36 min-h-[52px] flex-wrap content-start gap-1.5 overflow-y-auto rounded-xl border p-2 transition ${
         isOver ? "border-indigo-400 bg-indigo-500/10" : "border-zinc-800 bg-zinc-900/40"
       }`}
       aria-label={label}
@@ -195,6 +195,11 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialBoard?.groups[0]?.id ?? null);
   const [poolQuery, setPoolQuery] = useState("");
   const [poolClassFilter, setPoolClassFilter] = useState("");
+  // "Screenshot mode" — hides admin edit controls and the working pool/busy
+  // lists so the party grid alone looks clean when captured for an
+  // announcement. Purely a local view toggle, not persisted.
+  const [screenshotMode, setScreenshotMode] = useState(false);
+  const effectiveAdmin = isAdmin && !screenshotMode;
   const [, startTransition] = useTransition();
 
   // Structural edits (create/rename/delete board/group/party) go through
@@ -411,7 +416,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               {b.name}
             </button>
           ))}
-          {isAdmin && (
+          {effectiveAdmin && (
             <button
               type="button"
               onClick={handleCreateBoard}
@@ -424,7 +429,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
         {!board ? (
           <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-            ยังไม่มีกระดาน{isAdmin ? " — กด \"+ กระดานใหม่\" ด้านบนเพื่อเริ่มสร้าง" : ""}
+            ยังไม่มีกระดาน{effectiveAdmin ? " — กด \"+ กระดานใหม่\" ด้านบนเพื่อเริ่มสร้าง" : ""}
           </div>
         ) : (
           <>
@@ -437,123 +442,43 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleRenameBoard}
-                    className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+                    onClick={() => setScreenshotMode((v) => !v)}
+                    title="ซ่อนปุ่มจัดการทั้งหมด เหมาะสำหรับแคปภาพไปประกาศ"
+                    className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+                      screenshotMode
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-300"
+                        : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+                    }`}
                   >
-                    เปลี่ยนชื่อกระดาน
+                    {screenshotMode ? "✓ โหมดแคปภาพ" : "โหมดแคปภาพ"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-                  >
-                    ล้างกระดานนี้
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteBoard}
-                    className="rounded-lg border border-rose-900/60 px-2.5 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40"
-                  >
-                    ลบกระดานนี้
-                  </button>
+                  {effectiveAdmin && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleRenameBoard}
+                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+                      >
+                        เปลี่ยนชื่อกระดาน
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+                      >
+                        ล้างกระดานนี้
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteBoard}
+                        className="rounded-lg border border-rose-900/60 px-2.5 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40"
+                      >
+                        ลบกระดานนี้
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
-            </div>
-
-            {/* Unassigned pool + Busy list — always visible, never scroll out of view */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-              <section>
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-medium text-zinc-300">
-                    รอลงปาตี้ ({filteredUnassigned.length}
-                    {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
-                  </h2>
-                  <input
-                    type="text"
-                    value={poolQuery}
-                    onChange={(e) => setPoolQuery(e.target.value)}
-                    placeholder="ค้นหาชื่อ..."
-                    className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none sm:max-w-40"
-                  />
-                  <select
-                    value={poolClassFilter}
-                    onChange={(e) => setPoolClassFilter(e.target.value)}
-                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
-                  >
-                    <option value="">ทุก class</option>
-                    {CLASS_OPTIONS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <DroppableZone id="unassigned" label="รอลงปาตี้">
-                  {filteredUnassigned.length === 0 && (
-                    <span className="px-1 py-1 text-xs text-zinc-600">
-                      {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
-                    </span>
-                  )}
-                  {filteredUnassigned.map((member) => (
-                    <MemberChip key={member.id} member={member} draggable={isAdmin} />
-                  ))}
-                </DroppableZone>
-              </section>
-
-              <section>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
-                  {isAdmin && (
-                    <MemberPicker
-                      members={board.unassigned}
-                      onSelect={handleAssignBusy}
-                      emptyLabel="ไม่มีคนว่างแล้ว"
-                      align="right"
-                      trigger={
-                        <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300">
-                          + เพิ่มคนลา
-                        </span>
-                      }
-                    />
-                  )}
-                </div>
-                <DroppableZone id="busy" label="Busy หรือ ลา">
-                  {board.busy.length === 0 && (
-                    <span className="px-1 py-1 text-xs text-zinc-600">
-                      ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้
-                    </span>
-                  )}
-                  {board.busy.map((member) => (
-                    <div key={member.id} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 py-1 pl-1.5 pr-1">
-                      <MemberChip member={member} draggable={isAdmin} compact showClassBadge={!isAdmin} />
-                      {isAdmin && (
-                        <>
-                          <select
-                            value={member.className ?? ""}
-                            onChange={(e) => handleClassChange(member.id, e.target.value)}
-                            className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
-                          >
-                            <option value="">- class -</option>
-                            {CLASS_OPTIONS.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            onClick={() => handleBusyRemove(member.id)}
-                            title="เอาออกจากรายชื่อลา"
-                            className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
-                          >
-                            ✕
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </DroppableZone>
-              </section>
             </div>
 
             {/* Group tabs */}
@@ -572,7 +497,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   {g.name} <span className="ml-1 text-xs text-zinc-500">{g.parties.length} party</span>
                 </button>
               ))}
-              {isAdmin && (
+              {effectiveAdmin && (
                 <button
                   type="button"
                   onClick={handleCreateGroup}
@@ -585,14 +510,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
             {board.groups.length === 0 && (
               <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-                ยังไม่มีกลุ่มในกระดานนี้{isAdmin ? " — กด \"+ กลุ่มใหม่\" ด้านบน" : ""}
+                ยังไม่มีกลุ่มในกระดานนี้{effectiveAdmin ? " — กด \"+ กลุ่มใหม่\" ด้านบน" : ""}
               </div>
             )}
 
             {activeGroup && (
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  {isAdmin ? (
+                  {effectiveAdmin ? (
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -624,7 +549,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
                 {activeGroup.parties.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-                    กลุ่มนี้ยังไม่มี party{isAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
+                    กลุ่มนี้ยังไม่มี party{effectiveAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
                   </div>
                 ) : (
                   <div className="grid max-h-[70vh] grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3 overflow-y-auto pr-1">
@@ -632,7 +557,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       <PartyCard
                         key={party.id}
                         party={party}
-                        isAdmin={isAdmin}
+                        isAdmin={effectiveAdmin}
                         pickableMembers={board.unassigned}
                         onClassChange={handleClassChange}
                         onClear={handleClearSlot}
@@ -643,6 +568,107 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Unassigned pool + Busy/leave list — bounded height with internal
+                scroll so filling/clearing slots never shifts the page layout.
+                Tucked below the party grid (screenshot-worthy content first)
+                and hidden entirely in screenshot mode. */}
+            {!screenshotMode && (
+              <div className="flex flex-col gap-3">
+                <section>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-medium text-zinc-300">
+                      รอลงปาตี้ ({filteredUnassigned.length}
+                      {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
+                    </h2>
+                    <input
+                      type="text"
+                      value={poolQuery}
+                      onChange={(e) => setPoolQuery(e.target.value)}
+                      placeholder="ค้นหาชื่อ..."
+                      className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500 focus:outline-none sm:max-w-40"
+                    />
+                    <select
+                      value={poolClassFilter}
+                      onChange={(e) => setPoolClassFilter(e.target.value)}
+                      className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-indigo-500 focus:outline-none"
+                    >
+                      <option value="">ทุก class</option>
+                      {CLASS_OPTIONS.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <DroppableZone id="unassigned" label="รอลงปาตี้">
+                    {filteredUnassigned.length === 0 && (
+                      <span className="px-1 py-1 text-xs text-zinc-600">
+                        {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
+                      </span>
+                    )}
+                    {filteredUnassigned.map((member) => (
+                      <MemberChip key={member.id} member={member} draggable={effectiveAdmin} />
+                    ))}
+                  </DroppableZone>
+                </section>
+
+                <section>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
+                    {effectiveAdmin && (
+                      <MemberPicker
+                        members={board.unassigned}
+                        onSelect={handleAssignBusy}
+                        emptyLabel="ไม่มีคนว่างแล้ว"
+                        align="right"
+                        trigger={
+                          <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-indigo-500 hover:text-indigo-300">
+                            + เพิ่มคนลา
+                          </span>
+                        }
+                      />
+                    )}
+                  </div>
+                  <DroppableZone id="busy" label="Busy หรือ ลา">
+                    {board.busy.length === 0 && (
+                      <span className="px-1 py-1 text-xs text-zinc-600">
+                        ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้
+                      </span>
+                    )}
+                    {board.busy.map((member) => (
+                      <div key={member.id} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 py-1 pl-1.5 pr-1">
+                        <MemberChip member={member} draggable={effectiveAdmin} compact showClassBadge={!effectiveAdmin} />
+                        {effectiveAdmin && (
+                          <>
+                            <select
+                              value={member.className ?? ""}
+                              onChange={(e) => handleClassChange(member.id, e.target.value)}
+                              className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-indigo-500 focus:outline-none"
+                            >
+                              <option value="">- class -</option>
+                              {CLASS_OPTIONS.map((c) => (
+                                <option key={c} value={c}>
+                                  {c}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => handleBusyRemove(member.id)}
+                              title="เอาออกจากรายชื่อลา"
+                              className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </DroppableZone>
+                </section>
               </div>
             )}
           </>

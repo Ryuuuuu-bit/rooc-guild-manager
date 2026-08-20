@@ -53,7 +53,14 @@ export const members = pgTable(
     // --- In-game / guild data (managed by admins) ---
     inGameName: text("in_game_name"),
     characterClass: text("character_class"),
-    level: integer("level"),
+    // The raw "Class" cell value last read from the guild's Google Sheet for
+    // this member (e.g. "Wiz", "Doram") when characterClass was last set via
+    // a sheet sync. Some sheet class labels map ambiguously to more than one
+    // of our CLASS_OPTIONS (e.g. "Wiz" -> WizMeteo or WizCC), so an admin has
+    // to pick the right one manually the first time — storing the raw value
+    // here lets a future sync skip re-asking as long as the sheet cell for
+    // that member hasn't changed. Null for members never synced from the sheet.
+    sheetClassRaw: text("sheet_class_raw"),
     status: memberStatusEnum("status").notNull().default("ACTIVE"),
     // Still an active Discord/Rooc-role member, but flagged by an admin as
     // not currently playing — excluded from party boards and other active

@@ -61,10 +61,6 @@ export default async function MemberDetailPage({
                     <ClassBadge className={member.characterClass} />
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-xs text-zinc-500">เลเวล</dt>
-                  <dd className="text-sm text-zinc-200">{member.level ?? "—"}</dd>
-                </div>
               </dl>
             )}
           </section>

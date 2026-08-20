@@ -47,16 +47,6 @@ export function MemberEditForm({ member }: Props) {
             แก้จากหน้านี้หรือจากหน้าจัดปาตี้ก็ได้ ค่าเดียวกันใช้ทุกกระดาน
           </span>
         </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">เลเวล</span>
-          <input
-            type="number"
-            min={0}
-            name="level"
-            defaultValue={member.level ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-indigo-500 focus:outline-none"
-          />
-        </label>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">

@@ -57,6 +57,13 @@
       "when": 1787194659919,
       "tag": "0007_add_member_benched_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787198072613,
+      "tag": "0008_drop_level_add_sheet_class_raw",
+      "breakpoints": true
     }
   ]
 }
