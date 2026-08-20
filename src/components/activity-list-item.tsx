@@ -82,7 +82,10 @@ export function ActivityListItem({
           )}
         </p>
       </div>
-      <span className="shrink-0 text-xs text-zinc-500">
+      <span
+        className="shrink-0 text-xs text-zinc-500"
+        title={new Date(event.createdAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+      >
         {formatDistanceToNow(event.createdAt, { addSuffix: true })}
       </span>
       {isAdmin && (

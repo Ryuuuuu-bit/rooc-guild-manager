@@ -7,7 +7,6 @@ import {
   index,
   uniqueIndex,
   boolean,
-  jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
@@ -283,21 +282,6 @@ export const jobClasses = pgTable(
   (table) => [index("job_classes_sort_order_idx").on(table.sortOrder)]
 );
 
-// A reusable party-board "shape" (group names + how many parties each holds)
-// an admin can save from an existing board and apply when creating a new
-// one — e.g. a standard GVG layout — instead of manually recreating groups
-// and parties every time. Deliberately does NOT store member assignments
-// (a template is a skeleton, not a saved roster) or per-slot data, so a
-// single jsonb column is enough rather than a full relational mirror of
-// party_groups/party_group_parties.
-export const partyTemplates = pgTable("party_templates", {
-  id: text("id").primaryKey().$defaultFn(() => createId()),
-  name: text("name").notNull(),
-  // Array of { name: string; partyCount: number }, one entry per group.
-  structure: jsonb("structure").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -331,5 +315,3 @@ export type BotReactionMessage = typeof botReactionMessages.$inferSelect;
 export type NewBotReactionMessage = typeof botReactionMessages.$inferInsert;
 export type JobClassRow = typeof jobClasses.$inferSelect;
 export type NewJobClassRow = typeof jobClasses.$inferInsert;
-export type PartyTemplateRow = typeof partyTemplates.$inferSelect;
-export type NewPartyTemplateRow = typeof partyTemplates.$inferInsert;
