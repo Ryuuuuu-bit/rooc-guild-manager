@@ -30,3 +30,27 @@ export const eventLabels: Record<string, string> = {
   PROFILE_UPDATE: "Profile updated",
   NOTE: "Note added",
 };
+
+/**
+ * Color-codes the activity feed so it's scannable at a glance: green for
+ * someone joining, red for someone leaving/being kicked, amber for
+ * everything else (profile edits, role changes, admin notes — i.e. "an
+ * update happened", not a membership change).
+ */
+export const eventTypeColors: Record<string, string> = {
+  JOIN: "text-emerald-400",
+  LEAVE: "text-rose-400",
+  KICK: "text-rose-400",
+  ROLE_UPDATE: "text-amber-400",
+  PROFILE_UPDATE: "text-amber-400",
+  NOTE: "text-amber-400",
+};
+
+export const eventTypeDotColors: Record<string, string> = {
+  JOIN: "bg-emerald-400",
+  LEAVE: "bg-rose-400",
+  KICK: "bg-rose-400",
+  ROLE_UPDATE: "bg-amber-400",
+  PROFILE_UPDATE: "bg-amber-400",
+  NOTE: "bg-amber-400",
+};

@@ -54,6 +54,34 @@ export async function discordUserFetch(path: string, accessToken: string) {
   return res.json();
 }
 
+/**
+ * Kicks a member from the guild via the bot's REST credentials — an actual
+ * Discord removal, not just an in-app status flag. Requires the bot to have
+ * the "Kick Members" permission and a role positioned above the target
+ * member's highest role (Discord's normal kick-permission rules), otherwise
+ * this throws a DiscordApiError with status 403.
+ */
+export async function kickGuildMember(guildId: string, userId: string, reason?: string): Promise<void> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("DISCORD_BOT_TOKEN is not set");
+
+  const res = await fetch(`${API_BASE}/guilds/${guildId}/members/${userId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bot ${token}`,
+      // Shows up as the kick reason in Discord's own audit log.
+      ...(reason ? { "X-Audit-Log-Reason": encodeURIComponent(reason).slice(0, 500) } : {}),
+    },
+  });
+
+  // Kick succeeds with 204 No Content (no body to parse). Treat "already
+  // not a member" as success too — the end state we want is already true.
+  if (res.status === 204 || res.status === 404) return;
+
+  const body = await res.text().catch(() => "");
+  throw new DiscordApiError(`Discord API kick failed: ${res.status} ${body}`, res.status);
+}
+
 export interface DiscordGuildMember {
   user?: {
     id: string;

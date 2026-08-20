@@ -1,8 +1,5 @@
-import Link from "next/link";
-import Image from "next/image";
 import { getRecentActivity } from "@/lib/data";
-import { eventLabels, memberDisplayName } from "@/lib/ui";
-import { formatDistanceToNow } from "date-fns";
+import { ActivityListItem } from "@/components/activity-list-item";
 
 export default async function ActivityPage() {
   const activity = await getRecentActivity(100);
@@ -24,31 +21,7 @@ export default async function ActivityPage() {
             </li>
           )}
           {activity.map(({ event, member }) => (
-            <li key={event.id} className="flex items-center gap-3 px-5 py-3">
-              <Image
-                src={member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
-                alt={member.discordUsername}
-                width={32}
-                height={32}
-                unoptimized
-                className="h-8 w-8 rounded-full ring-1 ring-zinc-700"
-              />
-              <div className="min-w-0 flex-1">
-                <Link
-                  href={`/members/${member.id}`}
-                  className="truncate text-sm font-medium text-zinc-100 hover:text-indigo-300"
-                >
-                  {memberDisplayName(member)}
-                </Link>
-                <p className="text-xs text-zinc-500">
-                  {eventLabels[event.type] ?? event.type}
-                  {event.detail ? ` — ${event.detail}` : ""}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs text-zinc-500">
-                {formatDistanceToNow(event.createdAt, { addSuffix: true })}
-              </span>
-            </li>
+            <ActivityListItem key={event.id} event={event} member={member} />
           ))}
         </ul>
       </div>

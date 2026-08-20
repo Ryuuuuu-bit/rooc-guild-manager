@@ -6,10 +6,16 @@ import { db } from "@/db";
 import { members, membershipEvents, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { CLASS_OPTIONS } from "@/lib/classes";
+import { env } from "@/lib/env";
+import { DiscordApiError, kickGuildMember } from "@/lib/discord";
 
 export interface UpdateMemberResult {
   ok: boolean;
   error?: string;
+  /** Set when the primary action succeeded but a secondary side-effect
+   * (e.g. the actual Discord kick) didn't — shown as a softer, non-red
+   * notice since the app's own state is still correct. */
+  warning?: string;
 }
 
 export async function updateMemberProfile(
@@ -55,6 +61,15 @@ export async function updateMemberProfile(
   return { ok: true };
 }
 
+/**
+ * Kicks a member: marks them KICKED in the app (clearing them off every
+ * party board) AND actually removes them from the Discord server via the
+ * bot. The Discord removal is best-effort — if the bot lacks the "Kick
+ * Members" permission or its role sits below the target's highest role,
+ * the in-app status change still goes through, but the caller gets back a
+ * `warning` explaining that the person is still in Discord and needs to be
+ * removed manually there.
+ */
 export async function markMemberKicked(memberId: string, reason: string): Promise<UpdateMemberResult> {
   const session = await requireAdmin();
 
@@ -71,10 +86,22 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
 
+  let discordWarning: string | undefined;
+  try {
+    await kickGuildMember(env.discordGuildId, existing.discordId, reason || undefined);
+  } catch (err) {
+    discordWarning =
+      err instanceof DiscordApiError && err.status === 403
+        ? "อัปเดตสถานะในระบบแล้ว แต่เตะออกจาก Discord ไม่สำเร็จ — บอทไม่มีสิทธิ์ \"Kick Members\" หรือ role บอทต่ำกว่า role ของสมาชิกคนนี้ กรุณาเตะออกจาก Discord ด้วยตัวเอง"
+        : `อัปเดตสถานะในระบบแล้ว แต่เตะออกจาก Discord ไม่สำเร็จ (${err instanceof Error ? err.message : "unknown error"}) กรุณาเตะออกจาก Discord ด้วยตัวเอง`;
+  }
+
   await db.insert(membershipEvents).values({
     memberId,
     type: "KICK",
-    detail: reason || `ทำเครื่องหมายว่าถูกเตะโดย ${session.user.username}`,
+    detail:
+      (reason || `ทำเครื่องหมายว่าถูกเตะโดย ${session.user.username}`) +
+      (discordWarning ? " (เตะออกจาก Discord ไม่สำเร็จ — ต้องทำเอง)" : ""),
     actor: session.user.username,
   });
 
@@ -83,7 +110,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   revalidatePath("/");
   revalidatePath("/party");
 
-  return { ok: true };
+  return discordWarning ? { ok: true, warning: discordWarning } : { ok: true };
 }
 
 export async function restoreMemberStatus(memberId: string): Promise<UpdateMemberResult> {
