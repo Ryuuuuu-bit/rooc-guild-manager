@@ -220,6 +220,27 @@ export const memberNotes = pgTable(
   (table) => [index("member_notes_member_id_idx").on(table.memberId)]
 );
 
+// Tracks Discord messages the bot has posted that carry meaning via emoji
+// reactions — the "เลือกอาชีพ" (class self-select) message (global, one at a
+// time, boardId null) and each board's "ลา" (attendance/opt-out) message
+// (boardId set). Reposting either kind replaces the previous row (and
+// best-effort deletes the old Discord message) so there's only ever one
+// live message per kind/board that the bot listens to reactions on.
+export const botReactionMessages = pgTable(
+  "bot_reaction_messages",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    kind: text("kind").notNull(), // "CLASS_SELECT" | "ATTENDANCE"
+    boardId: text("board_id").references(() => partyBoards.id, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    messageId: text("message_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("bot_reaction_messages_kind_board_idx").on(table.kind, table.boardId),
+  ]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -249,3 +270,5 @@ export type PartyGroupParty = typeof partyGroupParties.$inferSelect;
 export type PartySlot = typeof partySlots.$inferSelect;
 export type NewPartySlot = typeof partySlots.$inferInsert;
 export type PartyBusyEntry = typeof partyBusyEntries.$inferSelect;
+export type BotReactionMessage = typeof botReactionMessages.$inferSelect;
+export type NewBotReactionMessage = typeof botReactionMessages.$inferInsert;

@@ -15,6 +15,7 @@ import {
 import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
+import { PostAttendanceButton } from "./post-attendance-button";
 import { CLASS_OPTIONS } from "@/lib/classes";
 import {
   createBoard,
@@ -467,8 +468,9 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   >
                     {screenshotMode ? "✓ โหมดแคปภาพ" : "โหมดแคปภาพ"}
                   </button>
-                  {effectiveAdmin && (
+                  {effectiveAdmin && selectedBoardId && (
                     <>
+                      <PostAttendanceButton boardId={selectedBoardId} boardName={board.name} />
                       <button
                         type="button"
                         onClick={handleRenameBoard}

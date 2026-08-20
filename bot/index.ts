@@ -9,6 +9,7 @@ import {
   upsertRole,
   removeRole,
 } from "./sync";
+import { handleReactionAdd, handleReactionRemove } from "./reactions";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
@@ -111,6 +112,25 @@ client.on(Events.GuildRoleDelete, async (role) => {
     await removeRole(role.id);
   } catch (err) {
     console.error("[bot] failed to handle guildRoleDelete", err);
+  }
+});
+
+// Class-select + attendance ("ลา") emoji reactions — see bot/reactions.ts.
+// Ignores anything on a message the bot isn't tracking (looked up inside the
+// handlers), so this is safe to leave on even in channels used for other things.
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  try {
+    await handleReactionAdd(reaction, user);
+  } catch (err) {
+    console.error("[bot] failed to handle messageReactionAdd", err);
+  }
+});
+
+client.on(Events.MessageReactionRemove, async (reaction, user) => {
+  try {
+    await handleReactionRemove(reaction, user);
+  } catch (err) {
+    console.error("[bot] failed to handle messageReactionRemove", err);
   }
 });
 

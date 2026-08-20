@@ -34,7 +34,11 @@ export async function discordBotFetch(path: string, init: RequestInit = {}) {
     );
   }
 
-  return res.json();
+  // DELETE/PUT reaction endpoints (and some others) return 204 No Content —
+  // no body to parse.
+  if (res.status === 204) return undefined;
+  const text = await res.text();
+  return text ? JSON.parse(text) : undefined;
 }
 
 /** OAuth access-token authenticated request (used during user sign-in). */
@@ -80,6 +84,59 @@ export async function kickGuildMember(guildId: string, userId: string, reason?: 
 
   const body = await res.text().catch(() => "");
   throw new DiscordApiError(`Discord API kick failed: ${res.status} ${body}`, res.status);
+}
+
+export interface DiscordChannel {
+  id: string;
+  name: string;
+  type: number;
+  position: number;
+  parent_id: string | null;
+}
+
+// Discord channel type values relevant here (full enum has many more).
+const GUILD_TEXT = 0;
+const GUILD_ANNOUNCEMENT = 5;
+
+/**
+ * Lists the guild's regular text channels the bot can post reaction messages
+ * in (excludes voice/category/forum/etc). Used to populate a channel-picker
+ * in the admin UI rather than hard-coding a channel ID — the bot only needs
+ * "View Channel" + "Send Messages" + "Add Reactions" (+ "Manage Messages" to
+ * enforce single-choice on the class-select message) in whichever channel
+ * gets picked.
+ */
+export async function listGuildTextChannels(guildId: string): Promise<DiscordChannel[]> {
+  const channels: DiscordChannel[] = await discordBotFetch(`/guilds/${guildId}/channels`);
+  return channels
+    .filter((c) => c.type === GUILD_TEXT || c.type === GUILD_ANNOUNCEMENT)
+    .sort((a, b) => a.position - b.position);
+}
+
+/** Posts a plain-text message to a channel via the bot, returning the created message's id. */
+export async function createChannelMessage(channelId: string, content: string): Promise<string> {
+  const message = await discordBotFetch(`/channels/${channelId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+  return message.id as string;
+}
+
+/** Adds the bot's own reaction to a message — used to seed the emoji options members then click. */
+export async function addMessageReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
+  await discordBotFetch(`/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`, {
+    method: "PUT",
+  });
+}
+
+/** Best-effort delete of a previously-posted reaction message (e.g. when replacing it with a fresh one). */
+export async function deleteChannelMessage(channelId: string, messageId: string): Promise<void> {
+  try {
+    await discordBotFetch(`/channels/${channelId}/messages/${messageId}`, { method: "DELETE" });
+  } catch {
+    // Already deleted / channel gone / bot lost access — fine, we're
+    // replacing the tracked row either way.
+  }
 }
 
 export interface DiscordGuildMember {

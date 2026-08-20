@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
 import { ClassSyncPanel } from "@/components/class-sync-panel";
+import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
 import { memberDisplayName } from "@/lib/ui";
 
 interface SearchParams {
@@ -46,7 +47,12 @@ export default async function MembersPage({
           </p>
         </div>
 
-        {session.user.isAdmin && <ClassSyncPanel />}
+        {session.user.isAdmin && (
+          <div className="flex flex-wrap gap-2">
+            <ClassSyncPanel />
+            <ClassSelectBroadcastPanel />
+          </div>
+        )}
 
         <form className="flex flex-wrap items-center gap-2" method="get">
           <input

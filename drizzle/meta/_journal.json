@@ -71,6 +71,13 @@
       "when": 1787200012254,
       "tag": "0009_add_member_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787200847097,
+      "tag": "0010_add_bot_reaction_messages",
+      "breakpoints": true
     }
   ]
 }
