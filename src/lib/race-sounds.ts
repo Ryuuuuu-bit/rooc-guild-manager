@@ -170,6 +170,57 @@ export function playCheer() {
   });
 }
 
+/**
+ * Soft tick — plays once per spin cycle in the classic ("โหมดปกติ") picker,
+ * which cycles every ~70ms. Deliberately tiny and short (30ms) rather than
+ * a full effect, since it repeats 15-25+ times in under two seconds — a
+ * bigger sound here would blur into noise instead of reading as a spin.
+ */
+export function playTick() {
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const osc = c.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = 900;
+  const g = c.createGain();
+  g.gain.setValueAtTime(0.05, t0);
+  g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.03);
+  osc.connect(g).connect(masterGain);
+  osc.start(t0);
+  osc.stop(t0 + 0.03);
+}
+
+/**
+ * Short two-note chime for the classic picker's reveal moment. Deliberately
+ * lighter than playFanfare() below — that one plays alongside a multi-layer
+ * crowd cheer after a several-second horse race and is meant to feel like a
+ * big payoff; a classic draw resolves in under two seconds and admins often
+ * fire off many in a row, so a quick "ding-ding" reads as a satisfying
+ * confirmation without becoming fatiguing on repeat.
+ */
+export function playRevealChime() {
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  const t0 = c.currentTime;
+  const notes: [number, number][] = [
+    [783.99, 0], // G5
+    [1046.5, 0.09], // C6
+  ];
+  notes.forEach(([freq, start]) => {
+    const osc = c!.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    const g = c!.createGain();
+    g.gain.setValueAtTime(0.0001, t0 + start);
+    g.gain.exponentialRampToValueAtTime(0.22, t0 + start + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + start + 0.35);
+    osc.connect(g).connect(masterGain!);
+    osc.start(t0 + start);
+    osc.stop(t0 + start + 0.37);
+  });
+}
+
 /** Victory fanfare — a short ascending run into a held major chord. */
 export function playFanfare() {
   const c = getCtx();

@@ -5,7 +5,7 @@ import { memberDisplayName } from "@/lib/ui";
 import { ClassBadge, BenchedBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
 import { HorseRaceTrack, buildRacers, type RaceRacer } from "@/components/horse-race-track";
-import { setMuted as setSoundMuted, isMuted as getSoundMuted } from "@/lib/race-sounds";
+import { setMuted as setSoundMuted, isMuted as getSoundMuted, playTick, playRevealChime } from "@/lib/race-sounds";
 
 export interface PickableMember {
   id: string;
@@ -74,11 +74,13 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
       // Spin visually over the whole pool (livelier flicker) even though the
       // final landing only picks from availablePool.
       setCurrent(pool[Math.floor(Math.random() * pool.length)]);
+      playTick();
       ticks++;
       if (ticks >= totalTicks) {
         if (intervalRef.current) clearInterval(intervalRef.current);
         const finalPick = availablePool[Math.floor(Math.random() * availablePool.length)];
         commitWinner(finalPick);
+        playRevealChime();
       }
     }, SPIN_INTERVAL_MS);
   }
@@ -173,16 +175,16 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
             🐎 โหมดแข่งม้า
           </button>
         </div>
-        {mode === "race" && (
-          <button
-            type="button"
-            onClick={toggleMuted}
-            title={muted ? "เปิดเสียง" : "ปิดเสียง"}
-            className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800"
-          >
-            {muted ? "🔇 ปิดเสียงอยู่" : "🔊 เปิดเสียงอยู่"}
-          </button>
-        )}
+        {/* Shown in both modes now — classic mode has its own tick/chime
+            sounds too, not just the race. */}
+        <button
+          type="button"
+          onClick={toggleMuted}
+          title={muted ? "เปิดเสียง" : "ปิดเสียง"}
+          className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800"
+        >
+          {muted ? "🔇 ปิดเสียงอยู่" : "🔊 เปิดเสียงอยู่"}
+        </button>
       </div>
 
       {mode === "race" && race ? (
