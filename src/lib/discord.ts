@@ -232,6 +232,47 @@ export async function fetchAllGuildMembers(
   return members;
 }
 
+/**
+ * Live-checks whether a Discord user currently qualifies as an app admin
+ * (on the explicit user-id allowlist, or currently holding one of the
+ * configured admin roles), by asking Discord directly via the bot's own
+ * credentials — no user OAuth token needed.
+ *
+ * Used by requireAdmin() so that removing someone's admin role (or kicking
+ * them from the server) takes effect on their very next request, instead of
+ * waiting out their cached session — previously isAdmin was computed once
+ * at sign-in and baked into the JWT for the life of the session (up to 30
+ * days), so a revoked admin kept full write access until they happened to
+ * sign out and back in.
+ *
+ * Returns `null` (meaning "couldn't verify, caller should fall back to the
+ * cached session value") on a transient Discord API problem — a brief
+ * network hiccup or Discord outage should degrade to the old cached
+ * behavior, not lock every admin out of managing the guild while it's down.
+ * A definitive result — the person left the guild entirely (404), or a
+ * successful roles fetch — is always trusted, since correctly reacting to
+ * that is the actual point of this check.
+ */
+export async function checkIsCurrentlyAdmin(
+  guildId: string,
+  discordId: string,
+  adminUserIds: string[],
+  adminRoleIds: string[]
+): Promise<boolean | null> {
+  try {
+    const member: { roles?: string[] } = await discordBotFetch(`/guilds/${guildId}/members/${discordId}`);
+    const roles = member.roles ?? [];
+    return adminUserIds.includes(discordId) || roles.some((r) => adminRoleIds.includes(r));
+  } catch (err) {
+    if (err instanceof DiscordApiError && err.status === 404) {
+      // No longer a member of the guild at all — definitely not an admin.
+      return false;
+    }
+    console.error("Failed to live-verify admin status; falling back to cached session value", err);
+    return null;
+  }
+}
+
 /** Build a CDN URL for a member's avatar, falling back to Discord's default avatar. */
 export function discordAvatarUrl(
   discordId: string,
