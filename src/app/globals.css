@@ -31,3 +31,41 @@
     transform: scale(1);
   }
 }
+
+/* Horse race mini-game (see horse-race-track.tsx) — the galloping bob on
+ * each horse emoji, and the dust puffs kicked up behind them as they run.
+ * Applied via inline style (gallop-bob) and the .race-dust class (dust
+ * elements are appended/removed imperatively via refs for perf, not
+ * through React state, so they need a real CSS class rather than an
+ * arbitrary Tailwind animate-[] utility). */
+@keyframes gallop-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-3deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(3deg);
+  }
+}
+
+@keyframes race-dust-puff {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.4) translate(0, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.5) translate(-16px, 10px);
+  }
+}
+
+.race-dust {
+  position: absolute;
+  bottom: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  background: rgba(184, 143, 94, 0.55);
+  animation: race-dust-puff 0.5s ease-out forwards;
+  pointer-events: none;
+}
