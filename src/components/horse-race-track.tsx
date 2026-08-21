@@ -114,7 +114,11 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
         const x = Math.min(t / r.finishTime, 1);
         const eased = 1 - Math.pow(1 - x, 2);
         const wobble = x < 1 ? Math.sin(t * r.wobbleFreq + r.wobblePhase) * r.wobbleAmp * (1 - x) : 0;
-        const pct = Math.max(0, Math.min(93, eased * 92 + wobble));
+        // pct is the horse's CENTER position (the marker div is centered on
+        // it via translate(-50%) below), so 100 means "center flush with
+        // the lane's right edge" — capped just under that so the horse
+        // visibly approaches the finish stripe without overlapping it.
+        const pct = Math.max(0, Math.min(98, eased * 97 + wobble));
         const el = laneRefs.current[i];
         if (el) el.style.left = `${pct}%`;
         if (x < 1) {
@@ -187,8 +191,13 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
             <div ref={(el) => { dustRefs.current[i] = el; }} className="pointer-events-none absolute inset-0" />
             <div
               ref={(el) => { laneRefs.current[i] = el; }}
-              className="absolute top-1/2 flex -translate-y-1/2 flex-col items-center"
-              style={{ left: "0%" }}
+              className="absolute top-1/2 flex flex-col items-center"
+              // Centered on its own `left` point (both axes) so the horse's
+              // visual center — not its left edge — is what "pct" (set by
+              // the rAF loop above) actually refers to. Keeps the finish
+              // position predictable regardless of the marker's rendered
+              // width (avatar + emoji together).
+              style={{ left: "0%", transform: "translate(-50%, -50%)" }}
             >
               <span
                 className="z-10 -mb-1.5 inline-block h-5 w-5 shrink-0 overflow-hidden rounded-full"
@@ -202,11 +211,12 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
                   className="h-5 w-5 rounded-full object-cover"
                 />
               </span>
+              {/* No scaleX flip — 🐎 is already drawn facing right (the
+                  direction of travel) in every emoji set checked. */}
               <span
                 className="text-2xl leading-none"
                 style={{
                   display: "inline-block",
-                  transform: "scaleX(-1)",
                   animation: "gallop-bob 0.4s ease-in-out infinite",
                 }}
               >

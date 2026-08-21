@@ -11,6 +11,15 @@ declare module "next-auth" {
   interface User {
     isAdmin?: boolean;
     avatarUrl?: string;
+    /** The actual Discord snowflake — set explicitly in the signIn callback.
+     * Auth.js's own `user.id` is NOT reliably this: in this app's adapterless
+     * JWT-strategy setup, @auth/core's callback handler can overwrite
+     * `user.id` with a freshly generated internal UUID before the jwt
+     * callback ever sees it, so reading `user.id` there silently carries the
+     * wrong value through to session.user.discordId (see the jwt callback
+     * below). Stashing the real id under our own field name sidesteps that
+     * entirely. */
+    discordId?: string;
   }
   interface Session {
     user: {
@@ -93,9 +102,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         Number(discordProfile.discriminator) || 0
       );
 
-      // Carry the computed values through to the jwt callback below.
+      // Carry the computed values through to the jwt callback below. Set
+      // discordId explicitly here (from the verified profile) rather than
+      // relying on `user.id` in the jwt callback — see the User interface
+      // augmentation above for why.
       user.isAdmin = isAdmin;
       user.avatarUrl = avatarUrl;
+      user.discordId = discordProfile.id;
 
       // Best-effort: if this person currently holds the tracked role (e.g.
       // "Rooc"), make sure they show up in the roster right away rather
@@ -153,7 +166,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async jwt({ token, user }) {
       if (user) {
-        token.discordId = user.id;
+        // NOT user.id — see the User.discordId doc comment above. Bug found
+        // in production logs: requireAdmin()'s live Discord role check was
+        // calling Discord's API with an internal UUID instead of the real
+        // snowflake ID on every single request (400 "not a snowflake"),
+        // silently falling back to the cached session value every time —
+        // which meant the "revoked admin access takes effect immediately"
+        // fix never actually took effect.
+        token.discordId = user.discordId ?? "";
         token.username = user.name ?? "unknown";
         token.avatarUrl = user.avatarUrl ?? user.image ?? "";
         token.isAdmin = user.isAdmin ?? false;
