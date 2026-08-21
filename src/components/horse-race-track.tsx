@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
 import { playStartGun, startGallopLoop, playCheer, playFanfare } from "@/lib/race-sounds";
@@ -52,6 +52,37 @@ interface HorseRaceTrackProps {
 }
 
 const LANE_COLORS = ["#f59e0b", "#38bdf8", "#f472b6", "#a78bfa", "#34d399", "#fb7185", "#facc15", "#60a5fa"];
+/** How far short of the finish stripe a horse visually stops, in pixels —
+ * a fixed pixel amount rather than a percentage so it looks the same small
+ * gap at any track width, not a growing gap on wide screens. */
+const FINISH_GAP_PX = 14;
+
+/**
+ * A small hand-drawn galloping-horse silhouette, facing right (the
+ * direction of travel on this track). Deliberately NOT the 🐎 emoji —
+ * emoji glyphs are drawn by the viewer's OS font, and different platforms
+ * draw this specific horse facing different directions (confirmed: this
+ * app's Linux build environment draws it facing right, a guild member's
+ * Windows browser drew the same codepoint facing left). An inline SVG
+ * renders identically everywhere, so the facing direction is guaranteed
+ * instead of guessed per platform.
+ */
+function HorseSilhouette({ className, style }: { className?: string; style?: CSSProperties }) {
+  return (
+    <svg viewBox="0 0 100 64" className={className} style={style} fill="#c9986a" aria-hidden="true">
+      <path d="M14 30 C 4 26, 2 20, 8 14 C 10 22, 14 26, 18 30 Z" />
+      <path d="M20 40 L14 58 L20 58 L26 42 Z" />
+      <path d="M28 40 L26 58 L32 58 L34 42 Z" />
+      <ellipse cx="42" cy="32" rx="24" ry="13" />
+      <path d="M56 42 L52 58 L58 58 L62 44 Z" />
+      <path d="M64 40 L68 56 L74 56 L68 40 Z" />
+      <path d="M60 22 C 66 12, 76 6, 86 6 C 80 12, 74 18, 68 26 Z" />
+      <path d="M84 4 C 92 4, 98 8, 96 14 C 92 16, 86 15, 80 12 C 78 9, 80 5, 84 4 Z" />
+      <path d="M86 3 L90 -3 L91 5 Z" />
+      <path d="M62 20 L66 14 L70 18 L74 12 L78 15 L70 24 Z" fill="#8a5f3c" />
+    </svg>
+  );
+}
 
 export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
   const [phase, setPhase] = useState<"countdown" | "racing" | "finished">("countdown");
@@ -115,12 +146,19 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
         const eased = 1 - Math.pow(1 - x, 2);
         const wobble = x < 1 ? Math.sin(t * r.wobbleFreq + r.wobblePhase) * r.wobbleAmp * (1 - x) : 0;
         // pct is the horse's CENTER position (the marker div is centered on
-        // it via translate(-50%) below), so 100 means "center flush with
-        // the lane's right edge" — capped just under that so the horse
-        // visibly approaches the finish stripe without overlapping it.
-        const pct = Math.max(0, Math.min(98, eased * 97 + wobble));
+        // it via translate(-50%) below) as a percentage of the LANE's own
+        // width — 100 means "flush with the lane's right edge", which is
+        // also exactly where the finish stripe sits (the stripe is a child
+        // of this same lane now, positioned at right:0 — same coordinate
+        // system, so there's no separate percentage to keep in sync). The
+        // FINISH_GAP_PX below is a small constant pixel reserve so the
+        // horse visibly stops just short of the stripe rather than
+        // overlapping it — a fixed pixel amount reads consistently at any
+        // track width, unlike an earlier version of this that reserved a
+        // percentage and left a growing gap on wide screens.
+        const pct = Math.max(0, Math.min(100, eased * 100 + wobble));
         const el = laneRefs.current[i];
-        if (el) el.style.left = `${pct}%`;
+        if (el) el.style.left = `calc(${pct}% - ${FINISH_GAP_PX}px)`;
         if (x < 1) {
           allDone = false;
           if (Math.random() < 0.35) spawnDust(i, pct);
@@ -211,24 +249,23 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
                   className="h-5 w-5 rounded-full object-cover"
                 />
               </span>
-              {/* No scaleX flip — 🐎 is already drawn facing right (the
-                  direction of travel) in every emoji set checked. */}
-              <span
-                className="text-2xl leading-none"
-                style={{
-                  display: "inline-block",
-                  animation: "gallop-bob 0.4s ease-in-out infinite",
-                }}
-              >
-                🐎
-              </span>
+              <HorseSilhouette
+                className="h-6 w-9"
+                style={{ animation: "gallop-bob 0.4s ease-in-out infinite" }}
+              />
             </div>
+            {/* Finish stripe — a child of this same lane (not the outer
+                track), positioned at its right:0 — the exact same
+                coordinate system the horse's `left` percentage above is
+                computed against, so the two can never drift out of sync
+                the way they did when the stripe was positioned relative to
+                the whole track instead of each lane. */}
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 z-10 w-1.5 rounded-full"
+              style={{ backgroundImage: "repeating-linear-gradient(45deg, #000 0 6px, #fff 6px 12px)" }}
+            />
           </div>
         ))}
-        <div
-          className="pointer-events-none absolute inset-y-0 right-3 z-10 w-1.5 rounded-full"
-          style={{ backgroundImage: "repeating-linear-gradient(45deg, #000 0 6px, #fff 6px 12px)" }}
-        />
       </div>
     </div>
   );
