@@ -714,7 +714,9 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       </div>
 
       <DragOverlay>
-        {activeMember ? <MemberChip member={activeMember} draggable={false} showClassBadge={false} /> : null}
+        {activeMember ? (
+          <MemberChip member={activeMember} draggable={false} showClassBadge={false} enableViewTransition={false} />
+        ) : null}
       </DragOverlay>
     </DndContext>
   );
