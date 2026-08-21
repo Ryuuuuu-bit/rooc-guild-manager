@@ -1,10 +1,10 @@
 "use client";
 
-import Image from "next/image";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
+import { MemberAvatar } from "@/components/member-avatar";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
 
 const POPOVER_WIDTH = 240;
@@ -158,11 +158,10 @@ export function MemberPicker({
                   className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-xs text-zinc-200 transition hover:bg-zinc-800"
                 >
                   <span className="relative h-4 w-4 shrink-0 overflow-hidden rounded-full ring-1 ring-zinc-700">
-                    <Image
-                      src={m.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+                    <MemberAvatar
+                      src={m.discordAvatar}
                       alt={m.displayName}
                       fill
-                      unoptimized
                       sizes="16px"
                       className="object-cover"
                     />

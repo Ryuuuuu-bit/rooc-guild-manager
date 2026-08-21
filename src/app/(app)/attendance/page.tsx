@@ -1,8 +1,8 @@
 import Link from "next/link";
-import Image from "next/image";
 import { getAttendanceStats } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
+import { MemberAvatar } from "@/components/member-avatar";
 
 const DAY_OPTIONS = [
   { value: "7", label: "7 วัน" },
@@ -83,12 +83,11 @@ export default async function AttendancePage({
                 <td className="px-5 py-3 text-zinc-500">{i + 1}</td>
                 <td className="px-5 py-3">
                   <Link href={`/members/${row.member.id}`} className="flex items-center gap-3">
-                    <Image
-                      src={row.member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+                    <MemberAvatar
+                      src={row.member.discordAvatar}
                       alt={row.member.discordUsername}
                       width={28}
                       height={28}
-                      unoptimized
                       className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
                     />
                     <span className="truncate font-medium text-zinc-100">{memberDisplayName(row.member)}</span>

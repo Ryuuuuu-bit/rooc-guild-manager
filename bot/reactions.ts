@@ -13,6 +13,7 @@ import {
 } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
 import { getEmojiToClassMap } from "./job-classes";
+import { CONFIRM_AFTER_MS } from "./attendance-confirm";
 
 /** Ensures both the reaction and its parent message are fully loaded (both can arrive as partials). */
 async function resolve(reaction: MessageReaction | PartialMessageReaction): Promise<MessageReaction> {
@@ -63,13 +64,21 @@ async function countLeavesThisMonth(memberId: string): Promise<number> {
   return rows.length;
 }
 
+const LEAVE_CONFIRMATION_LIFETIME_MS = 30_000; // how long the temp confirmation message itself stays up
+
 /**
  * Posts a short-lived confirmation in the same channel so a member (and
  * anyone else watching) can see the exact date they just logged a leave on,
- * plus a rough running count against the guild's monthly-leave guideline.
- * Auto-deletes itself after a bit so it doesn't clutter the channel
- * long-term. Best-effort — a missing "Send Messages"/"Manage Messages"
- * permission just means no confirmation shows up, nothing else breaks.
+ * a rough running count against the guild's monthly-leave guideline, and —
+ * since this wasn't obvious before and members asked about it — when the
+ * leave actually becomes official (mirrors CONFIRM_AFTER_MS in
+ * attendance-confirm.ts, the same 30-minute hold that quietly runs behind
+ * this). Auto-deletes itself after LEAVE_CONFIRMATION_LIFETIME_MS so it
+ * doesn't clutter the channel long-term — states that lifetime in the
+ * message too, so its disappearance doesn't read as the bot glitching or
+ * someone deleting it. Best-effort — a missing "Send Messages"/"Manage
+ * Messages" permission just means no confirmation shows up, nothing else
+ * breaks.
  */
 async function sendTempLeaveConfirmation(
   reaction: MessageReaction,
@@ -81,12 +90,16 @@ async function sendTempLeaveConfirmation(
   if (!channel.isTextBased() || !("send" in channel)) return;
   try {
     const dateStr = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+    const confirmMinutes = Math.round(CONFIRM_AFTER_MS / 60_000);
+    const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
     const sent = await channel.send(
-      `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr} (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้)`
+      `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
+        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${ATTENDANCE_EMOJI} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
+        `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
     );
     setTimeout(() => {
       sent.delete().catch(() => {});
-    }, 30_000);
+    }, LEAVE_CONFIRMATION_LIFETIME_MS);
   } catch {
     // Non-fatal — the leave itself is already logged regardless.
   }

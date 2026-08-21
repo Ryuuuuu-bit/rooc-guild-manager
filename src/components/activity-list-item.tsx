@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { Member, MembershipEvent } from "@/db/schema";
 import { eventLabels, eventTypeColors, eventTypeDotColors, memberDisplayName } from "@/lib/ui";
 import { deleteMembershipEvent } from "@/app/actions/activity";
+import { MemberAvatar } from "@/components/member-avatar";
 
 /** One row in the activity feed (dashboard preview, /activity page, and
  * member profile history) — color-coded by event type (green join, red
@@ -53,12 +53,11 @@ export function ActivityListItem({
 
   return (
     <li className="flex items-center gap-3 px-5 py-3">
-      <Image
-        src={member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+      <MemberAvatar
+        src={member.discordAvatar}
         alt={member.discordUsername}
         width={32}
         height={32}
-        unoptimized
         className="h-8 w-8 rounded-full ring-1 ring-zinc-700"
       />
       <div className="min-w-0 flex-1">

@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useDraggable } from "@dnd-kit/core";
 import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
+import { MemberAvatar } from "@/components/member-avatar";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
 
 interface MemberChipProps {
@@ -43,11 +43,10 @@ export function MemberChip({ member, draggable = true, compact = false, showClas
         }`}
         style={{ minWidth: compact ? 18 : 22, minHeight: compact ? 18 : 22 }}
       >
-        <Image
-          src={member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+        <MemberAvatar
+          src={member.discordAvatar}
           alt={member.displayName}
           fill
-          unoptimized
           sizes={compact ? "18px" : "22px"}
           className="object-cover"
         />

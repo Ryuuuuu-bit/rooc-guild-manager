@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { memberDisplayName } from "@/lib/ui";
 import { ClassBadge, BenchedBadge } from "@/components/badges";
+import { MemberAvatar } from "@/components/member-avatar";
 
 export interface PickableMember {
   id: string;
@@ -106,12 +106,11 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
       <div className="flex flex-col items-center gap-5 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-10">
         {current ? (
           <div key={drawKey} className="flex flex-col items-center gap-3 animate-[divine-pop_0.35s_ease-out]">
-            <Image
-              src={current.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+            <MemberAvatar
+              src={current.discordAvatar}
               alt={current.discordUsername}
               width={112}
               height={112}
-              unoptimized
               className={`h-28 w-28 rounded-full ring-4 ${
                 spinning ? "ring-zinc-700" : "ring-amber-500/60"
               }`}
@@ -183,12 +182,11 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500/15 text-[10px] font-medium text-amber-300">
                   {drawnMembers.length - i}
                 </span>
-                <Image
-                  src={m.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+                <MemberAvatar
+                  src={m.discordAvatar}
                   alt={m.discordUsername}
                   width={18}
                   height={18}
-                  unoptimized
                   className="h-[18px] w-[18px] rounded-full"
                 />
                 {memberDisplayName(m)}

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
@@ -9,6 +8,7 @@ import { MemberStatusActions } from "@/components/member-status-actions";
 import { MemberNotes } from "@/components/member-notes";
 import { LogManualLeaveForm } from "@/components/log-manual-leave-form";
 import { ActivityListItem } from "@/components/activity-list-item";
+import { MemberAvatar } from "@/components/member-avatar";
 import { formatDistanceToNow } from "date-fns";
 
 export default async function MemberDetailPage({
@@ -26,12 +26,11 @@ export default async function MemberDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-        <Image
-          src={member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+        <MemberAvatar
+          src={member.discordAvatar}
           alt={member.discordUsername}
           width={64}
           height={64}
-          unoptimized
           className="h-16 w-16 rounded-full ring-2 ring-zinc-700"
         />
         <div className="min-w-0 flex-1">

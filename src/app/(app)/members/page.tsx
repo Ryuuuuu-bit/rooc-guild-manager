@@ -1,11 +1,11 @@
 import Link from "next/link";
-import Image from "next/image";
 import { listDiscordRoles, listMembers } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
 import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
 import { memberDisplayName } from "@/lib/ui";
+import { MemberAvatar } from "@/components/member-avatar";
 
 interface SearchParams {
   q?: string;
@@ -124,12 +124,11 @@ export default async function MembersPage({
               <tr key={member.id} className="transition hover:bg-zinc-800/40">
                 <td className="px-5 py-3">
                   <Link href={`/members/${member.id}`} className="flex items-center gap-3">
-                    <Image
-                      src={member.discordAvatar ?? "https://cdn.discordapp.com/embed/avatars/0.png"}
+                    <MemberAvatar
+                      src={member.discordAvatar}
                       alt={member.discordUsername}
                       width={32}
                       height={32}
-                      unoptimized
                       className="h-8 w-8 rounded-full ring-1 ring-zinc-700"
                     />
                     <div className="min-w-0">
