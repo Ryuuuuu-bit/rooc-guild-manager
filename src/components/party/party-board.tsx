@@ -136,10 +136,12 @@ interface PartyCardProps {
   onAssign: (partyId: string, slotIndex: number, memberId: string) => void;
   onSendBusy: (partyId: string, slotIndex: number) => void;
   onDelete: (partyId: string, label: string) => void;
+  /** Passed through to each slot's MemberChip — see MemberChip's `stacked` prop. */
+  stacked?: boolean;
 }
 
 /** One party as a self-contained card (header + 5 slot rows) so cards can wrap freely regardless of party count. */
-function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onSendBusy, onDelete }: PartyCardProps) {
+function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onSendBusy, onDelete, stacked = false }: PartyCardProps) {
   // Which empty slot's "pick a member" popover is open. Controlled here (rather
   // than left uncontrolled inside each PartySlot) so a successful pick can
   // auto-advance straight to the next empty slot for fast sequential filling.
@@ -189,6 +191,7 @@ function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, on
               onAssign={(selectedMemberId) => handleAssign(slotIndex, selectedMemberId)}
               pickerOpen={openSlotIndex === slotIndex}
               onPickerOpenChange={(open) => setOpenSlotIndex(open ? slotIndex : null)}
+              stacked={stacked}
             />
           );
         })}
@@ -647,6 +650,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onAssign={handleAssignToSlot}
                         onSendBusy={handleSendBusy}
                         onDelete={handleDeleteParty}
+                        stacked={screenshotMode}
                       />
                     ))}
                   </div>

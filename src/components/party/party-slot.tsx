@@ -20,6 +20,10 @@ interface PartySlotProps {
   /** Controlled open state for the empty-slot member picker — lets the parent auto-advance to the next empty slot. */
   pickerOpen?: boolean;
   onPickerOpenChange?: (open: boolean) => void;
+  /** Screenshot mode's forced 8-column grid is much narrower — stack the
+   * member chip's class badge below the name instead of beside it so the
+   * name stays readable. See MemberChip's `stacked` prop. */
+  stacked?: boolean;
 }
 
 export function PartySlot({
@@ -33,6 +37,7 @@ export function PartySlot({
   onAssign,
   pickerOpen,
   onPickerOpenChange,
+  stacked = false,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const { options: classOptions } = useJobClasses();
@@ -53,7 +58,7 @@ export function PartySlot({
     >
       {member ? (
         <div className="flex w-full flex-col gap-1">
-          <MemberChip member={member} draggable={isAdmin} compact showClassBadge={!isAdmin} />
+          <MemberChip member={member} draggable={isAdmin} compact showClassBadge={!isAdmin} stacked={stacked} />
           {isAdmin && (
             <div className="flex items-center gap-1">
               <select
