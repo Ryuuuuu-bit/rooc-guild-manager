@@ -625,7 +625,17 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     กลุ่มนี้ยังไม่มี party{effectiveAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+                  <div
+                    className={
+                      screenshotMode
+                        ? // Screenshot mode is for posting to Discord — the guild is used to
+                          // reading it as a fixed 8-per-row table (their old spreadsheet
+                          // layout), so force exactly 8 columns here regardless of viewport
+                          // width, instead of the width-driven auto-fill used for editing.
+                          "grid grid-cols-8 gap-2"
+                        : "grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3"
+                    }
+                  >
                     {activeGroup.parties.map((party) => (
                       <PartyCard
                         key={party.id}
