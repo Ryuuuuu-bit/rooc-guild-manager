@@ -11,10 +11,12 @@ import {
 } from "./sync";
 import { handleReactionAdd, handleReactionRemove } from "./reactions";
 import { confirmDueLeaves } from "./attendance-confirm";
+import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
 const LEAVE_CONFIRM_INTERVAL_MS = 5 * 60 * 1000; // sweep for ลา events due to confirm/discard
+const MIDNIGHT_CHECK_INTERVAL_MS = 60 * 1000; // check for a Thai-date rollover once a minute
 
 if (!process.env.DISCORD_BOT_TOKEN) {
   throw new Error("DISCORD_BOT_TOKEN is not set");
@@ -59,6 +61,23 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   await runLeaveConfirmSweep();
   setInterval(runLeaveConfirmSweep, LEAVE_CONFIRM_INTERVAL_MS);
+
+  // Set to today on startup (not undefined) so restarting the bot mid-day
+  // never triggers a spurious reset — only a genuine date rollover, caught
+  // by the interval below, does.
+  let lastResetThaiDate = thaiDateString();
+  const runMidnightResetCheck = async () => {
+    const today = thaiDateString();
+    if (today === lastResetThaiDate) return;
+    try {
+      const { boardsReset } = await resetDailyBusyLists();
+      lastResetThaiDate = today; // only advance on success — a failure retries every minute until it works
+      console.log(`[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน`);
+    } catch (err) {
+      console.error("[bot] เที่ยงคืน reset ล้มเหลว จะลองใหม่นาทีถัดไป", err);
+    }
+  };
+  setInterval(runMidnightResetCheck, MIDNIGHT_CHECK_INTERVAL_MS);
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {

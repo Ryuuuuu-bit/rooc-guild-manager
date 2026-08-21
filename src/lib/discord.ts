@@ -169,6 +169,25 @@ export async function addMessageReaction(channelId: string, messageId: string, e
   });
 }
 
+/**
+ * Clears every user's reaction for one specific emoji off a message in one
+ * call (Discord's bulk "Delete All Reactions for Emoji" endpoint) — used for
+ * the nightly Busy/ลา reset so the board's attendance message visually
+ * matches the freshly-cleared state, without having to remove each member's
+ * reaction one at a time. Best-effort: a missing "Manage Messages"
+ * permission, or the message/channel already being gone, shouldn't block
+ * the DB-side reset that always runs alongside this.
+ */
+export async function removeAllReactionsForEmoji(channelId: string, messageId: string, emoji: string): Promise<void> {
+  try {
+    await discordBotFetch(`/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`, {
+      method: "DELETE",
+    });
+  } catch {
+    // Non-fatal — see comment above.
+  }
+}
+
 /** Best-effort delete of a previously-posted reaction message (e.g. when replacing it with a fresh one). */
 export async function deleteChannelMessage(channelId: string, messageId: string): Promise<void> {
   try {
