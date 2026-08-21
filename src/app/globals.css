@@ -31,38 +31,3 @@
     transform: scale(1);
   }
 }
-
-/* Party board move transitions (see MemberChip's viewTransitionName + placeMember
- * in party-board.tsx). The browser default View Transition timing (~250ms with a
- * cross-fade) reads as sluggish/blurry for a small chip sliding a short distance —
- * tuned down to feel snappy and consistent with divine-pop's ~0.35s character
- * elsewhere in the app, and swapped to ease-out so the motion settles quickly
- * instead of lingering. Scoped to member-* named groups only, so we never affect
- * an unrelated future view transition elsewhere in the app. */
-::view-transition-group(*) {
-  animation-duration: 200ms;
-  animation-timing-function: ease-out;
-}
-::view-transition-old(*),
-::view-transition-new(*) {
-  animation-duration: 150ms;
-}
-
-/* The browser always gives the page an implicit "root" transition group in
- * addition to our named member-* ones — by default it cross-fades an old vs
- * new full-page screenshot for EVERY board update, even though nothing about
- * the page's overall size/position actually changes. That crossfade repaints
- * completely static elements too (e.g. the "รอลงปาตี้" pool box sitting
- * untouched at the top of the page), which reads as the whole page flashing/
- * bouncing on every add or remove — reported by a user. We only want the
- * individual member chips to glide, never the page itself, so the root pair
- * is fully opted out of the transition (source order after the tuning rules
- * above so it wins the tie on equal specificity). */
-::view-transition-group(root) {
-  animation: none;
-}
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}

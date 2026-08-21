@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -237,20 +236,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   function placeMember(member: PartyBoardMemberRef, destination: PartyDestination) {
     if (!selectedBoardId) return;
-    const applyUpdate = () => setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
-    // Moving a member between the pool/a slot/the busy list previously just
-    // snapped instantly — reported as the page "jumping". A View Transition
-    // (native browser API, no library needed) instead smoothly animates the
-    // change; each MemberChip carries a stable viewTransitionName so the
-    // moved member's chip visibly glides to its new spot rather than
-    // vanishing and reappearing. Unsupported browsers (no
-    // document.startViewTransition) just fall back to the instant update —
-    // feature-detected, no polyfill, nothing to break.
-    if (typeof document !== "undefined" && document.startViewTransition) {
-      document.startViewTransition(() => flushSync(applyUpdate));
-    } else {
-      applyUpdate();
-    }
+    // Tried animating this move with the View Transitions API (smooth glide
+    // between old/new position) — reverted per user feedback: with several
+    // chips potentially moving/reflowing across a busy board at once, the
+    // motion read as disorienting/nauseating in real use, not smooth. Back
+    // to a plain instant update. The actual "page jumps" bug this was meant
+    // to layer polish on top of is still fixed via the slot's min-h-[77px]
+    // (party-slot.tsx) — that's what stops the real layout shift.
+    setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
     startTransition(async () => {
       const result = await moveMember(selectedBoardId, member.id, destination);
       if (!result.ok) {
@@ -714,9 +707,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       </div>
 
       <DragOverlay>
-        {activeMember ? (
-          <MemberChip member={activeMember} draggable={false} showClassBadge={false} enableViewTransition={false} />
-        ) : null}
+        {activeMember ? <MemberChip member={activeMember} draggable={false} showClassBadge={false} /> : null}
       </DragOverlay>
     </DndContext>
   );
