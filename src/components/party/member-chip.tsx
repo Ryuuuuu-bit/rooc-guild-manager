@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
@@ -23,9 +24,16 @@ export function MemberChip({ member, draggable = true, compact = false, showClas
     disabled: !draggable,
   });
 
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  const style: CSSProperties = {
+    // Named so the View Transition triggered around each board update (see
+    // placeMember in party-board.tsx) can match "this same member" across
+    // their old and new DOM position and animate a smooth glide/morph
+    // between them, instead of an instant snap. Safe to always set — a
+    // member only ever appears in one place on the board at a time
+    // (pool, busy list, or a single slot), so this stays unique.
+    viewTransitionName: `member-${member.id}`,
+    ...(transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : {}),
+  };
 
   return (
     <div

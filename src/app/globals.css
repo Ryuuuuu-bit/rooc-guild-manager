@@ -31,3 +31,19 @@
     transform: scale(1);
   }
 }
+
+/* Party board move transitions (see MemberChip's viewTransitionName + placeMember
+ * in party-board.tsx). The browser default View Transition timing (~250ms with a
+ * cross-fade) reads as sluggish/blurry for a small chip sliding a short distance —
+ * tuned down to feel snappy and consistent with divine-pop's ~0.35s character
+ * elsewhere in the app, and swapped to ease-out so the motion settles quickly
+ * instead of lingering. Scoped to member-* named groups only, so we never affect
+ * an unrelated future view transition elsewhere in the app. */
+::view-transition-group(*) {
+  animation-duration: 200ms;
+  animation-timing-function: ease-out;
+}
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 150ms;
+}

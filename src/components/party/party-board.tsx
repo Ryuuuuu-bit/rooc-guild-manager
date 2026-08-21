@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -236,7 +237,20 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   function placeMember(member: PartyBoardMemberRef, destination: PartyDestination) {
     if (!selectedBoardId) return;
-    setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
+    const applyUpdate = () => setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
+    // Moving a member between the pool/a slot/the busy list previously just
+    // snapped instantly — reported as the page "jumping". A View Transition
+    // (native browser API, no library needed) instead smoothly animates the
+    // change; each MemberChip carries a stable viewTransitionName so the
+    // moved member's chip visibly glides to its new spot rather than
+    // vanishing and reappearing. Unsupported browsers (no
+    // document.startViewTransition) just fall back to the instant update —
+    // feature-detected, no polyfill, nothing to break.
+    if (typeof document !== "undefined" && document.startViewTransition) {
+      document.startViewTransition(() => flushSync(applyUpdate));
+    } else {
+      applyUpdate();
+    }
     startTransition(async () => {
       const result = await moveMember(selectedBoardId, member.id, destination);
       if (!result.ok) {
