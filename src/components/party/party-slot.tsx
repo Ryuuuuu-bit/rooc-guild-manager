@@ -40,7 +40,14 @@ export function PartySlot({
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[40px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
+      // min-h matches the occupied-slot state's natural height (member chip
+      // + class-select/ลา/✕ row) — an empty slot reserves the same space
+      // instead of being visibly shorter. Without this, clearing/filling a
+      // slot changes that party card's height, which (when it's the
+      // tallest card in its grid row) shrinks/grows the whole row and
+      // shoves everything below it up or down with no scroll compensation
+      // — reported as the page "jumping" when clicking ✕.
+      className={`flex min-h-[77px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
         isOver ? "border-amber-400 bg-amber-500/10" : "border-zinc-800"
       }`}
     >

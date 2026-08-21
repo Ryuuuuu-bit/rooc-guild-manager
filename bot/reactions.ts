@@ -92,6 +92,35 @@ async function sendTempLeaveConfirmation(
   }
 }
 
+/**
+ * Posts a short-lived confirmation stating exactly which class just got
+ * saved — members clicking several class emoji in a row (unsure which one
+ * "took") was a real reported source of confusion, and this states the
+ * outcome unambiguously regardless of whether the bot managed to strip the
+ * member's other reactions off the message (see stripFailed above). Mirrors
+ * sendTempLeaveConfirmation; best-effort/non-fatal, auto-deletes itself.
+ */
+async function sendTempClassConfirmation(
+  reaction: MessageReaction,
+  displayName: string,
+  className: string,
+  stripFailed: boolean
+) {
+  const channel = reaction.message.channel;
+  if (!channel.isTextBased() || !("send" in channel)) return;
+  try {
+    const hint = stripFailed
+      ? " (ถ้ายังเห็น reaction อาชีพเก่าค้างอยู่ ไม่ต้องตกใจ ระบบยึดอันนี้เป็นหลักแล้ว)"
+      : "";
+    const sent = await channel.send(`✅ **${displayName}** เลือกอาชีพ: ${className}${hint}`);
+    setTimeout(() => {
+      sent.delete().catch(() => {});
+    }, 20_000);
+  } catch {
+    // Non-fatal — the class itself is already saved regardless.
+  }
+}
+
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
 async function clearMemberSlotOnBoard(memberId: string, boardId: string) {
   const rows = await db
@@ -153,16 +182,31 @@ export async function handleReactionAdd(
 
     // Enforce single choice — strip the user's reaction from every other
     // class emoji on this message so only their latest click remains.
+    let stripFailed = false;
     for (const [, other] of reaction.message.reactions.cache) {
       if (other.emoji.name === emojiName) continue;
       if (!emojiToClass[other.emoji.name ?? ""]) continue;
       try {
         await other.users.remove(user.id);
-      } catch {
-        // Missing "Manage Messages" permission, or nothing to remove —
-        // non-fatal either way, the class is already updated above.
+      } catch (err) {
+        // Most commonly a missing "Manage Messages" permission (that other
+        // reaction is left behind, visually stacking up if this keeps
+        // happening) — non-fatal either way, the class itself is already
+        // updated above and the confirmation below states it unambiguously
+        // regardless of what's left stuck on the message. Logged (not
+        // silently swallowed) so a permission problem shows up in Railway
+        // logs rather than only ever surfacing as vague member confusion.
+        stripFailed = true;
+        console.error(`[bot] failed to strip old class reaction for ${user.id}`, err);
       }
     }
+
+    const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
+    // Members clicking several class emoji in a row and not being sure
+    // which one "stuck" was a real reported source of confusion — this
+    // states the outcome explicitly regardless of whatever's visually left
+    // on the message's reactions.
+    void sendTempClassConfirmation(reaction, displayName, className, stripFailed);
     return;
   }
 
