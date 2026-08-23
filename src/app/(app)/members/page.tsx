@@ -3,7 +3,6 @@ import { listDiscordRoles, listMembers } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
-import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
 import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
 
@@ -19,7 +18,7 @@ export default async function MembersPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const session = await requireUser();
+  await requireUser();
   const params = await searchParams;
   const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
   const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
@@ -45,12 +44,6 @@ export default async function MembersPage({
             พบ {membersList.length} คน
           </p>
         </div>
-
-        {session.user.isAdmin && (
-          <div className="flex flex-wrap gap-2">
-            <ClassSelectBroadcastPanel />
-          </div>
-        )}
 
         <form className="flex flex-wrap items-center gap-2" method="get">
           <input

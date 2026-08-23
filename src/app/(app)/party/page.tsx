@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/authz";
 import { getPartyBoardDetail, listPartyBoards } from "@/lib/party-data";
 import { PartyBoardView } from "@/components/party/party-board";
+import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
 
 export default async function PartyPage({
   searchParams,
@@ -19,13 +20,20 @@ export default async function PartyPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-50">จัดปาตี้ / กิจกรรม</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          {session.user.isAdmin
-            ? "สร้างกระดานแยกตาม content ได้อิสระ (เช่น ปกติ, GVG) ลากรายชื่อสมาชิก (role Rooc) เข้า/ออกปาตี้ได้"
-            : "มุมมองปาตี้ปัจจุบันของกิลด์ — เฉพาะแอดมินแก้ไขได้"}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-50">จัดปาตี้ / กิจกรรม</h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            {session.user.isAdmin
+              ? "สร้างกระดานแยกตาม content ได้อิสระ (เช่น ปกติ, GVG) ลากรายชื่อสมาชิก (role Rooc) เข้า/ออกปาตี้ได้"
+              : "มุมมองปาตี้ปัจจุบันของกิลด์ — เฉพาะแอดมินแก้ไขได้"}
+          </p>
+        </div>
+        {/* Guild-wide (not tied to any one board), so it lives at page level
+         * rather than inside a per-board panel — kept here rather than on
+         * /members since setting up classes is part of the same event-prep
+         * flow as posting each board's ลา message below. */}
+        {session.user.isAdmin && <ClassSelectBroadcastPanel />}
       </div>
       <PartyBoardView
         key={selectedBoardId ?? "empty"}
