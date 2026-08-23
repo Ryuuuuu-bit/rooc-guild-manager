@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   getAttendanceStatus,
+  getBoardEmoji,
   listDiscordChannels,
   postAttendanceMessage,
   type BotMessageStatus,
@@ -21,6 +22,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
   const [channels, setChannels] = useState<DiscordChannel[] | null>(null);
   const [status, setStatus] = useState<BotMessageStatus | null>(null);
   const [channelId, setChannelId] = useState("");
+  const [emoji, setEmoji] = useState("🙋");
   const [error, setError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
 
@@ -28,7 +30,11 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
     setOpen(true);
     setLoading(true);
     setError(null);
-    const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getAttendanceStatus(boardId)]);
+    const [chRes, currentStatus, currentEmoji] = await Promise.all([
+      listDiscordChannels(),
+      getAttendanceStatus(boardId),
+      getBoardEmoji(boardId),
+    ]);
     setLoading(false);
     if (!chRes.ok || !chRes.channels) {
       setError(chRes.error ?? "ดึงรายชื่อ channel ไม่สำเร็จ");
@@ -37,13 +43,14 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
     setChannels(chRes.channels);
     setStatus(currentStatus);
     setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
+    setEmoji(currentEmoji);
   }
 
   async function handlePost() {
     if (!channelId) return;
     setPosting(true);
     setError(null);
-    const res = await postAttendanceMessage(boardId, channelId);
+    const res = await postAttendanceMessage(boardId, channelId, emoji);
     setPosting(false);
     if (!res.ok) {
       setError(res.error ?? "โพสต์ไม่สำเร็จ");
@@ -79,9 +86,21 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
             {!loading && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-zinc-500">
-                  บอทจะโพสต์ข้อความให้สมาชิกกด 🙋 ถ้าลารอบนี้ — ไม่กด = เข้าร่วมตามปกติ ระบบจะย้ายคนที่กดไปไว้ในลิสต์
+                  บอทจะโพสต์ข้อความให้สมาชิกกดอิโมจิด้านล่างถ้าลารอบนี้ — ไม่กด = เข้าร่วมตามปกติ ระบบจะย้ายคนที่กดไปไว้ในลิสต์
                   &quot;Busy / ลา&quot; ของกระดานนี้อัตโนมัติ (ต้องให้บอทมีสิทธิ์ &quot;Send Messages&quot; และ &quot;Add Reactions&quot; ใน channel ที่เลือก)
                 </p>
+
+                <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                  อิโมจิสำหรับกระดานนี้ (ตั้งให้ไม่ซ้ำกับกระดานอื่นได้ เช่น GL ใช้ 🙋 ส่วน WOE ใช้ 🏰 จะได้แยกออกจากกันชัดเจน)
+                  <input
+                    type="text"
+                    value={emoji}
+                    onChange={(e) => setEmoji(e.target.value)}
+                    maxLength={8}
+                    placeholder="🙋"
+                    className="w-20 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-center text-lg focus:border-amber-500 focus:outline-none"
+                  />
+                </label>
 
                 {status && (
                   <p className="rounded-lg border border-emerald-900/60 bg-emerald-950/30 p-2 text-xs text-emerald-300">

@@ -84,7 +84,8 @@ async function sendTempLeaveConfirmation(
   reaction: MessageReaction,
   displayName: string,
   boardName: string,
-  leaveCount: number
+  leaveCount: number,
+  emoji: string
 ) {
   const channel = reaction.message.channel;
   if (!channel.isTextBased() || !("send" in channel)) return;
@@ -94,7 +95,7 @@ async function sendTempLeaveConfirmation(
     const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
     const sent = await channel.send(
       `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
-        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${ATTENDANCE_EMOJI} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
+        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${emoji} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
         `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
     );
     setTimeout(() => {
@@ -224,7 +225,14 @@ export async function handleReactionAdd(
   }
 
   if (row.kind === "ATTENDANCE" && row.boardId) {
-    if (emojiName !== ATTENDANCE_EMOJI) {
+    const boardId = row.boardId;
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    // Each board can have its own reaction emoji (set when the "ลา" message
+    // was posted — see postAttendanceMessage) so GL/WOE/etc. read distinctly
+    // in Discord; fall back to the app-wide default for boards that never
+    // customized it.
+    const expectedEmoji = board?.emoji || ATTENDANCE_EMOJI;
+    if (emojiName !== expectedEmoji) {
       await reaction.users.remove(user.id).catch(() => {});
       return;
     }
@@ -234,14 +242,12 @@ export async function handleReactionAdd(
       return;
     }
 
-    const boardId = row.boardId;
     await db
       .delete(partyBusyEntries)
       .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, member.id)));
     await db.insert(partyBusyEntries).values({ boardId, memberId: member.id, sortOrder: 0 });
     await clearMemberSlotOnBoard(member.id, boardId);
 
-    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
     // Logged right away so it shows in the activity feed immediately, but
     // left unconfirmed (confirmedAt: null) — the /attendance stats page
     // only counts it once it survives 30 minutes without being un-reacted
@@ -257,7 +263,7 @@ export async function handleReactionAdd(
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id);
     // Fire-and-forget — don't hold up the reaction handler on a channel post.
-    void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount);
+    void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji);
   }
 }
 
@@ -271,8 +277,9 @@ export async function handleReactionRemove(
   const row = await findTrackedMessage(reaction.message.id);
   if (!row || row.kind !== "ATTENDANCE" || !row.boardId) return;
 
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
   const emojiName = reaction.emoji.name ?? "";
-  if (emojiName !== ATTENDANCE_EMOJI) return;
+  if (emojiName !== (board?.emoji || ATTENDANCE_EMOJI)) return;
 
   const member = await db.query.members.findFirst({ where: eq(members.discordId, user.id) });
   if (!member) return;
@@ -306,7 +313,6 @@ export async function handleReactionRemove(
     return;
   }
 
-  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
   await logEvent(
     member.id,
     "ATTENDANCE_RETURN",

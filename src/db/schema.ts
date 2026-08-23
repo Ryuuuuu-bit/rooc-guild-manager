@@ -149,6 +149,14 @@ export const partyBoards = pgTable("party_boards", {
   id: text("id").primaryKey().$defaultFn(() => createId()),
   name: text("name").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  // The reaction emoji used for THIS board's "ลา" (attendance opt-out)
+  // message — null means "use the default" (ATTENDANCE_EMOJI in
+  // src/lib/class-emoji.ts). Lets an admin give each board (e.g. "GL" vs
+  // "WOE") a visually distinct emoji so it's obvious at a glance in Discord
+  // which event a leave reaction is for, without needing a second "reason"
+  // concept layered onto the existing one-board-one-emoji model. Set (and
+  // re-settable) from the "โพสต์ ลา ใน Discord" dialog — see postAttendanceMessage.
+  emoji: text("emoji"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { discordRoles, members, membershipEvents, memberNotes } from "@/db/schema";
+import { discordRoles, members, membershipEvents, memberNotes, partyBoards } from "@/db/schema";
 import { and, arrayContains, desc, eq, gte, ilike, isNotNull, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
@@ -121,10 +121,17 @@ export async function getRecentActivity(limit = 30, days?: number) {
  * (how many events did they have the chance to attend) that this app's
  * board model doesn't track (boards are a single always-current sheet
  * reused across events, not one row per historical event), so a rate would
- * be more misleading than informative. Only counts currently-ACTIVE members
- * — someone who's left the guild isn't meaningful to rank here.
+ * be more misleading than informative. Only lists members who are
+ * currently ACTIVE and not benched — someone who's left the guild isn't
+ * meaningful to rank here, and a benched member isn't really "playing"
+ * (they're excluded from every board's roster too, see party-data.ts), so
+ * listing them at 0 ลา would just be clutter, not signal.
+ *
+ * @param boardId Optional — restricts to leaves logged on one specific board
+ * (e.g. only the "GL" board or only "WOE"), so admins can tell the two
+ * apart instead of seeing one merged total. Omit for the all-boards view.
  */
-export async function getAttendanceStats(days?: number) {
+export async function getAttendanceStats(days?: number, boardId?: string) {
   // Only confirmed leaves count — a member has to leave the "ลา" reaction
   // in place for 30 minutes before it's counted, so a quick test-click that
   // gets un-reacted right away is discarded rather than ever showing up
@@ -133,6 +140,9 @@ export async function getAttendanceStats(days?: number) {
   if (days) {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     conditions.push(gte(membershipEvents.createdAt, cutoff));
+  }
+  if (boardId) {
+    conditions.push(eq(membershipEvents.boardId, boardId));
   }
 
   const rows = await db
@@ -146,7 +156,10 @@ export async function getAttendanceStats(days?: number) {
 
   const leaveCountByMember = new Map(rows.map((r) => [r.memberId, r.leaveCount]));
 
-  const activeMembers = await db.select().from(members).where(eq(members.status, "ACTIVE"));
+  const activeMembers = await db
+    .select()
+    .from(members)
+    .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)));
 
   const stats = activeMembers
     .map((m) => ({ member: m, leaveCount: leaveCountByMember.get(m.id) ?? 0 }))
@@ -155,6 +168,42 @@ export async function getAttendanceStats(days?: number) {
   const totalLeaveEvents = rows.reduce((sum, r) => sum + r.leaveCount, 0);
 
   return { stats, totalLeaveEvents };
+}
+
+/**
+ * Confirmed-leave totals grouped by board (e.g. "GL": 12, "WOE": 8) — feeds
+ * the small per-board summary on the /attendance page so switching the
+ * board filter isn't the only way to see the split. Leaves logged before
+ * boardId existed on membershipEvents (or whose board has since been
+ * deleted) are bucketed under a null id so the numbers still add up to
+ * getAttendanceStats's totalLeaveEvents.
+ */
+export async function getAttendanceBoardBreakdown(days?: number) {
+  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
+  if (days) {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    conditions.push(gte(membershipEvents.createdAt, cutoff));
+  }
+
+  const rows = await db
+    .select({
+      boardId: membershipEvents.boardId,
+      leaveCount: sql<number>`count(*)::int`,
+    })
+    .from(membershipEvents)
+    .where(and(...conditions))
+    .groupBy(membershipEvents.boardId);
+
+  const boards = await db.select({ id: partyBoards.id, name: partyBoards.name }).from(partyBoards);
+  const nameById = new Map(boards.map((b) => [b.id, b.name]));
+
+  return rows
+    .map((r) => ({
+      boardId: r.boardId,
+      boardName: r.boardId ? nameById.get(r.boardId) ?? "กระดานที่ถูกลบ" : "ไม่ระบุกระดาน",
+      leaveCount: r.leaveCount,
+    }))
+    .sort((a, b) => b.leaveCount - a.leaveCount);
 }
 
 /**

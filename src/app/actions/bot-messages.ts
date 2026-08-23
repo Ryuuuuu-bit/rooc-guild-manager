@@ -74,6 +74,13 @@ export async function getAttendanceStatus(boardId: string): Promise<BotMessageSt
   return toStatus(await getCurrentMessage("ATTENDANCE", boardId));
 }
 
+/** The emoji currently configured for this board's "ลา" message — falls back to the app-wide default if the board hasn't customized it. */
+export async function getBoardEmoji(boardId: string): Promise<string> {
+  await requireAdmin();
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  return board?.emoji || ATTENDANCE_EMOJI;
+}
+
 /**
  * Posts (or reposts, replacing the old one) the guild-wide "เลือกอาชีพ"
  * message: one line per class with its emoji, seeded with the bot's own
@@ -158,13 +165,23 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
  * only, removing the reaction returns them to the pool. Reposting replaces
  * the previous message so there's only ever one live message the bot
  * listens to per board.
+ *
+ * `emoji` is saved onto the board (partyBoards.emoji) as a side effect, so
+ * every board can use a visually distinct reaction — e.g. 🙋 for a "GL"
+ * board and 🏰 for a "WOE" board — which the bot's reaction handlers
+ * (bot/reactions.ts, bot/midnight-reset.ts) then read per-board instead of
+ * assuming one emoji for the whole app. Falls back to the app-wide default
+ * (ATTENDANCE_EMOJI) if left blank.
  */
-export async function postAttendanceMessage(boardId: string, channelId: string): Promise<ActionResult> {
+export async function postAttendanceMessage(boardId: string, channelId: string, emoji?: string): Promise<ActionResult> {
   await requireAdmin();
   if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
 
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
   if (!board) return { ok: false, error: "ไม่พบกระดาน" };
+
+  const resolvedEmoji = emoji?.trim() || ATTENDANCE_EMOJI;
+  await db.update(partyBoards).set({ emoji: resolvedEmoji, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
 
   const previous = await getCurrentMessage("ATTENDANCE", boardId);
   if (previous) {
@@ -172,7 +189,7 @@ export async function postAttendanceMessage(boardId: string, channelId: string):
     await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
   }
 
-  const content = `📋 **${board.name}** — ถ้า**ลา/ไม่สะดวก**รอบนี้ กด ${ATTENDANCE_EMOJI} (ไม่กด = เข้าร่วมตามปกติ) เอาอิโมจิออกได้ถ้ากลับมาเข้าร่วม`;
+  const content = `📋 **${board.name}** — ถ้า**ลา/ไม่สะดวก**รอบนี้ กด ${resolvedEmoji} (ไม่กด = เข้าร่วมตามปกติ) เอาอิโมจิออกได้ถ้ากลับมาเข้าร่วม`;
 
   let messageId: string;
   try {
@@ -189,11 +206,11 @@ export async function postAttendanceMessage(boardId: string, channelId: string):
 
   revalidatePath("/party");
   try {
-    await addMessageReaction(channelId, messageId, ATTENDANCE_EMOJI);
+    await addMessageReaction(channelId, messageId, resolvedEmoji);
   } catch {
     return {
       ok: true,
-      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่สำเร็จ — ลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
+      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่สำเร็จ — เช็คว่าอิโมจิที่ใส่ถูกต้องไหม แล้วลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
     };
   }
   return { ok: true };

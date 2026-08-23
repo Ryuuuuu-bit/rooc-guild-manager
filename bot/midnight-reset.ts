@@ -16,7 +16,7 @@ export function thaiDateString(d: Date = new Date()): string {
 
 /**
  * Clears every board's "Busy / ลา" list back to empty, and best-effort pulls
- * the 🙋 reaction off each board's tracked attendance message, so every
+ * each board's attendance emoji off its tracked message, so every
  * member starts the new day available again without having to manually
  * un-react. Scheduled to run once per Thai calendar day — see the
  * midnight-check loop in index.ts.
@@ -29,7 +29,7 @@ export function thaiDateString(d: Date = new Date()): string {
  * would just spam their history with a no-op "returned" line.
  */
 export async function resetDailyBusyLists(): Promise<{ boardsReset: number }> {
-  const boards = await db.select({ id: partyBoards.id }).from(partyBoards);
+  const boards = await db.select({ id: partyBoards.id, emoji: partyBoards.emoji }).from(partyBoards);
   let boardsReset = 0;
 
   for (const board of boards) {
@@ -44,7 +44,9 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number }> {
       where: and(eq(botReactionMessages.kind, "ATTENDANCE"), eq(botReactionMessages.boardId, board.id)),
     });
     if (tracked) {
-      await removeAllReactionsForEmoji(tracked.channelId, tracked.messageId, ATTENDANCE_EMOJI);
+      // Per-board emoji (see partyBoards.emoji) — falls back to the app-wide
+      // default for boards that never customized theirs.
+      await removeAllReactionsForEmoji(tracked.channelId, tracked.messageId, board.emoji || ATTENDANCE_EMOJI);
     }
   }
 
