@@ -19,14 +19,20 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * (not necessarily today), and inserted already-confirmed (no 30-minute
  * wait like the reaction flow — there's no reaction to accidentally
  * undo here, the admin is vouching for it directly), so it counts toward
- * /attendance stats immediately. Not tied to any party board (boardId
- * stays null), same as any other legacy/manually-entered leave.
+ * /attendance stats immediately.
+ *
+ * boardId is optional — an admin can attribute the leave to a specific
+ * board (e.g. "GL" or "WOE") if they know which event it was for, same as
+ * a real reaction would; leaving it unset keeps the leave un-tied to any
+ * board (shown as "ไม่ระบุกระดาน" on /attendance), same as before this was
+ * selectable.
  */
 export async function addManualLeave(memberId: string, formData: FormData): Promise<ActionResult> {
   const session = await requireAdmin();
 
   const dateStr = (formData.get("date") as string)?.trim();
   const reason = (formData.get("reason") as string)?.trim();
+  const boardId = (formData.get("boardId") as string)?.trim() || null;
 
   if (!dateStr || !DATE_RE.test(dateStr)) {
     return { ok: false, error: "กรุณาเลือกวันที่ให้ถูกต้อง" };
@@ -57,7 +63,7 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
     type: "ATTENDANCE_LEAVE",
     detail,
     actor: session.user.username,
-    boardId: null,
+    boardId,
     confirmedAt: new Date(),
     createdAt: leaveDate,
   });

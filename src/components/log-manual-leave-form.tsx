@@ -9,7 +9,17 @@ import { addManualLeave } from "@/app/actions/attendance";
  * (DM, in person, etc.) — never went through the reaction flow, so
  * without this there's no way to reflect it in /attendance stats.
  */
-export function LogManualLeaveForm({ memberId, todayStr }: { memberId: string; todayStr: string }) {
+export function LogManualLeaveForm({
+  memberId,
+  todayStr,
+  boards,
+}: {
+  memberId: string;
+  todayStr: string;
+  /** For attributing the leave to a specific board (e.g. "GL"/"WOE") on
+   * the /attendance breakdown — optional, same as a real reaction. */
+  boards: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -53,6 +63,23 @@ export function LogManualLeaveForm({ memberId, todayStr }: { memberId: string; t
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
           />
         </div>
+        {boards.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] text-zinc-500">ลาของกระดาน (ถ้าระบุได้)</label>
+            <select
+              name="boardId"
+              defaultValue=""
+              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+            >
+              <option value="">ไม่ระบุ</option>
+              {boards.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button
           type="submit"
           disabled={pending}

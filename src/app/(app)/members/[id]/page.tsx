@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
+import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
 import { memberDisplayName } from "@/lib/ui";
@@ -22,6 +23,7 @@ export default async function MemberDetailPage({
   if (!data) notFound();
 
   const { member, events, notes } = data;
+  const boards = session.user.isAdmin ? await listPartyBoards() : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -135,7 +137,7 @@ export default async function MemberDetailPage({
               <p className="mb-4 text-xs text-zinc-500">
                 สำหรับกรณีสมาชิกแจ้งลาส่วนตัว (เช่นทาง DM) ที่ไม่ได้กด reaction ในดิสคอร์ด
               </p>
-              <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} />
+              <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} boards={boards} />
             </section>
           )}
 
