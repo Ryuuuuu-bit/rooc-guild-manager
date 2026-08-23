@@ -22,11 +22,11 @@ export default async function PartyPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">จัดปาตี้ / กิจกรรม</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">จัดปาร์ตี้ / กิจกรรม</h1>
           <p className="mt-1 text-sm text-zinc-400">
             {session.user.isAdmin
-              ? "สร้างกระดานแยกตาม content ได้อิสระ (เช่น ปกติ, GVG) ลากรายชื่อสมาชิก (role Rooc) เข้า/ออกปาตี้ได้"
-              : "มุมมองปาตี้ปัจจุบันของกิลด์ — เฉพาะแอดมินแก้ไขได้"}
+              ? "สร้างกระดานแยกตาม content ได้อิสระ (เช่น ปกติ, GVG) ลากรายชื่อสมาชิก (role Rooc) เข้า/ออกปาร์ตี้ได้"
+              : "มุมมองปาร์ตี้ปัจจุบันของกิลด์ — เฉพาะแอดมินแก้ไขได้"}
           </p>
         </div>
         {/* Guild-wide (not tied to any one board), so it lives at page level

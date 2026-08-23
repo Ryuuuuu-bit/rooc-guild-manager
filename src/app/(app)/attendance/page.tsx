@@ -88,7 +88,7 @@ export default async function AttendancePage({
           <h1 className="text-2xl font-semibold text-zinc-50">สถิติการลา</h1>
           <p className="mt-1 text-sm text-zinc-400">
             จำนวนครั้งที่แต่ละสมาชิกกด &quot;ลา&quot;{selectedBoardName ? ` ในกระดาน "${selectedBoardName}"` : ""}
-            ในช่วงเวลาที่เลือก — รวม {totalLeaveEvents} ครั้ง{selectedBoardName ? "" : "ทั้งหมด"} เรียงจากลาบ่อยสุดไปน้อยสุด
+            ในช่วงเวลาที่เลือก — รวม{selectedBoardName ? "" : "ทั้งหมด"} {totalLeaveEvents} ครั้ง เรียงจากลาบ่อยสุดไปน้อยสุด
           </p>
           {session.user.isAdmin && (
             <p className="mt-1 text-xs text-zinc-500">

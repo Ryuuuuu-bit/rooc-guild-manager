@@ -65,7 +65,7 @@ export function LogManualLeaveForm({
         </div>
         {boards.length > 0 && (
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-zinc-500">ลาของกระดาน (ถ้าระบุได้)</label>
+            <label className="text-[10px] text-zinc-500">กระดานที่ลา (ถ้าระบุได้)</label>
             <select
               name="boardId"
               defaultValue=""

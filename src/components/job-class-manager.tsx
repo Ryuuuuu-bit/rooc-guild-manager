@@ -135,7 +135,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-400">
-        อาชีพในลิสต์นี้จะโผล่ในทุกจุดที่เลือกอาชีพ (โปรไฟล์สมาชิก, จัดปาตี้) และเป็นอิโมจิในข้อความ &quot;เลือกอาชีพ&quot; บน
+        อาชีพในรายชื่อนี้จะโผล่ในทุกจุดที่เลือกอาชีพ (โปรไฟล์สมาชิก, จัดปาร์ตี้) และเป็นอิโมจิในข้อความ &quot;เลือกอาชีพ&quot; บน
         Discord — แก้ที่นี่แล้วไม่ต้องรอให้ Claude แก้โค้ดอีก
       </p>
 

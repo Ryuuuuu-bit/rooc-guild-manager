@@ -464,8 +464,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
           <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
               <span>
-                กระดาน <span className="font-medium text-zinc-200">{board.name}</span> · ลงปาตี้แล้ว{" "}
-                {placedCount} คน · ว่าง {board.unassigned.length} คน · ลา/ไม่ว่าง {board.busy.length} คน
+                กระดาน <span className="font-medium text-zinc-200">{board.name}</span> · ลงปาร์ตี้แล้ว{" "}
+                {placedCount} คน · ว่าง {board.unassigned.length} คน · Busy / ลา {board.busy.length} คน
               </span>
               {isAdmin && (
                 <div className="flex items-center gap-2">
@@ -521,7 +521,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               <section>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-medium text-zinc-300">
-                    รอลงปาตี้ ({filteredUnassigned.length}
+                    รอลงปาร์ตี้ ({filteredUnassigned.length}
                     {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
                   </h2>
                   <input
@@ -536,7 +536,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     onChange={(e) => setPoolClassFilter(e.target.value)}
                     className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="">ทุก class</option>
+                    <option value="">ทุกอาชีพ</option>
                     {classOptions.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -544,10 +544,10 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     ))}
                   </select>
                 </div>
-                <DroppableZone id="unassigned" label="รอลงปาตี้" maxHeightClass="max-h-[420px]">
+                <DroppableZone id="unassigned" label="รอลงปาร์ตี้" maxHeightClass="max-h-[420px]">
                   {filteredUnassigned.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
+                      {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาร์ตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
                     </span>
                   )}
                   {filteredUnassigned.map((member) => (
@@ -570,7 +570,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       : "border-transparent text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  {g.name} <span className="ml-1 text-xs text-zinc-500">{g.parties.length} party</span>
+                  {g.name} <span className="ml-1 text-xs text-zinc-500">{g.parties.length} ปาร์ตี้</span>
                 </button>
               ))}
               {effectiveAdmin && (
@@ -608,7 +608,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onClick={() => handleCreateParty(activeGroup.id)}
                         className="rounded-lg border border-dashed border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
                       >
-                        + เพิ่ม Party
+                        + ปาร์ตี้ใหม่
                       </button>
                       <button
                         type="button"
@@ -625,7 +625,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
                 {activeGroup.parties.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-                    กลุ่มนี้ยังไม่มี party{effectiveAdmin ? " — กด \"+ เพิ่ม Party\" ด้านบน" : ""}
+                    กลุ่มนี้ยังไม่มีปาร์ตี้{effectiveAdmin ? " — กด \"+ ปาร์ตี้ใหม่\" ด้านบน" : ""}
                   </div>
                 ) : (
                   <div
@@ -678,7 +678,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     />
                   )}
                 </div>
-                <DroppableZone id="busy" label="Busy หรือ ลา">
+                <DroppableZone id="busy" label="Busy / ลา">
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
                       ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้
@@ -694,7 +694,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                             onChange={(e) => handleClassChange(member.id, e.target.value)}
                             className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
                           >
-                            <option value="">- class -</option>
+                            <option value="">- อาชีพ -</option>
                             {classOptions.map((c) => (
                               <option key={c} value={c}>
                                 {c}

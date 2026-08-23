@@ -32,7 +32,7 @@ export const eventLabels: Record<string, string> = {
   ATTENDANCE_LEAVE: "ลากิจกรรม",
   ATTENDANCE_RETURN: "ยกเลิกลา / กลับเข้าร่วม",
   CLASS_CHANGE: "เปลี่ยนอาชีพ",
-  NAME_CHANGE: "เปลี่ยนชื่อ Discord",
+  NAME_CHANGE: "เปลี่ยนชื่อใน Discord",
 };
 
 /**

@@ -68,7 +68,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
         onClick={handleOpen}
         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
       >
-        โพสต์ ลา ใน Discord
+        โพสต์ลาใน Discord
       </button>
 
       {open && (
@@ -86,7 +86,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
             {!loading && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-zinc-500">
-                  บอทจะโพสต์ข้อความให้สมาชิกกดอิโมจิด้านล่างถ้าลารอบนี้ — ไม่กด = เข้าร่วมตามปกติ ระบบจะย้ายคนที่กดไปไว้ในลิสต์
+                  บอทจะโพสต์ข้อความให้สมาชิกกดอิโมจิด้านล่างถ้าลารอบนี้ — ไม่กด = เข้าร่วมตามปกติ ระบบจะย้ายคนที่กดไปไว้ในรายชื่อ
                   &quot;Busy / ลา&quot; ของกระดานนี้อัตโนมัติ (ต้องให้บอทมีสิทธิ์ &quot;Send Messages&quot; และ &quot;Add Reactions&quot; ใน channel ที่เลือก)
                 </p>
 

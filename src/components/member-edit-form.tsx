@@ -31,7 +31,7 @@ export function MemberEditForm({ member }: Props) {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">คลาส</span>
+          <span className="text-zinc-400">อาชีพ</span>
           <select
             name="characterClass"
             defaultValue={member.characterClass ?? ""}
@@ -45,7 +45,7 @@ export function MemberEditForm({ member }: Props) {
             ))}
           </select>
           <span className="text-xs text-zinc-500">
-            แก้จากหน้านี้หรือจากหน้าจัดปาตี้ก็ได้ ค่าเดียวกันใช้ทุกกระดาน
+            แก้จากหน้านี้หรือจากหน้าจัดปาร์ตี้ก็ได้ ค่าเดียวกันใช้ทุกกระดาน
           </span>
         </label>
       </div>

@@ -11,7 +11,7 @@ interface NavProps {
 const links = [
   { href: "/", label: "ภาพรวม" },
   { href: "/members", label: "สมาชิก" },
-  { href: "/party", label: "จัดปาตี้" },
+  { href: "/party", label: "จัดปาร์ตี้" },
   { href: "/activity", label: "ประวัติกิจกรรม" },
   { href: "/attendance", label: "สถิติการลา" },
   { href: "/random", label: "สุ่มสมาชิก" },

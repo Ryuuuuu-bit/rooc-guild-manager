@@ -58,17 +58,17 @@ export default async function MembersPage({
             defaultValue={status}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="ACTIVE">ยังอยู่ในกิลด์</option>
-            <option value="LEFT">ออกไปแล้ว</option>
+            <option value="ACTIVE">สมาชิกปัจจุบัน</option>
+            <option value="LEFT">ออกจากกิลด์</option>
             <option value="KICKED">ถูกเตะออก</option>
-            <option value="ALL">ทั้งหมด</option>
+            <option value="ALL">แสดงทั้งหมด</option>
           </select>
           <select
             name="role"
             defaultValue={params.role ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="">ทุก Discord role</option>
+            <option value="">แสดงทุกยศใน Discord</option>
             {discordRoleList.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -80,9 +80,9 @@ export default async function MembersPage({
             defaultValue={benched ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="">กำลังเล่น + พักการเล่น</option>
-            <option value="active">กำลังเล่นเท่านั้น</option>
-            <option value="benched">เฉพาะคนพักการเล่น</option>
+            <option value="">แสดงทุกสถานะ</option>
+            <option value="active">สถานะออนไลน์</option>
+            <option value="benched">สถานะออฟไลน์ (พักการเล่น)</option>
           </select>
           <button
             type="submit"
@@ -99,7 +99,7 @@ export default async function MembersPage({
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="px-5 py-3 font-medium">สมาชิก</th>
               <th className="px-5 py-3 font-medium">ชื่อในเกม</th>
-              <th className="px-5 py-3 font-medium">คลาส</th>
+              <th className="px-5 py-3 font-medium">อาชีพ</th>
               <th className="px-5 py-3 font-medium">Discord role</th>
               <th className="px-5 py-3 font-medium">สถานะ</th>
               <th className="px-5 py-3 font-medium">เข้าร่วมเมื่อ</th>

@@ -66,7 +66,7 @@ export function PartySlot({
                 onChange={(e) => onClassChange(e.target.value)}
                 className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
               >
-                <option value="">- class -</option>
+                <option value="">- อาชีพ -</option>
                 {classOptions.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -86,7 +86,7 @@ export function PartySlot({
               <button
                 type="button"
                 onClick={onClear}
-                title="เอาออกจากปาตี้"
+                title="เอาออกจากปาร์ตี้"
                 className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-rose-400"
               >
                 ✕

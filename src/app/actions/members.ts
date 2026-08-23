@@ -29,7 +29,7 @@ export async function updateMemberProfile(
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
   if (characterClassRaw && !(await isValidJobClassName(characterClassRaw))) {
-    return { ok: false, error: "Class ไม่ถูกต้อง" };
+    return { ok: false, error: "อาชีพไม่ถูกต้อง" };
   }
   const characterClass = characterClassRaw;
 
@@ -64,7 +64,7 @@ export async function updateMemberProfile(
   await db.insert(membershipEvents).values({
     memberId,
     type: "PROFILE_UPDATE",
-    detail: `แก้ไขโปรไฟล์โดย ${session.user.username}`,
+    detail: `แก้ไขโปรไฟล์โดยแอดมิน ${session.user.username}`,
     actor: session.user.username,
   });
 
@@ -115,7 +115,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     memberId,
     type: "KICK",
     detail:
-      (reason || `ทำเครื่องหมายว่าถูกเตะโดย ${session.user.username}`) +
+      (reason || `ทำเครื่องหมายว่าถูกเตะโดยแอดมิน ${session.user.username}`) +
       (discordWarning ? " (เตะออกจาก Discord ไม่สำเร็จ — ต้องทำเอง)" : ""),
     actor: session.user.username,
   });
@@ -169,7 +169,7 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
   await db.insert(membershipEvents).values({
     memberId,
     type: "NOTE",
-    detail: `เปลี่ยนสถานะกลับเป็น Active โดย ${session.user.username}`,
+    detail: `เปลี่ยนสถานะกลับเป็น Active โดยแอดมิน ${session.user.username}`,
     actor: session.user.username,
   });
 
@@ -208,8 +208,8 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
     memberId,
     type: "NOTE",
     detail: benched
-      ? `พักการเล่น (ไม่รวมในระบบจัดปาตี้) โดย ${session.user.username}`
-      : `เลิกพักการเล่น โดย ${session.user.username}`,
+      ? `พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้) โดยแอดมิน ${session.user.username}`
+      : `เลิกพักการเล่น โดยแอดมิน ${session.user.username}`,
     actor: session.user.username,
   });
 

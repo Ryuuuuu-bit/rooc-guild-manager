@@ -74,7 +74,7 @@ export default async function ActivityPage({
         </ul>
         {activity.length === MAX_ROWS && (
           <p className="border-t border-zinc-800 px-5 py-3 text-center text-xs text-zinc-600">
-            แสดงเฉพาะ {MAX_ROWS} รายการล่าสุดในช่วงที่เลือก อาจมีรายการเก่ากว่านี้ที่ไม่ได้แสดง
+            แสดงเฉพาะ {MAX_ROWS} รายการล่าสุดในช่วงที่เลือก — อาจมีรายการเก่ากว่านี้ที่ไม่ได้แสดง
           </p>
         )}
       </div>

@@ -96,7 +96,7 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
 
   const jobClassesList = await listJobClasses();
   const lines = jobClassesList.map((c) => `${c.emoji} — ${c.name}`).join("\n");
-  const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วยนะครับ — คลิกขวาที่ชื่อตัวเองในเซิร์ฟเวอร์นี้ > Edit Server Profile`;
+  const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วย — คลิกขวาที่ชื่อตัวเองใน Discord server นี้ > Edit Server Profile`;
 
   const previous = await getCurrentMessage("CLASS_SELECT", null);
   let messageId: string | null = null;

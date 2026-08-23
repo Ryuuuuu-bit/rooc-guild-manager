@@ -60,7 +60,7 @@ export default async function MemberDetailPage({
                   <dd className="text-sm text-zinc-200">{member.inGameName ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-zinc-500">คลาส</dt>
+                  <dt className="text-xs text-zinc-500">อาชีพ</dt>
                   <dd className="text-sm text-zinc-200">
                     <ClassBadge className={member.characterClass} />
                   </dd>
@@ -92,7 +92,7 @@ export default async function MemberDetailPage({
             <h2 className="mb-4 font-medium text-zinc-100">สถานะ Discord</h2>
             <dl className="flex flex-col gap-3 text-sm">
               <div>
-                <dt className="text-xs text-zinc-500">ชื่อเล่นในเซิร์ฟเวอร์ (nickname)</dt>
+                <dt className="text-xs text-zinc-500">ชื่อเล่นใน Discord server (nickname)</dt>
                 <dd className="text-zinc-200">{member.discordNickname ?? "—"}</dd>
               </div>
               <div>
@@ -135,7 +135,7 @@ export default async function MemberDetailPage({
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-1 font-medium text-zinc-100">บันทึกการลาย้อนหลัง</h2>
               <p className="mb-4 text-xs text-zinc-500">
-                สำหรับกรณีสมาชิกแจ้งลาส่วนตัว (เช่นทาง DM) ที่ไม่ได้กด reaction ในดิสคอร์ด
+                สำหรับกรณีสมาชิกแจ้งลาส่วนตัว (เช่นทาง DM) ที่ไม่ได้กด reaction ใน Discord
               </p>
               <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} boards={boards} />
             </section>

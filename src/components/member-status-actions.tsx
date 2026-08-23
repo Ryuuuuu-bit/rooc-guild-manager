@@ -37,7 +37,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
         <form
           action={kickAction}
           onSubmit={(e) => {
-            if (!confirm(`เตะ ${member.discordUsername} ออกจากกิลด์ (และออกจาก Discord server จริงด้วย)? การกระทำนี้ย้อนกลับไม่ได้ — ต้องเชิญเข้าเซิร์ฟเวอร์ใหม่เอง`)) {
+            if (!confirm(`เตะ ${member.discordUsername} ออกจากกิลด์ (และออกจาก Discord server จริงด้วย)? การกระทำนี้ย้อนกลับไม่ได้ — ต้องเชิญเข้า Discord server ใหม่เอง`)) {
               e.preventDefault();
             }
           }}
@@ -52,7 +52,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
             />
           </label>
           <p className="text-xs text-zinc-500">
-            เตะปุ่มนี้จะเตะออกจาก Discord server จริงด้วย (ไม่ใช่แค่ทำเครื่องหมายในระบบ)
+            กดปุ่มนี้จะเตะออกจาก Discord server จริงด้วย (ไม่ใช่แค่ทำเครื่องหมายในระบบ)
           </p>
           {!kickState.ok && kickState.error && (
             <p className="text-xs text-rose-400">{kickState.error}</p>
@@ -83,8 +83,8 @@ export function MemberStatusActions({ member }: { member: Member }) {
       <form action={benchAction} className="flex flex-col gap-1 border-t border-zinc-800 pt-4">
         <p className="text-xs text-zinc-500">
           {member.benched
-            ? "สมาชิกคนนี้ยังมี role Rooc อยู่ แต่ถูกพักไม่นับในระบบจัดปาตี้"
-            : "สำหรับคนที่ยังมี role Rooc แต่ไม่ได้เล่นแล้ว — พักไว้เพื่อไม่ให้ขึ้นในระบบจัดปาตี้"}
+            ? "สมาชิกคนนี้ยังมี role Rooc อยู่ แต่ถูกพักไม่นับในระบบจัดปาร์ตี้"
+            : "สำหรับคนที่ยังมี role Rooc แต่ไม่ได้เล่นแล้ว — พักไว้เพื่อไม่ให้ขึ้นในระบบจัดปาร์ตี้"}
         </p>
         <button
           type="submit"
@@ -95,7 +95,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
               : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
           }`}
         >
-          {benchPending ? "กำลังดำเนินการ..." : member.benched ? "เลิกพักการเล่น" : "พักการเล่น (ไม่รวมในระบบจัดปาตี้)"}
+          {benchPending ? "กำลังดำเนินการ..." : member.benched ? "เลิกพักการเล่น" : "พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้)"}
         </button>
       </form>
     </div>

@@ -235,7 +235,7 @@ export async function setMemberClass(memberId: string, className: string | null)
   const session = await requireAdmin();
 
   const finalClassName = className && (await isValidJobClassName(className)) ? className : null;
-  if (className && !finalClassName) return { ok: false, error: "Class ไม่ถูกต้อง" };
+  if (className && !finalClassName) return { ok: false, error: "อาชีพไม่ถูกต้อง" };
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
 
@@ -249,8 +249,8 @@ export async function setMemberClass(memberId: string, className: string | null)
       memberId,
       type: "CLASS_CHANGE",
       detail: finalClassName
-        ? `เปลี่ยนอาชีพเป็น ${finalClassName} โดยแอดมิน ${session.user.username} (จากหน้าจัดปาตี้)`
-        : `ล้างอาชีพโดยแอดมิน ${session.user.username} (จากหน้าจัดปาตี้)`,
+        ? `เปลี่ยนอาชีพเป็น ${finalClassName} โดยแอดมิน ${session.user.username} (จากหน้าจัดปาร์ตี้)`
+        : `ล้างอาชีพโดยแอดมิน ${session.user.username} (จากหน้าจัดปาร์ตี้)`,
       actor: session.user.username,
     });
   }
