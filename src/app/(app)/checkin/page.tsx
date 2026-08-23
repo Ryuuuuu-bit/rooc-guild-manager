@@ -3,6 +3,7 @@ import { CHECKIN_EVENTS, getCheckinEvent, getCheckinReport, listCheckinWindows }
 import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
+import { CheckinNoteCell } from "@/components/checkin-note-cell";
 
 interface SearchParams {
   event?: string;
@@ -109,12 +110,13 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                       <th className="px-5 py-3 font-medium">เวลาสะสม</th>
                       <th className="px-5 py-3 font-medium">เข้าห้องครั้งแรก</th>
                       <th className="px-5 py-3 font-medium">ออกจากห้องล่าสุด</th>
+                      <th className="px-5 py-3 font-medium">หมายเหตุ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
                     {report.results.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-5 py-10 text-center text-zinc-500">
+                        <td colSpan={7} className="px-5 py-10 text-center text-zinc-500">
                           ไม่มีข้อมูลสมาชิก
                         </td>
                       </tr>
@@ -151,6 +153,15 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                         <td className="px-5 py-3 text-xs text-zinc-400">{row.firstJoinAt ? fmtTime(row.firstJoinAt) : "—"}</td>
                         <td className="px-5 py-3 text-xs text-zinc-400">
                           {row.stillConnected ? "ยังอยู่ในห้อง" : row.lastLeaveAt ? fmtTime(row.lastLeaveAt) : "—"}
+                        </td>
+                        <td className="px-5 py-3">
+                          <CheckinNoteCell
+                            eventKey={event.key}
+                            date={report.window.date}
+                            memberId={row.member.id}
+                            note={row.note}
+                            isAdmin={session.user.isAdmin}
+                          />
                         </td>
                       </tr>
                     ))}

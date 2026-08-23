@@ -134,6 +134,13 @@
       "when": 1787540000001,
       "tag": "0018_add_voice_attendance_events",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787540000002,
+      "tag": "0019_add_checkin_notes",
+      "breakpoints": true
     }
   ]
 }

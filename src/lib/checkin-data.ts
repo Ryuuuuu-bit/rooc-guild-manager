@@ -1,6 +1,6 @@
 import { and, gte, lte, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { members, voiceAttendanceEvents } from "@/db/schema";
+import { checkinNotes, members, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
 import { CHECKIN_EVENTS, getCheckinEvent, type CheckinEventConfig } from "@/lib/checkin-events";
 
@@ -104,6 +104,10 @@ export interface CheckinMemberResult {
   firstJoinAt: Date | null;
   lastLeaveAt: Date | null; // null if they were still connected as of `now`/window end
   stillConnected: boolean;
+  /** Admin-entered reason (e.g. relayed after the fact via DM) for this
+   * member's row on this specific window — see checkinNotes in schema.ts.
+   * Most useful on an absent row, but not restricted to one. */
+  note: string | null;
 }
 
 export interface CheckinReport {
@@ -161,6 +165,12 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     eventsByMember.set(e.memberId, list);
   }
 
+  const notes = await db
+    .select({ memberId: checkinNotes.memberId, note: checkinNotes.note })
+    .from(checkinNotes)
+    .where(and(eq(checkinNotes.eventKey, eventKey), eq(checkinNotes.date, date)));
+  const noteByMember = new Map(notes.map((n) => [n.memberId, n.note]));
+
   const results: CheckinMemberResult[] = roster.map((member) => {
     const intervals = reconstructIntervals(eventsByMember.get(member.id) ?? [], now);
     const overlapping = intervals.filter((iv) => iv.end.getTime() > start.getTime() && iv.start.getTime() < end.getTime());
@@ -174,6 +184,7 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
       firstJoinAt: overlapping[0]?.start ?? null,
       lastLeaveAt: stillConnected ? null : (last?.end ?? null),
       stillConnected,
+      note: noteByMember.get(member.id) ?? null,
     };
   });
 

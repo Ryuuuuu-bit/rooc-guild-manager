@@ -317,6 +317,29 @@ export const voiceAttendanceEvents = pgTable(
   ]
 );
 
+// One optional admin-entered note per (event, date, member) — e.g. a member
+// DMs an admin afterward explaining why they weren't online, and the admin
+// jots it onto that member's row on the /checkin report so it's not lost.
+// `eventKey`/`date` are plain strings (not FKs) matching CheckinEventConfig.key
+// and the "YYYY-MM-DD" Thai-calendar date used throughout checkin-data.ts —
+// there's no per-window DB row to key off (windows are computed on the fly
+// from voice_attendance_events), so this is the join key instead.
+export const checkinNotes = pgTable(
+  "checkin_notes",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    eventKey: text("event_key").notNull(),
+    date: text("date").notNull(),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    note: text("note").notNull(),
+    actor: text("actor"), // admin's Discord username who wrote/last edited the note
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("checkin_notes_event_date_member_idx").on(table.eventKey, table.date, table.memberId)]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -352,3 +375,5 @@ export type JobClassRow = typeof jobClasses.$inferSelect;
 export type NewJobClassRow = typeof jobClasses.$inferInsert;
 export type VoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferSelect;
 export type NewVoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferInsert;
+export type CheckinNote = typeof checkinNotes.$inferSelect;
+export type NewCheckinNote = typeof checkinNotes.$inferInsert;
