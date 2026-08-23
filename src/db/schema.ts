@@ -290,6 +290,33 @@ export const jobClasses = pgTable(
   (table) => [index("job_classes_sort_order_idx").on(table.sortOrder)]
 );
 
+export const voiceEventTypeEnum = pgEnum("voice_event_type", ["JOIN", "LEAVE"]);
+
+// Raw join/leave log for the small set of voice channels an admin is
+// watching for event check-in purposes (currently: the Tyr Cup Tue/Thu
+// roll-call — see WATCHED_VOICE_CHANNEL_IDS in bot/voice-attendance.ts and
+// the /checkin report page). One row per state change, not per session —
+// getCheckinReport() in src/lib/checkin-data.ts reconstructs sessions by
+// pairing consecutive JOIN/LEAVE rows per member. Deliberately NOT scoped
+// to party boards or the ATTENDANCE_LEAVE ("ลา") system — this tracks
+// actual voice presence, an unrelated signal.
+export const voiceAttendanceEvents = pgTable(
+  "voice_attendance_events",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    channelId: text("channel_id").notNull(),
+    type: voiceEventTypeEnum("type").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("voice_attendance_events_member_id_idx").on(table.memberId),
+    index("voice_attendance_events_created_at_idx").on(table.createdAt),
+  ]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -323,3 +350,5 @@ export type BotReactionMessage = typeof botReactionMessages.$inferSelect;
 export type NewBotReactionMessage = typeof botReactionMessages.$inferInsert;
 export type JobClassRow = typeof jobClasses.$inferSelect;
 export type NewJobClassRow = typeof jobClasses.$inferInsert;
+export type VoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferSelect;
+export type NewVoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferInsert;

@@ -12,6 +12,10 @@ export function createBotClient() {
       // themselves.
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.GuildMessageReactions,
+      // Needed for voice-channel join/leave events (see
+      // bot/voice-attendance.ts). NOT a privileged intent — no Developer
+      // Portal toggle needed, just this line.
+      GatewayIntentBits.GuildVoiceStates,
     ],
     // Message/Reaction/Channel partials so events on messages the bot
     // hasn't cached (e.g. posted before a restart) still come through and

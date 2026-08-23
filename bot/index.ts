@@ -12,6 +12,7 @@ import {
 import { handleReactionAdd, handleReactionRemove } from "./reactions";
 import { confirmDueLeaves } from "./attendance-confirm";
 import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
+import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
@@ -47,6 +48,12 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   await runSync("startup");
   setInterval(() => runSync("periodic safety-net"), FULL_SYNC_INTERVAL_MS);
+
+  try {
+    await reconcileVoicePresence(readyClient);
+  } catch (err) {
+    console.error("[bot] voice presence reconcile failed", err);
+  }
 
   const runLeaveConfirmSweep = async () => {
     try {
@@ -166,6 +173,18 @@ client.on(Events.MessageReactionRemove, async (reaction, user) => {
     await handleReactionRemove(reaction, user);
   } catch (err) {
     console.error("[bot] failed to handle messageReactionRemove", err);
+  }
+});
+
+// Voice check-in tracking (see bot/voice-attendance.ts + the /checkin
+// page) — filters to a small fixed set of watched channels internally, so
+// this is safe to leave on for every voice event in the guild.
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  if (newState.guild.id !== GUILD_ID) return;
+  try {
+    await handleVoiceStateUpdate(oldState, newState);
+  } catch (err) {
+    console.error("[bot] failed to handle voiceStateUpdate", err);
   }
 });
 
