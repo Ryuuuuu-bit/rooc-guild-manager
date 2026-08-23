@@ -167,7 +167,7 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
         <p className="text-sm text-emerald-300">
           รอบนี้ได้ {result.served.length} คน{result.short ? " (คิวมีไม่พอตามจำนวนที่ขอ เลยเสิร์ฟให้ครบเท่าที่มี)" : ""}
         </p>
-        <p className="whitespace-pre-wrap text-xs text-zinc-300">{text}</p>
+        <p className="whitespace-pre-wrap break-words text-xs text-zinc-300">{text}</p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -233,7 +233,7 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
       {preview.length > 0 && (
         <div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-950/60 p-2">
           <p className="mb-1 text-xs text-zinc-500">ตัวอย่างคนที่จะได้ ({preview.length}{n > category.queue.length ? ` — คิวมีแค่ ${category.queue.length}` : ""} คน):</p>
-          <p className="text-xs text-zinc-300">{preview.map((m) => m.displayName).join(", ")}</p>
+          <p className="break-words text-xs text-zinc-300">{preview.map((m) => m.displayName).join(", ")}</p>
         </div>
       )}
     </div>
@@ -477,7 +477,7 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
                 {r.label && <span className="font-medium text-amber-300">{r.label} — </span>}
                 ได้ {r.members.length} คน
               </p>
-              <p className="mt-0.5 truncate text-zinc-500">{r.members.map((m) => m.displayName).join(", ")}</p>
+              <p className="mt-0.5 break-words text-zinc-500">{r.members.map((m) => m.displayName).join(", ")}</p>
               <p className="mt-0.5 text-[10px] text-zinc-600">
                 {r.actor ?? "—"} · {fmtTime(r.createdAt)}
               </p>
@@ -707,11 +707,19 @@ export function LootQueueManager({
 
       {selected && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="flex flex-col gap-3">
+          {/* min-w-0 on both tracks: without it, a CSS grid item's default
+           * min-width is its content's intrinsic min-width — a long
+           * unbroken run of Thai text (no spaces for the browser to wrap
+           * at, unlike Latin) inside the round result / history text can
+           * exceed the track's fr-share width and force the whole grid
+           * (and page) wider than the viewport. break-words on that text
+           * (see RunRoundPanel/RoundHistory) covers the same failure mode
+           * from the other side — belt and suspenders. */}
+          <div className="flex min-w-0 flex-col gap-3">
             <h2 className="text-sm font-medium text-zinc-300">คิว — {selected.name}</h2>
             <QueueList category={selected} isAdmin={isAdmin} pickable={pickable} onlineMemberIds={onlineSet} />
           </div>
-          <div className="flex flex-col gap-4">
+          <div className="flex min-w-0 flex-col gap-4">
             {isAdmin && <RunRoundPanel category={selected} />}
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium text-zinc-300">ประวัติล่าสุด</h2>
