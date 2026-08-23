@@ -15,6 +15,7 @@ const links = [
   { href: "/activity", label: "ประวัติกิจกรรม" },
   { href: "/attendance", label: "สถิติการลา" },
   { href: "/checkin", label: "เช็คชื่อ [DC]" },
+  { href: "/loot-queue", label: "คิวประมูล" },
   { href: "/random", label: "สุ่มสมาชิก" },
 ];
 

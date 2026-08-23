@@ -340,6 +340,71 @@ export const checkinNotes = pgTable(
   (table) => [uniqueIndex("checkin_notes_event_date_member_idx").on(table.eventKey, table.date, table.memberId)]
 );
 
+// Loot distribution queue — one independent, admin-managed ordered rotation
+// per item category (e.g. "เศษการ์ด", "ขนนกขาว"). `position` (ascending =
+// next up) is intentionally sparse rather than contiguous: running a round
+// re-stamps just the served members to `max(position in category) + 1, +2,
+// ...`, leaving everyone else untouched — cheap, and preserves relative
+// order among the just-served batch for their next lap. Admin fully owns
+// both membership and order (see checkin: this was a deliberate choice over
+// deriving it from /members) since it needs to match a roster the guild
+// already agreed on, not an alphabetical or join-date default.
+export const lootCategories = pgTable(
+  "loot_categories",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("loot_categories_name_idx").on(table.name)]
+);
+
+export const lootQueueEntries = pgTable(
+  "loot_queue_entries",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => lootCategories.id, { onDelete: "cascade" }),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+  },
+  (table) => [
+    uniqueIndex("loot_queue_entries_category_member_idx").on(table.categoryId, table.memberId),
+    index("loot_queue_entries_category_position_idx").on(table.categoryId, table.position),
+  ]
+);
+
+// Append-only history of "who got served this round" per category — an
+// audit trail (mirrors membershipEvents' philosophy elsewhere in this app),
+// and what a Discord announcement is generated from. `memberIds` is a plain
+// snapshot array (not a join table / FK) deliberately: it's a historical
+// record of who was served AT THE TIME, so it should read the same later
+// even if that member is later removed from the guild — a display join
+// just falls back to showing nothing extra for an id that no longer exists.
+export const lootRounds = pgTable(
+  "loot_rounds",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => lootCategories.id, { onDelete: "cascade" }),
+    label: text("label"), // admin-entered context, e.g. "GL 25/8" — shown in history and used as the Discord post's headline
+    memberIds: text("member_ids").array().notNull().default([]),
+    // Each served member's queue `position` immediately before this round
+    // ran, same index order as memberIds — lets "undo" (only ever offered
+    // for the single most-recent round of a category, see undoLootRound)
+    // put them back exactly where they were instead of guessing.
+    previousPositions: integer("previous_positions").array().notNull().default([]),
+    actor: text("actor"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("loot_rounds_category_idx").on(table.categoryId)]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -377,3 +442,9 @@ export type VoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferSelect;
 export type NewVoiceAttendanceEvent = typeof voiceAttendanceEvents.$inferInsert;
 export type CheckinNote = typeof checkinNotes.$inferSelect;
 export type NewCheckinNote = typeof checkinNotes.$inferInsert;
+export type LootCategory = typeof lootCategories.$inferSelect;
+export type NewLootCategory = typeof lootCategories.$inferInsert;
+export type LootQueueEntry = typeof lootQueueEntries.$inferSelect;
+export type NewLootQueueEntry = typeof lootQueueEntries.$inferInsert;
+export type LootRound = typeof lootRounds.$inferSelect;
+export type NewLootRound = typeof lootRounds.$inferInsert;
