@@ -14,7 +14,8 @@ const links = [
   { href: "/party", label: "จัดปาร์ตี้" },
   { href: "/activity", label: "ประวัติกิจกรรม" },
   { href: "/attendance", label: "สถิติการลา" },
-  { href: "/checkin", label: "เช็คชื่อ Tyr Cup" },
+  { href: "/checkin?event=gl", label: "[DC] Online GL" },
+  { href: "/checkin?event=woe", label: "[DC] Online WOE" },
   { href: "/random", label: "สุ่มสมาชิก" },
 ];
 

@@ -1,22 +1,17 @@
-import { and, gte, lte, eq, sql } from "drizzle-orm";
+import { and, gte, lte, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
+import { CHECKIN_EVENTS, getCheckinEvent, type CheckinEventConfig } from "@/lib/checkin-events";
 
-// --- Event window config -------------------------------------------------
-// Tue/Thu 19:55–20:20 Thailand time — the guild's Tyr Cup game-event
-// voice check-in window. Adjust here (and redeploy the web service) if the
-// schedule ever changes; nothing else needs touching. JS getUTCDay():
-// 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
-const CHECKIN_WEEKDAYS = [2, 4];
-const WINDOW_START_TIME = "19:55:00";
-const WINDOW_END_TIME = "20:20:00";
+export { CHECKIN_EVENTS, getCheckinEvent };
+export type { CheckinEventConfig };
 
-/** Start/end instants of the check-in window for a given "YYYY-MM-DD" (Thai calendar date) — same direct-offset parse used for startOfThaiDay/endOfThaiDay on /attendance. */
-function windowFor(dateStr: string): { start: Date; end: Date } {
+/** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai calendar date) — same direct-offset parse used for startOfThaiDay/endOfThaiDay on /attendance. */
+function windowFor(event: CheckinEventConfig, dateStr: string): { start: Date; end: Date } {
   return {
-    start: new Date(`${dateStr}T${WINDOW_START_TIME}+07:00`),
-    end: new Date(`${dateStr}T${WINDOW_END_TIME}+07:00`),
+    start: new Date(`${dateStr}T${event.startTime}+07:00`),
+    end: new Date(`${dateStr}T${event.endTime}+07:00`),
   };
 }
 
@@ -44,16 +39,21 @@ export interface CheckinWindow {
 }
 
 /**
- * Every Tue/Thu check-in window from the first ever recorded voice event
- * through today (Thai calendar), most recent first. Empty until the bot
- * has logged at least one voice event — there's no way to reconstruct
- * windows further back than that (Discord's API exposes no voice
- * history, only live state changes going forward).
+ * Every window for the given event from the first ever recorded voice
+ * event on ONE OF ITS channels through today (Thai calendar), most recent
+ * first. Empty until the bot has logged at least one voice event on one of
+ * this event's channels — there's no way to reconstruct windows further
+ * back than that (Discord's API exposes no voice history, only live state
+ * changes going forward).
  */
-export async function listCheckinWindows(): Promise<CheckinWindow[]> {
+export async function listCheckinWindows(eventKey: string): Promise<CheckinWindow[]> {
+  const event = getCheckinEvent(eventKey);
+  if (!event) return [];
+
   const [row] = await db
     .select({ min: sql<string | null>`min(${voiceAttendanceEvents.createdAt})` })
-    .from(voiceAttendanceEvents);
+    .from(voiceAttendanceEvents)
+    .where(inArray(voiceAttendanceEvents.channelId, event.channelIds));
   if (!row?.min) return [];
 
   const now = new Date();
@@ -62,8 +62,8 @@ export async function listCheckinWindows(): Promise<CheckinWindow[]> {
 
   const windows: CheckinWindow[] = [];
   for (let d = startDate; d <= today; d = addDays(d, 1)) {
-    if (!CHECKIN_WEEKDAYS.includes(weekdayOf(d))) continue;
-    const { start, end } = windowFor(d);
+    if (!event.weekdays.includes(weekdayOf(d))) continue;
+    const { start, end } = windowFor(event, d);
     if (start > now) continue; // this window hasn't started yet
     windows.push({ date: d, start, end });
   }
@@ -114,17 +114,20 @@ export interface CheckinReport {
 }
 
 /**
- * Report for one check-in window: for every currently-active, non-benched
- * member (mirrors the roster scope used by /attendance's leave stats —
- * benched members aren't expected at events), whether they had ANY voice
- * presence overlapping the window ("attended" — per admin's call, just
- * showing up counts, no minimum-duration threshold) plus the accumulated
- * minutes they were actually present, as supplementary context. Sorted
- * absent-first (fastest to spot who to follow up with), then by minutes
- * present descending.
+ * Report for one event's check-in window: for every currently-active,
+ * non-benched member (mirrors the roster scope used by /attendance's leave
+ * stats — benched members aren't expected at events), whether they had ANY
+ * voice presence — on any of this event's channels — overlapping the
+ * window ("attended", no minimum-duration threshold, per admin's call)
+ * plus the accumulated minutes they were actually present, as
+ * supplementary context. Sorted absent-first (fastest to spot who to
+ * follow up with), then by minutes present descending.
  */
-export async function getCheckinReport(date: string): Promise<CheckinReport> {
-  const { start, end } = windowFor(date);
+export async function getCheckinReport(eventKey: string, date: string): Promise<CheckinReport | null> {
+  const event = getCheckinEvent(eventKey);
+  if (!event) return null;
+
+  const { start, end } = windowFor(event, date);
   const now = new Date();
 
   const roster = await db
@@ -142,7 +145,13 @@ export async function getCheckinReport(date: string): Promise<CheckinReport> {
       createdAt: voiceAttendanceEvents.createdAt,
     })
     .from(voiceAttendanceEvents)
-    .where(and(gte(voiceAttendanceEvents.createdAt, queryFrom), lte(voiceAttendanceEvents.createdAt, end)))
+    .where(
+      and(
+        inArray(voiceAttendanceEvents.channelId, event.channelIds),
+        gte(voiceAttendanceEvents.createdAt, queryFrom),
+        lte(voiceAttendanceEvents.createdAt, end)
+      )
+    )
     .orderBy(voiceAttendanceEvents.memberId, voiceAttendanceEvents.createdAt);
 
   const eventsByMember = new Map<string, { type: "JOIN" | "LEAVE"; createdAt: Date }[]>();

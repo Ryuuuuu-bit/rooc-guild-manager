@@ -2,20 +2,12 @@ import { and, desc, eq } from "drizzle-orm";
 import type { Client, VoiceState } from "discord.js";
 import { db } from "../src/db";
 import { members, voiceAttendanceEvents } from "../src/db/schema";
+import { allWatchedChannelIds } from "../src/lib/checkin-events";
 
-/**
- * Voice channels being watched for the Tyr Cup check-in report (see
- * src/lib/checkin-data.ts and the /checkin page). Both rooms count as the
- * same event — the guild splits members across two team rooms, and being
- * in either one counts as present. Grab a channel ID from its Discord URL:
- * .../channels/<guildId>/<channelId>. Update this list (and redeploy the
- * bot) if the channels ever change — nothing else needs touching.
- */
-export const WATCHED_VOICE_CHANNEL_IDS: readonly string[] = [
-  "1488971259113902090",
-  "1488971308225269943",
-];
-
+// Watched-channel list (which channels, and which check-in event each
+// belongs to) lives in ONE place — src/lib/checkin-events.ts — shared with
+// the web app's report page. Edit there, not here.
+const WATCHED_VOICE_CHANNEL_IDS: readonly string[] = allWatchedChannelIds();
 const watchedChannelSet = new Set(WATCHED_VOICE_CHANNEL_IDS);
 
 async function logVoiceEvent(discordId: string, channelId: string, type: "JOIN" | "LEAVE") {
@@ -43,12 +35,12 @@ export async function handleVoiceStateUpdate(oldState: VoiceState, newState: Voi
   const wasWatched = oldChannelId ? watchedChannelSet.has(oldChannelId) : false;
   const isWatched = newChannelId ? watchedChannelSet.has(newChannelId) : false;
 
-  // A direct switch between the two watched channels logs a LEAVE then a
-  // JOIN back-to-back — deliberate, not a bug: the check-in report treats
-  // presence in either channel identically, and reconstructing sessions
-  // from consecutive JOIN/LEAVE pairs (see getCheckinReport) only cares
-  // that the two timestamps are adjacent, so this doesn't create a gap in
-  // their counted presence.
+  // A direct switch between two watched channels (e.g. the GL event's two
+  // team rooms) logs a LEAVE then a JOIN back-to-back — deliberate, not a
+  // bug: the check-in report treats presence in any of an event's channels
+  // identically, and reconstructing sessions from consecutive JOIN/LEAVE
+  // pairs (see getCheckinReport) only cares that the two timestamps are
+  // adjacent, so this doesn't create a gap in their counted presence.
   if (wasWatched) await logVoiceEvent(discordId, oldChannelId!, "LEAVE");
   if (isWatched) await logVoiceEvent(discordId, newChannelId!, "JOIN");
 }
