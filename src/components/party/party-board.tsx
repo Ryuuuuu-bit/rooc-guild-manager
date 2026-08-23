@@ -659,25 +659,39 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
             )}
 
             {/* Busy/leave list — kept at the very bottom, out of the way of
-                the party grid. Hidden entirely in screenshot mode. */}
-            {!screenshotMode && (
-              <section>
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
-                  {effectiveAdmin && (
-                    <MemberPicker
-                      members={board.unassigned}
-                      onSelect={handleAssignBusy}
-                      emptyLabel="ไม่มีคนว่างแล้ว"
-                      align="right"
-                      trigger={
-                        <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
-                          + เพิ่มคนลา
-                        </span>
-                      }
-                    />
+                the party grid. In screenshot mode this switches to a plain
+                read-only name list (no drag/picker/remove controls) instead
+                of hiding entirely — the summary bar above only shows a
+                count, so without this, anyone reading the posted screenshot
+                has no way to tell WHO is busy/on leave vs. just missing. */}
+            <section>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
+                {effectiveAdmin && (
+                  <MemberPicker
+                    members={board.unassigned}
+                    onSelect={handleAssignBusy}
+                    emptyLabel="ไม่มีคนว่างแล้ว"
+                    align="right"
+                    trigger={
+                      <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
+                        + เพิ่มคนลา
+                      </span>
+                    }
+                  />
+                )}
+              </div>
+              {screenshotMode ? (
+                <div className="flex flex-wrap gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
+                  {board.busy.length === 0 ? (
+                    <span className="px-1 py-1 text-xs text-zinc-600">ไม่มีคน Busy/ลารอบนี้</span>
+                  ) : (
+                    board.busy.map((member) => (
+                      <MemberChip key={member.id} member={member} draggable={false} compact showClassBadge />
+                    ))
                   )}
                 </div>
+              ) : (
                 <DroppableZone id="busy" label="Busy / ลา">
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
@@ -714,8 +728,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     </div>
                   ))}
                 </DroppableZone>
-              </section>
-            )}
+              )}
+            </section>
           </>
         )}
       </div>
