@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { discordRoles, members, membershipEvents, memberNotes, partyBoards } from "@/db/schema";
+import { discordRoles, members, membershipEvents, memberNotes, partyBoards, type MembershipEvent } from "@/db/schema";
 import { and, arrayContains, desc, eq, gte, ilike, isNotNull, lte, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
@@ -95,11 +95,33 @@ export async function getMemberById(id: string) {
  * bound at all (still capped by `limit` either way, since this table only
  * grows and an unbounded feed on a guild active for a year+ would get slow).
  */
-export async function getRecentActivity(limit = 30, days?: number) {
+export interface ActivityFilters {
+  /** Matches against the same name fields as listMembers' search, so
+   * looking someone up here behaves the same as on /members. */
+  search?: string;
+  /** One membershipEvents.type value (e.g. "CLASS_CHANGE") — undefined/"" means all types. */
+  type?: string;
+}
+
+export async function getRecentActivity(limit = 30, days?: number, filters: ActivityFilters = {}) {
   const conditions = [];
   if (days) {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     conditions.push(gte(membershipEvents.createdAt, cutoff));
+  }
+  if (filters.search) {
+    const term = `%${filters.search}%`;
+    conditions.push(
+      or(
+        ilike(members.discordUsername, term),
+        ilike(members.discordGlobalName, term),
+        ilike(members.discordNickname, term),
+        ilike(members.inGameName, term)
+      )
+    );
+  }
+  if (filters.type) {
+    conditions.push(eq(membershipEvents.type, filters.type as MembershipEvent["type"]));
   }
 
   return db
