@@ -156,7 +156,7 @@ export default async function MembersPage({
                 </td>
                 <td className="px-5 py-3 text-zinc-400">
                   {member.joinedDiscordAt
-                    ? new Date(member.joinedDiscordAt).toLocaleDateString("th-TH")
+                    ? new Date(member.joinedDiscordAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })
                     : "—"}
                 </td>
               </tr>

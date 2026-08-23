@@ -49,8 +49,14 @@ function startOfThaiMonth(): Date {
   return new Date(Date.UTC(year, month, 1, 0, 0, 0) - 7 * 60 * 60 * 1000);
 }
 
-/** How many ATTENDANCE_LEAVE events (confirmed or still-pending) this member has logged so far this calendar month, including one just inserted. */
-async function countLeavesThisMonth(memberId: string): Promise<number> {
+/**
+ * How many ATTENDANCE_LEAVE events (confirmed or still-pending) this member
+ * has logged so far this calendar month on this specific board, including
+ * one just inserted. Scoped per board (not per member overall) — GL and WOE
+ * are separate boards with separate quotas, per the guild admin, so a leave
+ * on one shouldn't count against the other's 0/2.
+ */
+async function countLeavesThisMonth(memberId: string, boardId: string): Promise<number> {
   const rows = await db
     .select({ id: membershipEvents.id })
     .from(membershipEvents)
@@ -58,6 +64,7 @@ async function countLeavesThisMonth(memberId: string): Promise<number> {
       and(
         eq(membershipEvents.memberId, memberId),
         eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        eq(membershipEvents.boardId, boardId),
         gte(membershipEvents.createdAt, startOfThaiMonth())
       )
     );
@@ -90,12 +97,23 @@ async function sendTempLeaveConfirmation(
   const channel = reaction.message.channel;
   if (!channel.isTextBased() || !("send" in channel)) return;
   try {
-    const dateStr = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+    // Explicit timeZone — without it, toLocaleString uses the SERVER's own
+    // timezone for the actual clock time (only "th-TH" itself just picks
+    // the Thai calendar/number formatting, not the offset), and this bot
+    // runs on Railway in UTC, so the displayed time was consistently 7
+    // hours behind real Thailand time — reported by a guild admin who
+    // noticed the message text said 07:09 right under Discord's own
+    // "14:09" timestamp on the same message.
+    const dateStr = new Date().toLocaleString("th-TH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Bangkok",
+    });
     const confirmMinutes = Math.round(CONFIRM_AFTER_MS / 60_000);
     const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
     const sent = await channel.send(
       `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
-        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${emoji} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
+        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${emoji} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
         `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
     );
     setTimeout(() => {
@@ -261,7 +279,7 @@ export async function handleReactionAdd(
     );
 
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
-    const leaveCount = await countLeavesThisMonth(member.id);
+    const leaveCount = await countLeavesThisMonth(member.id, boardId);
     // Fire-and-forget — don't hold up the reaction handler on a channel post.
     void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji);
   }

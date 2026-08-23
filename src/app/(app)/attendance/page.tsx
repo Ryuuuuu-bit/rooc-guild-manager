@@ -259,8 +259,14 @@ export default async function AttendancePage({
                 </td>
                 <td className="px-5 py-3 text-xs text-zinc-400">
                   {row.lastLeaveAt ? (
-                    <span title={row.lastLeaveAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}>
-                      {row.lastLeaveAt.toLocaleDateString("th-TH", { dateStyle: "medium" })}
+                    <span
+                      title={row.lastLeaveAt.toLocaleString("th-TH", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                        timeZone: "Asia/Bangkok",
+                      })}
+                    >
+                      {row.lastLeaveAt.toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" })}
                     </span>
                   ) : (
                     "—"

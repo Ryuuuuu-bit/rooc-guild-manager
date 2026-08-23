@@ -99,7 +99,7 @@ export default async function MemberDetailPage({
                 <dt className="text-xs text-zinc-500">เข้าร่วม Discord เมื่อ</dt>
                 <dd className="text-zinc-200">
                   {member.joinedDiscordAt
-                    ? new Date(member.joinedDiscordAt).toLocaleString("th-TH")
+                    ? new Date(member.joinedDiscordAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
                     : "ไม่ทราบ"}
                 </dd>
               </div>
@@ -107,7 +107,7 @@ export default async function MemberDetailPage({
                 <div>
                   <dt className="text-xs text-zinc-500">ออกจาก Discord เมื่อ</dt>
                   <dd className="text-zinc-200">
-                    {new Date(member.leftDiscordAt).toLocaleString("th-TH")}
+                    {new Date(member.leftDiscordAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}
                   </dd>
                 </div>
               )}

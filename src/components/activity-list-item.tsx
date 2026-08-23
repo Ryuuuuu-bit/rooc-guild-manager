@@ -83,7 +83,11 @@ export function ActivityListItem({
       </div>
       <span
         className="shrink-0 text-xs text-zinc-500"
-        title={new Date(event.createdAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}
+        title={new Date(event.createdAt).toLocaleString("th-TH", {
+          dateStyle: "medium",
+          timeStyle: "short",
+          timeZone: "Asia/Bangkok",
+        })}
       >
         {formatDistanceToNow(event.createdAt, { addSuffix: true })}
       </span>
