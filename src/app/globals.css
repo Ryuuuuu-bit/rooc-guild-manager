@@ -11,8 +11,11 @@
  * background for any visitor whose OS/browser wasn't already in dark
  * mode. Removed rather than reproduced.) */
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans Thai", sans-serif;
+  /* var(--font-loma) is set by next/font/local in layout.tsx (self-hosted
+   * Loma font file) — falls back to the system stack below only for the
+   * brief moment before it loads, or if the font file itself fails. */
+  --font-sans: var(--font-loma), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Thai", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 

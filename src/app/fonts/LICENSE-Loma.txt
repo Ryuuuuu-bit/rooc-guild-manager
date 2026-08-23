@@ -1,0 +1,21 @@
+Loma (Thai OpenType font)
+Source: fonts-tlwg project (Thai Linux Working Group), nectec/Loma*.sfd
+Copyright 2003 National Electronics and Computer Technology Center (NECTEC)
+License: GPL-2+ with Font Exception
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  As a special exception, if you create a document which uses this font,
+  and embed this font or unaltered portions of this font into the
+  document, this font does not by itself cause the resulting document
+  to be covered by the GNU General Public License. This exception does
+  not however invalidate any other reasons why the document might be
+  covered by the GNU General Public License.
+
+Original .otf sourced from the Debian package fonts-tlwg-loma-otf and
+converted to .woff2 (lossless, same glyph outlines) for web use in this
+app. See https://linux.thai.net/pub/thailinux/software/fonts-tlwg for
+the upstream project.
