@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { discordRoles, members, membershipEvents, memberNotes, partyBoards } from "@/db/schema";
-import { and, arrayContains, desc, eq, gte, ilike, isNotNull, or, sql } from "drizzle-orm";
+import { and, arrayContains, desc, eq, gte, ilike, isNotNull, lte, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
 
@@ -114,6 +114,34 @@ export async function getRecentActivity(limit = 30, days?: number) {
     .limit(limit);
 }
 
+/** Shared filter shape for the /attendance queries below.
+ * `from`/`to` are inclusive instants (already resolved to Thai-local day
+ * boundaries by the page, see startOfThaiDay/endOfThaiDay in the page) for
+ * a custom range — either may be omitted for an open-ended range.
+ * `days` is the simpler "last N days from now" preset; only used when
+ * `from` isn't already given. Kept as a plain number (rather than making
+ * the page resolve it to a Date itself) specifically so the `Date.now()`
+ * arithmetic happens in here, a plain data-layer function, instead of in
+ * the page component's render body — the project's React Compiler purity
+ * lint (react-hooks/purity) flags impure calls like Date.now() directly
+ * inside a component/page file, but not inside a call it makes into a
+ * regular module like this one. */
+export interface AttendanceRangeFilter {
+  from?: Date;
+  to?: Date;
+  days?: number;
+  boardId?: string;
+}
+
+function attendanceConditions(filter: AttendanceRangeFilter) {
+  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
+  const from = filter.from ?? (filter.days ? new Date(Date.now() - filter.days * 24 * 60 * 60 * 1000) : undefined);
+  if (from) conditions.push(gte(membershipEvents.createdAt, from));
+  if (filter.to) conditions.push(lte(membershipEvents.createdAt, filter.to));
+  if (filter.boardId) conditions.push(eq(membershipEvents.boardId, filter.boardId));
+  return conditions;
+}
+
 /**
  * Per-member ลา counts within a period, sorted most-ลา-first — answers "who
  * takes leave the most" at a glance. Deliberately just a raw count rather
@@ -127,34 +155,27 @@ export async function getRecentActivity(limit = 30, days?: number) {
  * (they're excluded from every board's roster too, see party-data.ts), so
  * listing them at 0 ลา would just be clutter, not signal.
  *
- * @param boardId Optional — restricts to leaves logged on one specific board
- * (e.g. only the "GL" board or only "WOE"), so admins can tell the two
- * apart instead of seeing one merged total. Omit for the all-boards view.
+ * Also surfaces each member's most recent ลา date within the range
+ * (lastLeaveAt) — every leave already carries an exact date+time
+ * (membershipEvents.createdAt), this just makes that visible on the stats
+ * page itself instead of only in the per-member activity feed.
  */
-export async function getAttendanceStats(days?: number, boardId?: string) {
+export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
   // Only confirmed leaves count — a member has to leave the "ลา" reaction
   // in place for 30 minutes before it's counted, so a quick test-click that
   // gets un-reacted right away is discarded rather than ever showing up
   // here (see confirmDueLeaves in bot/attendance-confirm.ts).
-  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
-  if (days) {
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    conditions.push(gte(membershipEvents.createdAt, cutoff));
-  }
-  if (boardId) {
-    conditions.push(eq(membershipEvents.boardId, boardId));
-  }
-
   const rows = await db
     .select({
       memberId: membershipEvents.memberId,
       leaveCount: sql<number>`count(*)::int`,
+      lastLeaveAt: sql<string>`max(${membershipEvents.createdAt})`,
     })
     .from(membershipEvents)
-    .where(and(...conditions))
+    .where(and(...attendanceConditions(filter)))
     .groupBy(membershipEvents.memberId);
 
-  const leaveCountByMember = new Map(rows.map((r) => [r.memberId, r.leaveCount]));
+  const statsByMember = new Map(rows.map((r) => [r.memberId, { leaveCount: r.leaveCount, lastLeaveAt: r.lastLeaveAt }]));
 
   const activeMembers = await db
     .select()
@@ -162,7 +183,10 @@ export async function getAttendanceStats(days?: number, boardId?: string) {
     .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)));
 
   const stats = activeMembers
-    .map((m) => ({ member: m, leaveCount: leaveCountByMember.get(m.id) ?? 0 }))
+    .map((m) => {
+      const s = statsByMember.get(m.id);
+      return { member: m, leaveCount: s?.leaveCount ?? 0, lastLeaveAt: s ? new Date(s.lastLeaveAt) : null };
+    })
     .sort((a, b) => b.leaveCount - a.leaveCount || a.member.discordUsername.localeCompare(b.member.discordUsername));
 
   const totalLeaveEvents = rows.reduce((sum, r) => sum + r.leaveCount, 0);
@@ -178,20 +202,14 @@ export async function getAttendanceStats(days?: number, boardId?: string) {
  * deleted) are bucketed under a null id so the numbers still add up to
  * getAttendanceStats's totalLeaveEvents.
  */
-export async function getAttendanceBoardBreakdown(days?: number) {
-  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
-  if (days) {
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    conditions.push(gte(membershipEvents.createdAt, cutoff));
-  }
-
+export async function getAttendanceBoardBreakdown(filter: Omit<AttendanceRangeFilter, "boardId"> = {}) {
   const rows = await db
     .select({
       boardId: membershipEvents.boardId,
       leaveCount: sql<number>`count(*)::int`,
     })
     .from(membershipEvents)
-    .where(and(...conditions))
+    .where(and(...attendanceConditions(filter)))
     .groupBy(membershipEvents.boardId);
 
   const boards = await db.select({ id: partyBoards.id, name: partyBoards.name }).from(partyBoards);

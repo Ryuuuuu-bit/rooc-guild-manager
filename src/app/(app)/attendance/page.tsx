@@ -13,10 +13,21 @@ const DAY_OPTIONS = [
 ];
 
 const ALL_BOARDS_VALUE = "all";
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Start/end of the given "YYYY-MM-DD" as Thai-local (UTC+7) day boundaries — the offset is baked into the ISO string, so this is a direct, unambiguous parse (no manual UTC arithmetic needed, unlike a "relative to now" pin). */
+function startOfThaiDay(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00+07:00`);
+}
+function endOfThaiDay(dateStr: string): Date {
+  return new Date(`${dateStr}T23:59:59.999+07:00`);
+}
 
 interface SearchParams {
   days?: string;
   board?: string;
+  from?: string;
+  to?: string;
 }
 
 export default async function AttendancePage({
@@ -26,19 +37,46 @@ export default async function AttendancePage({
 }) {
   const session = await requireUser();
   const params = await searchParams;
-  const daysParam = DAY_OPTIONS.some((o) => o.value === params.days) ? params.days : "30";
-  const days = daysParam === "all" ? undefined : Number(daysParam);
 
   const boards = await listPartyBoards();
   const boardParam = boards.some((b) => b.id === params.board) ? params.board! : ALL_BOARDS_VALUE;
   const boardId = boardParam === ALL_BOARDS_VALUE ? undefined : boardParam;
 
+  // A custom date range (both from/to present and well-formed) takes over
+  // from the day-count presets entirely — the two are mutually exclusive
+  // views into the same underlying filter, not stackable.
+  const fromValid = params.from && DATE_RE.test(params.from) ? params.from : null;
+  const toValid = params.to && DATE_RE.test(params.to) ? params.to : null;
+  const isCustomRange = Boolean(fromValid && toValid);
+
+  const daysParam = DAY_OPTIONS.some((o) => o.value === params.days) ? params.days! : "30";
+  const days = daysParam === "all" ? undefined : Number(daysParam);
+
+  // Swap silently if the custom range is picked backwards rather than
+  // erroring — the two date inputs have no inherent "first/second"
+  // ordering constraint.
+  let from: Date | undefined;
+  let to: Date | undefined;
+  if (isCustomRange) {
+    const a = startOfThaiDay(fromValid!);
+    const b = endOfThaiDay(toValid!);
+    [from, to] = a.getTime() <= b.getTime() ? [a, b] : [startOfThaiDay(toValid!), endOfThaiDay(fromValid!)];
+  }
+  // `days` (the day-count presets) is passed straight through to the
+  // data layer rather than resolved to a cutoff Date here — see the
+  // AttendanceRangeFilter doc comment in lib/data.ts for why.
+  const rangeFilter = isCustomRange ? { from, to } : { days };
+
+  // Preserved on every preset/board link so switching one filter doesn't
+  // silently reset the other.
+  const rangeQuery = isCustomRange ? `from=${fromValid}&to=${toValid}` : `days=${daysParam}`;
+
   const [{ stats, totalLeaveEvents }, breakdown] = await Promise.all([
-    getAttendanceStats(days, boardId),
-    // Only needed for the "ทั้งหมด" view's summary pills — skip the extra
+    getAttendanceStats({ ...rangeFilter, boardId }),
+    // Only needed for the "ทุกกระดาน" view's summary pills — skip the extra
     // query when a specific board is already selected (its total is already
     // shown above the table).
-    boardId ? Promise.resolve(null) : getAttendanceBoardBreakdown(days),
+    boardId ? Promise.resolve(null) : getAttendanceBoardBreakdown(rangeFilter),
   ]);
   const maxLeaveCount = Math.max(1, ...stats.map((s) => s.leaveCount));
   const selectedBoardName = boardId ? boards.find((b) => b.id === boardId)?.name : null;
@@ -56,6 +94,8 @@ export default async function AttendancePage({
             <p className="mt-1 text-xs text-zinc-500">
               ต้องการแก้ไขรายการลาของใครสักคน? กดชื่อสมาชิกด้านล่างเพื่อไปหน้าโปรไฟล์ — ลบรายการทดสอบ/ผิดพลาดได้จาก
               &quot;ประวัติกิจกรรม&quot; หรือเพิ่มลาย้อนหลัง (เช่นแจ้งลาทาง DM) ได้จาก &quot;บันทึกการลาย้อนหลัง&quot;
+              (ทุกรายการลาบันทึกวันที่และเวลาไว้เป๊ะอยู่แล้ว — ดูเวลาเต็มได้ตอนชี้เมาส์ที่คอลัมน์
+              &quot;ลาล่าสุด&quot; ด้านล่าง หรือดูทุกรายการแยกวันได้ที่ &quot;ประวัติกิจกรรม&quot; ของสมาชิกคนนั้น)
             </p>
           )}
         </div>
@@ -63,7 +103,7 @@ export default async function AttendancePage({
           {boards.length > 0 && (
             <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
               <Link
-                href={`/attendance?days=${daysParam}&board=${ALL_BOARDS_VALUE}`}
+                href={`/attendance?${rangeQuery}&board=${ALL_BOARDS_VALUE}`}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                   boardParam === ALL_BOARDS_VALUE
                     ? "bg-amber-600 text-white"
@@ -75,7 +115,7 @@ export default async function AttendancePage({
               {boards.map((b) => (
                 <Link
                   key={b.id}
-                  href={`/attendance?days=${daysParam}&board=${b.id}`}
+                  href={`/attendance?${rangeQuery}&board=${b.id}`}
                   className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                     boardParam === b.id
                       ? "bg-amber-600 text-white"
@@ -93,7 +133,7 @@ export default async function AttendancePage({
                 key={opt.value}
                 href={`/attendance?days=${opt.value}&board=${boardParam}`}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  daysParam === opt.value
+                  !isCustomRange && daysParam === opt.value
                     ? "bg-amber-600 text-white"
                     : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
                 }`}
@@ -105,6 +145,52 @@ export default async function AttendancePage({
         </div>
       </div>
 
+      {/* Custom date range — a plain GET form, no JS needed. Picking a
+          preset above clears this (the preset links don't carry from/to);
+          filling this in and submitting overrides whichever preset was
+          active. */}
+      <form
+        action="/attendance"
+        method="get"
+        className={`flex flex-wrap items-end gap-2 rounded-xl border p-3 text-xs ${
+          isCustomRange ? "border-amber-600/60 bg-amber-950/10" : "border-zinc-800 bg-zinc-900/50"
+        }`}
+      >
+        <input type="hidden" name="board" value={boardParam} />
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] text-zinc-500">จากวันที่</label>
+          <input
+            type="date"
+            name="from"
+            defaultValue={fromValid ?? ""}
+            className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] text-zinc-500">ถึงวันที่</label>
+          <input
+            type="date"
+            name="to"
+            defaultValue={toValid ?? ""}
+            className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+          />
+        </div>
+        <button
+          type="submit"
+          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+        >
+          ดูช่วงนี้
+        </button>
+        {isCustomRange && (
+          <Link
+            href={`/attendance?days=30&board=${boardParam}`}
+            className="rounded-lg px-3 py-1.5 text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-300"
+          >
+            ล้างช่วงที่กำหนดเอง
+          </Link>
+        )}
+      </form>
+
       {/* Per-board split — only shown on the "ทุกกระดาน" view, e.g. lets an
           admin see "GL: 12 ครั้ง · WOE: 8 ครั้ง" at a glance without having
           to click through each board's tab one at a time. */}
@@ -113,7 +199,7 @@ export default async function AttendancePage({
           {breakdown.map((b) => (
             <Link
               key={b.boardId ?? "none"}
-              href={b.boardId ? `/attendance?days=${daysParam}&board=${b.boardId}` : "#"}
+              href={b.boardId ? `/attendance?${rangeQuery}&board=${b.boardId}` : "#"}
               className={`rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 transition ${
                 b.boardId ? "hover:border-amber-600/60 hover:text-amber-300" : "cursor-default"
               }`}
@@ -125,19 +211,20 @@ export default async function AttendancePage({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="w-10 px-5 py-3 font-medium">#</th>
               <th className="px-5 py-3 font-medium">สมาชิก</th>
               <th className="px-5 py-3 font-medium">จำนวนครั้งที่ลา</th>
+              <th className="px-5 py-3 font-medium">ลาล่าสุด</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {stats.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-5 py-10 text-center text-zinc-500">
+                <td colSpan={4} className="px-5 py-10 text-center text-zinc-500">
                   ไม่มีข้อมูลสมาชิก
                 </td>
               </tr>
@@ -169,6 +256,15 @@ export default async function AttendancePage({
                     </div>
                     <span className="w-6 shrink-0 text-right text-zinc-300">{row.leaveCount}</span>
                   </div>
+                </td>
+                <td className="px-5 py-3 text-xs text-zinc-400">
+                  {row.lastLeaveAt ? (
+                    <span title={row.lastLeaveAt.toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}>
+                      {row.lastLeaveAt.toLocaleDateString("th-TH", { dateStyle: "medium" })}
+                    </span>
+                  ) : (
+                    "—"
+                  )}
                 </td>
               </tr>
             ))}
