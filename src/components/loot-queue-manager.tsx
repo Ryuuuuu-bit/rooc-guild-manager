@@ -13,6 +13,7 @@ import {
   deleteLootRoundHistory,
   moveLootCategory,
   moveLootQueueEntry,
+  moveLootQueueEntryToPosition,
   postLootRoundMessage,
   removeFromLootQueue,
   renameLootCategory,
@@ -27,12 +28,12 @@ function fmtTime(d: Date) {
   return formatDistanceToNow(d, { addSuffix: true });
 }
 
-/** Builds the "1 name 2 name 3 name" announcement text the guild already
- * posts by hand in Discord — the Discord-post modal starts from this and
- * lets the admin edit before sending. */
+/** Builds the announcement text for the Discord-post modal / copy button —
+ * one numbered name per line ("1.name", "2.name", ...) so it's easy to read
+ * and to paste around, with the round header on its own line above. */
 function buildAnnouncementText(categoryName: string, label: string, served: LootQueueMemberRef[]): string {
   const header = [label.trim(), categoryName].filter(Boolean).join(" ");
-  const body = served.map((m, i) => `${i + 1} ${m.displayName}`).join(" ");
+  const body = served.map((m, i) => `${i + 1}.${m.displayName}`).join("\n");
   return `${header}\n${body}`;
 }
 
@@ -241,9 +242,104 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
 
 // --- Queue list ----------------------------------------------------------
 
-function QueueList({ category, isAdmin, pickable }: { category: LootCategoryView; isAdmin: boolean; pickable: LootQueueMemberRef[] }) {
+/** Click the rank number to type a target rank directly — jumps the member
+ * straight there in one save instead of walking ▲▼ one swap at a time,
+ * which gets painfully slow on long queues (60+ people). */
+function QueuePositionInput({
+  categoryId,
+  memberId,
+  rank,
+  total,
+}: {
+  categoryId: string;
+  memberId: string;
+  rank: number;
+  total: number;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(rank));
+  const [saving, setSaving] = useState(false);
+
+  function commit() {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < 1) {
+      setEditing(false);
+      return;
+    }
+    if (n === rank) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    moveLootQueueEntryToPosition(categoryId, memberId, n).then((res) => {
+      setSaving(false);
+      setEditing(false);
+      if (!res.ok) alert(res.error ?? "ย้ายลำดับไม่สำเร็จ");
+      router.refresh();
+    });
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        min={1}
+        max={total}
+        autoFocus
+        value={value}
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setValue(String(rank));
+            setEditing(false);
+          }
+        }}
+        className="w-9 shrink-0 rounded border border-amber-500 bg-zinc-900 px-1 py-0.5 text-center text-xs text-zinc-100 focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={() => {
+        setValue(String(rank));
+        setEditing(true);
+      }}
+      title="พิมพ์ลำดับที่ต้องการเพื่อย้ายไปตำแหน่งนั้นทันที"
+      className="w-7 shrink-0 rounded text-center text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-40"
+    >
+      {saving ? "…" : rank}
+    </button>
+  );
+}
+
+function QueueList({
+  category,
+  isAdmin,
+  pickable,
+  onlineMemberIds,
+}: {
+  category: LootCategoryView;
+  isAdmin: boolean;
+  pickable: LootQueueMemberRef[];
+  onlineMemberIds: Set<string>;
+}) {
   const router = useRouter();
   const [movingId, setMovingId] = useState<string | null>(null);
+  // Defaults to online-only — during a live round there can be 70+ names in
+  // the full roster, and the people actually bidding are the ones sitting
+  // in the event's voice channel right now. "Online" here means connected
+  // to the tracked GL/WOE voice channels (the bot can't see general Discord
+  // online/idle status), so it's off automatically outside event hours.
+  const [onlineOnly, setOnlineOnly] = useState(true);
+
+  const visiblePickable = onlineOnly ? pickable.filter((m) => onlineMemberIds.has(m.id)) : pickable;
 
   function handleMove(memberId: string, direction: "up" | "down") {
     setMovingId(memberId);
@@ -273,7 +369,11 @@ function QueueList({ category, isAdmin, pickable }: { category: LootCategoryView
         )}
         {category.queue.map((m, i) => (
           <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="w-7 shrink-0 text-center text-xs text-zinc-500">{i + 1}</span>
+            {isAdmin ? (
+              <QueuePositionInput categoryId={category.id} memberId={m.id} rank={i + 1} total={category.queue.length} />
+            ) : (
+              <span className="w-7 shrink-0 text-center text-xs text-zinc-500">{i + 1}</span>
+            )}
             {isAdmin && (
               <div className="flex shrink-0 flex-col items-center gap-0.5">
                 <button
@@ -310,17 +410,30 @@ function QueueList({ category, isAdmin, pickable }: { category: LootCategoryView
         ))}
       </ul>
       {isAdmin && (
-        <div className="border-t border-zinc-800 p-2">
+        <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 p-2">
           <MemberPicker
-            members={pickable.map((m) => ({ id: m.id, displayName: m.displayName, discordAvatar: m.discordAvatar, className: null }))}
+            members={visiblePickable.map((m) => ({ id: m.id, displayName: m.displayName, discordAvatar: m.discordAvatar, className: null }))}
             onSelect={handleAdd}
-            emptyLabel="ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
+            emptyLabel={
+              onlineOnly
+                ? "ไม่มีคนออนไลน์ในวอยซ์ตอนนี้ให้เพิ่ม — ลองปิด \"เฉพาะออนไลน์\""
+                : "ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
+            }
             trigger={
               <span className="inline-block cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
                 + เพิ่มสมาชิกเข้าคิว
               </span>
             }
           />
+          <label className="flex select-none items-center gap-1.5 text-xs text-zinc-500">
+            <input
+              type="checkbox"
+              checked={onlineOnly}
+              onChange={(e) => setOnlineOnly(e.target.checked)}
+              className="accent-amber-500"
+            />
+            เฉพาะออนไลน์ในวอยซ์ตอนนี้
+          </label>
         </div>
       )}
     </div>
@@ -563,15 +676,18 @@ export function LootQueueManager({
   selectedCategoryId,
   initialRounds,
   allMembers,
+  onlineMemberIds,
   isAdmin,
 }: {
   categories: LootCategoryView[];
   selectedCategoryId: string | null;
   initialRounds: LootRoundView[];
   allMembers: LootQueueMemberRef[];
+  onlineMemberIds: string[];
   isAdmin: boolean;
 }) {
   const selected = categories.find((c) => c.id === selectedCategoryId) ?? null;
+  const onlineSet = useMemo(() => new Set(onlineMemberIds), [onlineMemberIds]);
 
   const pickable = useMemo(() => {
     if (!selected) return [];
@@ -593,7 +709,7 @@ export function LootQueueManager({
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr]">
           <div className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-zinc-300">คิว — {selected.name}</h2>
-            <QueueList category={selected} isAdmin={isAdmin} pickable={pickable} />
+            <QueueList category={selected} isAdmin={isAdmin} pickable={pickable} onlineMemberIds={onlineSet} />
           </div>
           <div className="flex flex-col gap-4">
             {isAdmin && <RunRoundPanel category={selected} />}

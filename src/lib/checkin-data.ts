@@ -1,4 +1,4 @@
-import { and, gte, lte, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, gte, lte, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { checkinNotes, members, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
@@ -95,6 +95,32 @@ function overlapMinutes(interval: Interval, window: Interval): number {
   const overlapStart = Math.max(interval.start.getTime(), window.start.getTime());
   const overlapEnd = Math.min(interval.end.getTime(), window.end.getTime());
   return Math.max(0, overlapEnd - overlapStart) / 60_000;
+}
+
+/**
+ * Member IDs currently connected to any of the tracked voice channels (the
+ * GL/WOE event channels in checkin-events.ts) right now — i.e. whichever
+ * member's MOST RECENT logged voice event overall is a JOIN with no LEAVE
+ * after it. This is the closest thing to "who's online" the bot can see:
+ * it only has the Voice States intent, not the (privileged) Presence
+ * intent, so general Discord online/idle/offline status isn't available —
+ * this reflects live voice presence in the events channels specifically,
+ * which is what matters while running a loot-queue round live.
+ */
+export async function listOnlineMemberIds(): Promise<Set<string>> {
+  const rows = await db
+    .select({ memberId: voiceAttendanceEvents.memberId, type: voiceAttendanceEvents.type })
+    .from(voiceAttendanceEvents)
+    .orderBy(asc(voiceAttendanceEvents.memberId), asc(voiceAttendanceEvents.createdAt));
+
+  const lastTypeByMember = new Map<string, "JOIN" | "LEAVE">();
+  for (const r of rows) lastTypeByMember.set(r.memberId, r.type); // ascending order — last write wins = most recent event
+
+  const online = new Set<string>();
+  for (const [memberId, type] of lastTypeByMember) {
+    if (type === "JOIN") online.add(memberId);
+  }
+  return online;
 }
 
 export interface CheckinMemberResult {

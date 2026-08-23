@@ -137,6 +137,49 @@ export async function moveLootQueueEntry(
   return { ok: true };
 }
 
+/**
+ * Jumps a member straight to a 1-indexed rank in the queue (typed in by the
+ * admin) instead of walking there one ▲▼ swap at a time — the up/down
+ * reorder above gets painfully slow on long queues (60+ people). Pulls the
+ * member out and reinserts at the target rank, then re-stamps every
+ * member's position to their new 0-indexed rank (positions aren't
+ * necessarily contiguous beforehand, e.g. after addToLootQueue appends —
+ * this also normalizes them along the way).
+ */
+export async function moveLootQueueEntryToPosition(
+  categoryId: string,
+  memberId: string,
+  newRank: number
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (!Number.isInteger(newRank) || newRank < 1) return { ok: false, error: "ลำดับต้องเป็นเลขจำนวนเต็มตั้งแต่ 1" };
+
+  return db.transaction(async (tx) => {
+    const all = await tx
+      .select()
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId))
+      .orderBy(asc(lootQueueEntries.position));
+    const idx = all.findIndex((e) => e.memberId === memberId);
+    if (idx === -1) return { ok: false, error: "ไม่พบสมาชิกคนนี้ในคิว" };
+
+    const targetIdx = Math.min(newRank - 1, all.length - 1);
+    if (targetIdx === idx) return { ok: true };
+
+    const [entry] = all.splice(idx, 1);
+    all.splice(targetIdx, 0, entry);
+
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].position !== i) {
+        await tx.update(lootQueueEntries).set({ position: i }).where(eq(lootQueueEntries.id, all[i].id));
+      }
+    }
+
+    revalidateEverywhere();
+    return { ok: true };
+  });
+}
+
 // --- Rounds ---------------------------------------------------------------
 
 export interface RunRoundResult extends ActionResult {

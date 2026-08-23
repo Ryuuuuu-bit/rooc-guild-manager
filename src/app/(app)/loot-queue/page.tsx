@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/authz";
 import { listMembers } from "@/lib/data";
 import { listLootCategories, listLootRounds } from "@/lib/loot-queue-data";
+import { listOnlineMemberIds } from "@/lib/checkin-data";
 import { memberDisplayName } from "@/lib/ui";
 import { LootQueueManager } from "@/components/loot-queue-manager";
 
@@ -18,9 +19,10 @@ export default async function LootQueuePage({
       ? params.category
       : categories[0]?.id ?? null;
 
-  const [rounds, members] = await Promise.all([
+  const [rounds, members, onlineMemberIds] = await Promise.all([
     selectedCategoryId ? listLootRounds(selectedCategoryId) : Promise.resolve([]),
     listMembers(),
+    listOnlineMemberIds(),
   ]);
 
   const allMembers = members.map((m) => ({
@@ -44,6 +46,7 @@ export default async function LootQueuePage({
         selectedCategoryId={selectedCategoryId}
         initialRounds={rounds}
         allMembers={allMembers}
+        onlineMemberIds={[...onlineMemberIds]}
         isAdmin={session.user.isAdmin}
       />
     </div>
