@@ -320,16 +320,24 @@ function QueuePositionInput({
 
 /** A clickable member chip for the "add to queue" pool — same visual
  * language as the party board's MemberChip, but plain-button/click instead
- * of drag-and-drop (this pool has no drop target, just "add"). */
-function AddMemberChip({ member, onClick }: { member: LootQueueMemberRef; onClick: () => void }) {
+ * of drag-and-drop (this pool has no drop target, just "add"). `online`
+ * only adds a small dot — never hides anyone — so the picker always shows
+ * the full roster (same principle as the party board's pool) while still
+ * surfacing who's in voice right now as a quick visual cue. */
+function AddMemberChip({ member, online, onClick }: { member: LootQueueMemberRef; online: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`เพิ่ม ${member.displayName} เข้าคิว`}
+      title={`เพิ่ม ${member.displayName} เข้าคิว${online ? " (ออนไลน์)" : ""}`}
       className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1.5 text-xs transition hover:border-amber-500 hover:bg-zinc-800"
     >
-      <MemberAvatar src={member.discordAvatar} alt={member.displayName} width={20} height={20} className="h-5 w-5 shrink-0 rounded-full ring-1 ring-zinc-700" />
+      <span className="relative shrink-0">
+        <MemberAvatar src={member.discordAvatar} alt={member.displayName} width={20} height={20} className="h-5 w-5 rounded-full ring-1 ring-zinc-700" />
+        {online && (
+          <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-1 ring-zinc-900" />
+        )}
+      </span>
       <span className="min-w-0 max-w-[9rem] truncate font-medium text-zinc-100">{member.displayName}</span>
     </button>
   );
@@ -348,24 +356,17 @@ function QueueList({
 }) {
   const router = useRouter();
   const [movingId, setMovingId] = useState<string | null>(null);
-  // Defaults to online-only — during a live round there can be 70+ names in
-  // the full roster, and the people actually bidding are the ones sitting
-  // in the event's voice channel right now. "Online" here means connected
-  // to the tracked GL/WOE voice channels (the bot can't see general Discord
-  // online/idle status), so it's off automatically outside event hours.
-  const [onlineOnly, setOnlineOnly] = useState(true);
   const [addQuery, setAddQuery] = useState("");
 
-  // Typing a name is a specific request for that person — searching ignores
-  // the online-only filter entirely (a query that came up empty just
-  // because someone's offline was confusing: "why can't I find them, they
-  // haven't left the guild"). Online-only only thins the list while
-  // browsing with no query typed.
+  // Same principle as the party board's "รอลงปาร์ตี้" pool: always show the
+  // full roster, filtered only by what's typed — nothing gets hidden by an
+  // online/offline toggle (that caused real confusion: someone active but
+  // not in voice looked "missing"). Online status is still surfaced, just
+  // as a dot on the chip (see AddMemberChip) rather than a filter.
   const trimmedQuery = addQuery.trim().toLowerCase();
-  const onlineFiltered = onlineOnly && !trimmedQuery ? pickable.filter((m) => onlineMemberIds.has(m.id)) : pickable;
   const visiblePickable = trimmedQuery
-    ? onlineFiltered.filter((m) => m.displayName.toLowerCase().includes(trimmedQuery))
-    : onlineFiltered;
+    ? pickable.filter((m) => m.displayName.toLowerCase().includes(trimmedQuery))
+    : pickable;
 
   function handleMove(memberId: string, direction: "up" | "down") {
     setMovingId(memberId);
@@ -449,28 +450,20 @@ function QueueList({
               placeholder="ค้นหาชื่อ..."
               className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
             />
-            <label className="flex select-none items-center gap-1.5 text-xs text-zinc-500">
-              <input
-                type="checkbox"
-                checked={onlineOnly}
-                onChange={(e) => setOnlineOnly(e.target.checked)}
-                className="accent-amber-500"
-              />
-              เฉพาะออนไลน์
-            </label>
+            <span className="flex select-none items-center gap-1 text-[10px] text-zinc-500">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" /> = อยู่ในวอยซ์ตอนนี้
+            </span>
           </div>
           <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-dashed border-zinc-800 p-2">
             {visiblePickable.length === 0 && (
               <span className="px-1 py-1 text-xs text-zinc-600">
                 {pickable.length === 0
                   ? "ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
-                  : trimmedQuery
-                    ? "ไม่พบชื่อที่ตรงกับที่ค้นหา"
-                    : "ไม่มีคนออนไลน์ในวอยซ์ตอนนี้ให้เพิ่ม — ลองปิด \"เฉพาะออนไลน์\""}
+                  : "ไม่พบชื่อที่ตรงกับที่ค้นหา"}
               </span>
             )}
             {visiblePickable.map((m) => (
-              <AddMemberChip key={m.id} member={m} onClick={() => handleAdd(m.id)} />
+              <AddMemberChip key={m.id} member={m} online={onlineMemberIds.has(m.id)} onClick={() => handleAdd(m.id)} />
             ))}
           </div>
         </div>
