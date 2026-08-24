@@ -17,6 +17,7 @@ import {
   removeFromLootQueue,
   renameLootCategory,
   runLootRound,
+  setLootCategoryNumberingBase,
   undoLootRound,
   type RunRoundResult,
 } from "@/app/actions/loot-queue";
@@ -29,10 +30,13 @@ function fmtTime(d: Date) {
 
 /** Builds the announcement text for the Discord-post modal / copy button —
  * one numbered name per line ("1.name", "2.name", ...) so it's easy to read
- * and to paste around, with the round header on its own line above. */
-function buildAnnouncementText(categoryName: string, label: string, served: LootQueueMemberRef[]): string {
+ * and to paste around, with the round header on its own line above.
+ * `startNumber` is normally 1, but a category linked to continue another
+ * category's numbering (see the "เลขต่อจาก" control below the queue) starts
+ * counting from wherever that other category's latest round left off. */
+function buildAnnouncementText(categoryName: string, label: string, served: LootQueueMemberRef[], startNumber: number): string {
   const header = [label.trim(), categoryName].filter(Boolean).join(" ");
-  const body = served.map((m, i) => `${i + 1}.${m.displayName}`).join("\n");
+  const body = served.map((m, i) => `${startNumber + i}.${m.displayName}`).join("\n");
   return `${header}\n${body}`;
 }
 
@@ -133,7 +137,48 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
 
 // --- Run-round panel ---------------------------------------------------
 
-function RunRoundPanel({ category }: { category: LootCategoryView }) {
+/** "เลขเริ่มต่อจาก" — lets an admin link this category's round numbering to
+ * continue from another category's latest round instead of always
+ * starting at 1 (e.g. "ขนนกหลากสี" continuing on from "ขนนกขาว"). See
+ * computeNumberingStart in loot-queue-data.ts for how the actual offset is
+ * worked out at run time. */
+function NumberingBaseControl({ category, categories }: { category: LootCategoryView; categories: LootCategoryView[] }) {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const options = categories.filter((c) => c.id !== category.id);
+
+  function handleChange(value: string) {
+    setSaving(true);
+    setLootCategoryNumberingBase(category.id, value || null).then((res) => {
+      setSaving(false);
+      if (!res.ok) alert(res.error ?? "ตั้งค่าไม่สำเร็จ");
+      router.refresh();
+    });
+  }
+
+  if (options.length === 0) return null;
+
+  return (
+    <label className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
+      เลขเริ่มต่อจาก:
+      <select
+        value={category.numberingBaseCategoryId ?? ""}
+        disabled={saving}
+        onChange={(e) => handleChange(e.target.value)}
+        className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+      >
+        <option value="">— เริ่มที่ 1 เสมอ —</option>
+        {options.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RunRoundPanel({ category, categories }: { category: LootCategoryView; categories: LootCategoryView[] }) {
   const router = useRouter();
   const [count, setCount] = useState("");
   const [label, setLabel] = useState("");
@@ -160,7 +205,7 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
   }
 
   if (result?.served) {
-    const text = buildAnnouncementText(category.name, label, result.served);
+    const text = buildAnnouncementText(category.name, label, result.served, result.startNumber ?? 1);
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3">
         <p className="text-sm text-emerald-300">
@@ -191,7 +236,7 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
             }}
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
           >
-            รันรอบใหม่อีก
+            รันคิวใหม่อีก
           </button>
         </div>
         {showPost && <PostToDiscordModal initialText={text} onClose={() => setShowPost(false)} />}
@@ -201,7 +246,7 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-      <p className="text-sm font-medium text-zinc-300">รันรอบใหม่</p>
+      <p className="text-sm font-medium text-zinc-300">รันคิวใหม่</p>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="number"
@@ -222,11 +267,13 @@ function RunRoundPanel({ category }: { category: LootCategoryView }) {
           type="button"
           disabled={!n || n <= 0 || pending || category.queue.length === 0}
           onClick={handleRun}
+          title="ดึงคนหัวคิวเท่าจำนวนที่กรอกออกจากคิว แล้วย้ายคนเหล่านั้นไปท้ายคิว"
           className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pending ? "กำลังรัน..." : "รัน"}
+          {pending ? "กำลังรันคิวใหม่..." : "รันคิวใหม่"}
         </button>
       </div>
+      <NumberingBaseControl category={category} categories={categories} />
       {error && <p className="text-xs text-rose-400">{error}</p>}
       {category.queue.length === 0 && <p className="text-xs text-zinc-500">คิวหมวดนี้ยังไม่มีสมาชิก — เพิ่มสมาชิกเข้าคิวก่อน</p>}
       {preview.length > 0 && (
@@ -752,7 +799,7 @@ export function LootQueueManager({
             <QueueList category={selected} isAdmin={isAdmin} pickable={pickable} onlineMemberIds={onlineSet} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
-            {isAdmin && <RunRoundPanel category={selected} />}
+            {isAdmin && <RunRoundPanel category={selected} categories={categories} />}
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium text-zinc-300">ประวัติล่าสุด</h2>
               <RoundHistory rounds={initialRounds} isAdmin={isAdmin} />

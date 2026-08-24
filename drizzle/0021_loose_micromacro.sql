@@ -1,0 +1,2 @@
+ALTER TABLE "loot_categories" ADD COLUMN "numbering_base_category_id" text;--> statement-breakpoint
+ALTER TABLE "loot_categories" ADD CONSTRAINT "loot_categories_numbering_base_category_id_loot_categories_id_fk" FOREIGN KEY ("numbering_base_category_id") REFERENCES "public"."loot_categories"("id") ON DELETE set null ON UPDATE no action;

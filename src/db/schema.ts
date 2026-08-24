@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   boolean,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
@@ -355,6 +356,16 @@ export const lootCategories = pgTable(
     id: text("id").primaryKey().$defaultFn(() => createId()),
     name: text("name").notNull(),
     sortOrder: integer("sort_order").notNull().default(0),
+    // Optional: when set, this category's round-result numbering doesn't
+    // start fresh at 1 — it continues from wherever the linked category's
+    // MOST RECENT round left off (e.g. "ขนนกหลากสี" continuing on from
+    // "ขนนกขาว", matching how the guild has always announced these two
+    // together). See computeNumberingStart in loot-queue-data.ts. The
+    // linked category's own numbering is unaffected — it still always
+    // starts at 1 each round.
+    numberingBaseCategoryId: text("numbering_base_category_id").references((): AnyPgColumn => lootCategories.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex("loot_categories_name_idx").on(table.name)]

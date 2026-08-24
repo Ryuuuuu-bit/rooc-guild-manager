@@ -7,7 +7,7 @@ import { lootCategories, lootQueueEntries, lootRounds } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
 import { createChannelMessage } from "@/lib/discord";
-import type { LootQueueMemberRef } from "@/lib/loot-queue-data";
+import { computeNumberingStart, type LootQueueMemberRef } from "@/lib/loot-queue-data";
 
 export interface ActionResult {
   ok: boolean;
@@ -186,6 +186,10 @@ export interface RunRoundResult extends ActionResult {
   served?: LootQueueMemberRef[];
   /** True when fewer people were served than requested, because the queue ran out. */
   short?: boolean;
+  /** The number the announcement's numbered list should start counting
+   * from — normally 1, but a category linked via numberingBaseCategoryId
+   * continues on from another category's latest round instead. */
+  startNumber?: number;
 }
 
 /**
@@ -210,6 +214,10 @@ export async function runLootRound(categoryId: string, count: number, label?: st
 
     const servedEntries = queue.slice(0, count).map((r) => r.entry);
     const short = servedEntries.length < count;
+
+    // Computed BEFORE inserting this round's history row below, so it
+    // doesn't count itself.
+    const startNumber = (await computeNumberingStart(tx, categoryId)) + 1;
 
     const [{ maxPos } = { maxPos: -1 }] = await tx
       .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
@@ -245,8 +253,25 @@ export async function runLootRound(categoryId: string, count: number, label?: st
       .map((m) => ({ id: m.id, displayName: memberDisplayName(m), discordAvatar: m.discordAvatar }));
 
     revalidateEverywhere();
-    return { ok: true, served, short };
+    return { ok: true, served, short, startNumber };
   });
+}
+
+/** Sets (or clears, with `baseCategoryId: null`) which other category's
+ * numbering this one continues from — see computeNumberingStart. Rejects a
+ * category linking to itself; doesn't otherwise guard against longer
+ * cycles (A→B→A) since chasing that through isn't worth the complexity for
+ * what's a two-category admin setting today. */
+export async function setLootCategoryNumberingBase(
+  categoryId: string,
+  baseCategoryId: string | null
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (baseCategoryId === categoryId) return { ok: false, error: "หมวดหมู่อ้างอิงตัวเองไม่ได้" };
+
+  await db.update(lootCategories).set({ numberingBaseCategoryId: baseCategoryId }).where(eq(lootCategories.id, categoryId));
+  revalidateEverywhere();
+  return { ok: true };
 }
 
 /**
