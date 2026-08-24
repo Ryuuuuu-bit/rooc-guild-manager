@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { MemberAvatar } from "@/components/member-avatar";
-import { MemberPicker } from "@/components/party/member-picker";
 import { listDiscordChannels } from "@/app/actions/bot-messages";
 import {
   addToLootQueue,
@@ -319,6 +318,23 @@ function QueuePositionInput({
   );
 }
 
+/** A clickable member chip for the "add to queue" pool — same visual
+ * language as the party board's MemberChip, but plain-button/click instead
+ * of drag-and-drop (this pool has no drop target, just "add"). */
+function AddMemberChip({ member, onClick }: { member: LootQueueMemberRef; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`เพิ่ม ${member.displayName} เข้าคิว`}
+      className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1.5 text-xs transition hover:border-amber-500 hover:bg-zinc-800"
+    >
+      <MemberAvatar src={member.discordAvatar} alt={member.displayName} width={20} height={20} className="h-5 w-5 shrink-0 rounded-full ring-1 ring-zinc-700" />
+      <span className="min-w-0 max-w-[9rem] truncate font-medium text-zinc-100">{member.displayName}</span>
+    </button>
+  );
+}
+
 function QueueList({
   category,
   isAdmin,
@@ -338,8 +354,18 @@ function QueueList({
   // to the tracked GL/WOE voice channels (the bot can't see general Discord
   // online/idle status), so it's off automatically outside event hours.
   const [onlineOnly, setOnlineOnly] = useState(true);
+  const [addQuery, setAddQuery] = useState("");
 
-  const visiblePickable = onlineOnly ? pickable.filter((m) => onlineMemberIds.has(m.id)) : pickable;
+  // Typing a name is a specific request for that person — searching ignores
+  // the online-only filter entirely (a query that came up empty just
+  // because someone's offline was confusing: "why can't I find them, they
+  // haven't left the guild"). Online-only only thins the list while
+  // browsing with no query typed.
+  const trimmedQuery = addQuery.trim().toLowerCase();
+  const onlineFiltered = onlineOnly && !trimmedQuery ? pickable.filter((m) => onlineMemberIds.has(m.id)) : pickable;
+  const visiblePickable = trimmedQuery
+    ? onlineFiltered.filter((m) => m.displayName.toLowerCase().includes(trimmedQuery))
+    : onlineFiltered;
 
   function handleMove(memberId: string, direction: "up" | "down") {
     setMovingId(memberId);
@@ -410,30 +436,43 @@ function QueueList({
         ))}
       </ul>
       {isAdmin && (
-        <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 p-2">
-          <MemberPicker
-            members={visiblePickable.map((m) => ({ id: m.id, displayName: m.displayName, discordAvatar: m.discordAvatar, className: null }))}
-            onSelect={handleAdd}
-            emptyLabel={
-              onlineOnly
-                ? "ไม่มีคนออนไลน์ในวอยซ์ตอนนี้ให้เพิ่ม — ลองปิด \"เฉพาะออนไลน์\""
-                : "ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
-            }
-            trigger={
-              <span className="inline-block cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
-                + เพิ่มสมาชิกเข้าคิว
-              </span>
-            }
-          />
-          <label className="flex select-none items-center gap-1.5 text-xs text-zinc-500">
+        <div className="border-t border-zinc-800 p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h3 className="text-xs font-medium text-zinc-400">
+              เพิ่มเข้าคิว ({visiblePickable.length}
+              {visiblePickable.length !== pickable.length ? ` / ${pickable.length}` : ""})
+            </h3>
             <input
-              type="checkbox"
-              checked={onlineOnly}
-              onChange={(e) => setOnlineOnly(e.target.checked)}
-              className="accent-amber-500"
+              type="text"
+              value={addQuery}
+              onChange={(e) => setAddQuery(e.target.value)}
+              placeholder="ค้นหาชื่อ..."
+              className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
             />
-            เฉพาะออนไลน์ในวอยซ์ตอนนี้
-          </label>
+            <label className="flex select-none items-center gap-1.5 text-xs text-zinc-500">
+              <input
+                type="checkbox"
+                checked={onlineOnly}
+                onChange={(e) => setOnlineOnly(e.target.checked)}
+                className="accent-amber-500"
+              />
+              เฉพาะออนไลน์
+            </label>
+          </div>
+          <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-dashed border-zinc-800 p-2">
+            {visiblePickable.length === 0 && (
+              <span className="px-1 py-1 text-xs text-zinc-600">
+                {pickable.length === 0
+                  ? "ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
+                  : trimmedQuery
+                    ? "ไม่พบชื่อที่ตรงกับที่ค้นหา"
+                    : "ไม่มีคนออนไลน์ในวอยซ์ตอนนี้ให้เพิ่ม — ลองปิด \"เฉพาะออนไลน์\""}
+              </span>
+            )}
+            {visiblePickable.map((m) => (
+              <AddMemberChip key={m.id} member={m} onClick={() => handleAdd(m.id)} />
+            ))}
+          </div>
         </div>
       )}
     </div>
