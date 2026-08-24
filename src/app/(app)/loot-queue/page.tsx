@@ -21,7 +21,11 @@ export default async function LootQueuePage({
 
   const [rounds, members, onlineMemberIds] = await Promise.all([
     selectedCategoryId ? listLootRounds(selectedCategoryId) : Promise.resolve([]),
-    listMembers(),
+    // "active" here = not benched — a benched member isn't expected to be
+    // bidding on loot, so leaving them out of the add-to-queue pool avoids
+    // confusion. Doesn't affect anyone already queued from before they were
+    // benched — the queue list itself is unrelated to this fetch.
+    listMembers({ benched: "active" }),
     listOnlineMemberIds(),
   ]);
 
