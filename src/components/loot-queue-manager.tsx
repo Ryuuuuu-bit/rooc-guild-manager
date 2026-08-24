@@ -796,10 +796,19 @@ export function LootQueueManager({
            * from the other side — belt and suspenders. */}
           <div className="flex min-w-0 flex-col gap-3">
             <h2 className="text-sm font-medium text-zinc-300">คิว — {selected.name}</h2>
-            <QueueList category={selected} isAdmin={isAdmin} pickable={pickable} onlineMemberIds={onlineSet} />
+            {/* Same key={selected.id} reasoning as RunRoundPanel below —
+             * resets the add-picker's search text and online-only
+             * scroll position when switching categories. */}
+            <QueueList key={selected.id} category={selected} isAdmin={isAdmin} pickable={pickable} onlineMemberIds={onlineSet} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
-            {isAdmin && <RunRoundPanel category={selected} categories={categories} />}
+            {/* key={selected.id}: forces a fresh RunRoundPanel instance per
+             * category — without it, React reuses the same component across
+             * a tab switch (same position in the tree, only props change),
+             * so its local `result` state from the PREVIOUS category's just-
+             * run round kept showing in the green result box even after
+             * switching to a category that's never been run. */}
+            {isAdmin && <RunRoundPanel key={selected.id} category={selected} categories={categories} />}
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium text-zinc-300">ประวัติล่าสุด</h2>
               <RoundHistory rounds={initialRounds} isAdmin={isAdmin} />
