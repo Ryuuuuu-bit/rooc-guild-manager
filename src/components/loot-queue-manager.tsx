@@ -30,14 +30,18 @@ function fmtTime(d: Date) {
 
 /** Builds the announcement text for the Discord-post modal / copy button —
  * one numbered name per line ("1.name", "2.name", ...) so it's easy to read
- * and to paste around, with the round header on its own line above.
+ * and to paste around. The header is bolded (Discord markdown) and set off
+ * from the list by a blank line — without that gap, when several rounds'
+ * texts get posted or pasted back-to-back (e.g. running multiple
+ * categories in one session), one round's last name runs straight into the
+ * next round's header with nothing to tell them apart.
  * `startNumber` is normally 1, but a category linked to continue another
  * category's numbering (see the "เลขต่อจาก" control below the queue) starts
  * counting from wherever that other category's latest round left off. */
 function buildAnnouncementText(categoryName: string, label: string, served: LootQueueMemberRef[], startNumber: number): string {
   const header = [label.trim(), categoryName].filter(Boolean).join(" ");
   const body = served.map((m, i) => `${startNumber + i}.${m.displayName}`).join("\n");
-  return `${header}\n${body}`;
+  return `**${header}**\n\n${body}`;
 }
 
 // --- Discord post modal ----------------------------------------------------
