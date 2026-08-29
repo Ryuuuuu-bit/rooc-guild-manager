@@ -157,21 +157,29 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   }, [moreOpen]);
 
   return (
-    <nav ref={containerRef} className="relative flex items-center gap-1 overflow-x-auto px-4 pb-2 sm:hidden">
-      {primaryLinks.map((link) => {
-        const active = isActive(pathname, link.href);
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
-              active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
-            }`}
-          >
-            {link.label}
-          </Link>
-        );
-      })}
+    // Only the primary-links row scrolls horizontally — the "more" button and its
+    // dropdown live outside that scroll box. `overflow-x-auto` alone forces the
+    // computed overflow-y to "auto" too (CSS overflow spec: an axis can't stay
+    // "visible" once the other axis isn't), which was silently clipping the
+    // dropdown (positioned `top-full`, i.e. below this row) — the button worked,
+    // but the menu it opened was invisible, reading as "can't press it" on mobile.
+    <nav ref={containerRef} className="relative flex items-center gap-1 px-4 pb-2 sm:hidden">
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+        {primaryLinks.map((link) => {
+          const active = isActive(pathname, link.href);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
+                active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+              }`}
+            >
+              {link.label}
+            </Link>
+          );
+        })}
+      </div>
       <button
         type="button"
         onClick={() => setMoreOpen((v) => !v)}
