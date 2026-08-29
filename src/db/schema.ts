@@ -3,6 +3,7 @@ import {
   pgEnum,
   text,
   integer,
+  doublePrecision,
   timestamp,
   index,
   uniqueIndex,
@@ -322,6 +323,50 @@ export const jobClasses = pgTable(
   (table) => [index("job_classes_sort_order_idx").on(table.sortOrder)]
 );
 
+// PVP role classification (distinct from `members.characterClass` — a job
+// class like "Bio" can be built as MainDMG one week and SecondSup another).
+// Kept as free text rather than a pgEnum: the guild's own labeling has
+// already drifted once (this list was copied from their live Google Sheet),
+// and a text column lets that keep drifting without a migration each time —
+// PVP_ROLES in src/lib/pvp-stats.ts is the single place the fixed option
+// list lives for the form's <select>.
+export const pvpStatEntries = pgTable(
+  "pvp_stat_entries",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    role: text("role"),
+    cp: integer("cp"),
+    pDef: integer("p_def"),
+    mDef: integer("m_def"),
+    // Flat PVP attack/defense stats — NOT percentages (unlike the *Pct
+    // columns below), despite the deceptively similar name to pvpReduction.
+    pvpBonus: integer("pvp_bonus"),
+    pvpReduction: integer("pvp_reduction"),
+    pDmgReductionPct: doublePrecision("p_dmg_reduction_pct"),
+    mDmgReductionPct: doublePrecision("m_dmg_reduction_pct"),
+    atk: integer("atk"),
+    matk: integer("matk"),
+    ignorePDef: integer("ignore_p_def"),
+    ignoreMDef: integer("ignore_m_def"),
+    pDmgBonusPct: doublePrecision("p_dmg_bonus_pct"),
+    mDmgBonusPct: doublePrecision("m_dmg_bonus_pct"),
+    // Free text, e.g. "Moon/Orclord" — boss cards vary too much in
+    // combination to normalize into their own table for what's essentially
+    // a self-reported note.
+    bossCards: text("boss_cards"),
+    // Append-only: every submission is a new row (never updated in place),
+    // so this doubles as the history log the guild's admin wanted kept —
+    // "latest per member" is just the most recent row by this column.
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("pvp_stat_entries_member_id_created_at_idx").on(table.memberId, table.createdAt),
+  ]
+);
+
 export const voiceEventTypeEnum = pgEnum("voice_event_type", ["JOIN", "LEAVE"]);
 
 // Raw join/leave log for the small set of voice channels an admin is
@@ -450,6 +495,7 @@ export const lootRounds = pgTable(
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
+  pvpStatEntries: many(pvpStatEntries),
 }));
 
 export const membershipEventsRelations = relations(
@@ -490,4 +536,6 @@ export type NewLootCategory = typeof lootCategories.$inferInsert;
 export type LootQueueEntry = typeof lootQueueEntries.$inferSelect;
 export type NewLootQueueEntry = typeof lootQueueEntries.$inferInsert;
 export type LootRound = typeof lootRounds.$inferSelect;
+export type PvpStatEntry = typeof pvpStatEntries.$inferSelect;
+export type NewPvpStatEntry = typeof pvpStatEntries.$inferInsert;
 export type NewLootRound = typeof lootRounds.$inferInsert;

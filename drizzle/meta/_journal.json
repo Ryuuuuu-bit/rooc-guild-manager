@@ -162,6 +162,13 @@
       "when": 1788010288706,
       "tag": "0022_add_party_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788016307349,
+      "tag": "0023_add_pvp_stat_entries",
+      "breakpoints": true
     }
   ]
 }
