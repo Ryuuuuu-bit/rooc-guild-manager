@@ -9,23 +9,40 @@ interface NavLink {
   label: string;
 }
 
-// Kept inline in the top bar — the pages people open every session.
+interface NavGroup {
+  label: string;
+  links: NavLink[];
+}
+
+// Always visible in the top bar / start of the mobile strip — the two pages
+// almost everyone opens first (an overview, and the roster itself).
 const primaryLinks: NavLink[] = [
   { href: "/", label: "ภาพรวม" },
   { href: "/members", label: "สมาชิก" },
-  { href: "/party", label: "จัดปาร์ตี้" },
-  { href: "/random", label: "สุ่มสมาชิก" },
 ];
 
-// Grouped under one "กิจกรรม & บันทึก" dropdown on desktop — record-keeping
-// pages people check less often, so they don't crowd the top bar. Mobile
-// keeps everything flat in the scrollable strip below, since a dropdown adds
-// friction on touch without saving meaningful space there.
-const activityLinks: NavLink[] = [
-  { href: "/activity", label: "ประวัติกิจกรรม" },
-  { href: "/attendance", label: "สถิติการลา" },
-  { href: "/checkin", label: "เช็คชื่อ [DC]" },
-  { href: "/loot-queue", label: "คิวประมูล" },
+// Grouped by what the pages are FOR, not how often they're used — mixing an
+// active "run this week's event" tool with a passive "look at past records"
+// one in the same menu made the categories read as arbitrary. Split into
+// two: tools you use to run something now, vs. pages you check to look
+// something up.
+const groups: NavGroup[] = [
+  {
+    label: "จัดกิจกรรม",
+    links: [
+      { href: "/party", label: "จัดปาร์ตี้" },
+      { href: "/random", label: "สุ่มสมาชิก" },
+      { href: "/checkin", label: "เช็คชื่อ [DC]" },
+      { href: "/loot-queue", label: "คิวประมูล" },
+    ],
+  },
+  {
+    label: "บันทึก & สถิติ",
+    links: [
+      { href: "/activity", label: "ประวัติกิจกรรม" },
+      { href: "/attendance", label: "สถิติการลา" },
+    ],
+  },
 ];
 
 const linkClass =
@@ -37,29 +54,66 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** The top-bar nav: primary links inline, record-keeping pages grouped under one dropdown. */
-export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
-  const pathname = usePathname();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+/** One top-bar dropdown for a category of pages — desktop only. Its own open/close state so the two category menus don't interfere with each other. */
+function NavDropdown({ group, pathname }: { group: NavGroup; pathname: string }) {
+  const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
-  const activityActive = activityLinks.some((l) => isActive(pathname, l.href));
+  const active = group.links.some((l) => isActive(pathname, l.href));
 
   // Native <details> keeps its own "open" DOM state, which this layout never
   // resets on navigation (it isn't remounted between pages) — without this,
   // picking a link from the dropdown leaves it visually stuck open on the
-  // page you just navigated to. Each dropdown link closes it directly
-  // on click (below); this effect handles the other way to dismiss it,
-  // clicking outside.
+  // page you just navigated to. Each link closes it directly on click
+  // (below); this effect handles the other way to dismiss it, clicking
+  // outside.
   useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!open) return;
     function handleClickOutside(e: MouseEvent) {
       if (detailsRef.current && !detailsRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
+        setOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownOpen]);
+  }, [open]);
+
+  return (
+    <details ref={detailsRef} open={open} className="relative">
+      <summary
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((v) => !v);
+        }}
+        className={`${active ? activeLinkClass : linkClass} flex list-none cursor-pointer items-center gap-1 [&::-webkit-details-marker]:hidden`}
+      >
+        {group.label}
+        <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 transition ${open ? "rotate-180" : ""}`}>
+          <path
+            fillRule="evenodd"
+            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </summary>
+      <div className="absolute left-0 top-full z-20 mt-1 flex w-48 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
+        {group.links.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            onClick={() => setOpen(false)}
+            className={`block ${isActive(pathname, link.href) ? activeLinkClass : `${linkClass} hover:bg-zinc-800`}`}
+          >
+            {link.label}
+          </Link>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+/** The top-bar nav: the 2 core pages inline, everything else grouped by type into two dropdowns. */
+export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
+  const pathname = usePathname();
 
   return (
     <nav className="hidden items-center gap-1 sm:flex">
@@ -68,36 +122,9 @@ export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
           {link.label}
         </Link>
       ))}
-      <details ref={detailsRef} open={dropdownOpen} className="relative">
-        <summary
-          onClick={(e) => {
-            e.preventDefault();
-            setDropdownOpen((v) => !v);
-          }}
-          className={`${activityActive ? activeLinkClass : linkClass} flex list-none cursor-pointer items-center gap-1 [&::-webkit-details-marker]:hidden`}
-        >
-          กิจกรรม &amp; บันทึก
-          <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 transition ${dropdownOpen ? "rotate-180" : ""}`}>
-            <path
-              fillRule="evenodd"
-              d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-              clipRule="evenodd"
-            />
-          </svg>
-        </summary>
-        <div className="absolute left-0 top-full z-20 mt-1 flex w-48 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
-          {activityLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setDropdownOpen(false)}
-              className={`block ${isActive(pathname, link.href) ? activeLinkClass : `${linkClass} hover:bg-zinc-800`}`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </details>
+      {groups.map((group) => (
+        <NavDropdown key={group.label} group={group} pathname={pathname} />
+      ))}
       {isAdmin && (
         <Link href="/classes" className={isActive(pathname, "/classes") ? activeLinkClass : linkClass}>
           จัดการอาชีพ
@@ -107,13 +134,15 @@ export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** Below the top bar on narrow screens: the 4 frequently-used pages stay visible, everything else (record-keeping pages, plus admin's class management) collapses behind a "···" button — flattening all ~9 links into one scrollable row got cluttered and made every page one uncertain scroll away. */
+/** Below the top bar on narrow screens: the 2 core pages stay visible, the rest (still split into the same two type-based categories, plus admin's class management) collapses behind a "···" button — flattening every link into one scrollable row got cluttered and made every page one uncertain scroll away. */
 export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const secondaryLinks = isAdmin ? [...activityLinks, { href: "/classes", label: "จัดการอาชีพ" }] : activityLinks;
-  const secondaryActive = secondaryLinks.some((l) => isActive(pathname, l.href));
+  const secondaryGroups: NavGroup[] = isAdmin
+    ? [...groups, { label: "ระบบ", links: [{ href: "/classes", label: "จัดการอาชีพ" }] }]
+    : groups;
+  const secondaryActive = secondaryGroups.some((g) => g.links.some((l) => isActive(pathname, l.href)));
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -157,22 +186,29 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
         เพิ่มเติม
       </button>
       {moreOpen && (
-        <div className="absolute right-4 top-full z-20 mt-1 flex w-52 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
-          {secondaryLinks.map((link) => {
-            const active = isActive(pathname, link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMoreOpen(false)}
-                className={`block rounded-lg px-3 py-1.5 text-sm ${
-                  active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800"
-                }`}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+        <div className="absolute right-4 top-full z-20 mt-1 flex w-56 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 shadow-xl">
+          {secondaryGroups.map((group, i) => (
+            <div key={group.label} className={i > 0 ? "border-t border-zinc-800 pt-2" : ""}>
+              <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">{group.label}</p>
+              <div className="flex flex-col gap-0.5">
+                {group.links.map((link) => {
+                  const active = isActive(pathname, link.href);
+                  return (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMoreOpen(false)}
+                      className={`block rounded-lg px-3 py-1.5 text-sm ${
+                        active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </nav>

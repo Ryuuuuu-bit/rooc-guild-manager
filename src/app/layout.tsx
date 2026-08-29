@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import localFont from "next/font/local";
 import "./globals.css";
@@ -18,6 +18,10 @@ const loma = localFont({
 export const metadata: Metadata = {
   title: "Divine Guild Manager",
   description: "Member management for the Divine guild (ROOC), synced with Discord.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090b",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
