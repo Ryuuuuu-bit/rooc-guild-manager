@@ -93,8 +93,8 @@ export default async function MembersPage({
         </form>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
+        <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="px-5 py-3 font-medium">สมาชิก</th>
