@@ -107,28 +107,32 @@ export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** The scrollable strip shown below the top bar on narrow screens — every link flat, no dropdown (a dropdown adds friction on touch without saving meaningful space in a single already-scrollable row). */
+/** Below the top bar on narrow screens: the 4 frequently-used pages stay visible, everything else (record-keeping pages, plus admin's class management) collapses behind a "···" button — flattening all ~9 links into one scrollable row got cluttered and made every page one uncertain scroll away. */
 export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
-  const activeRef = useRef<HTMLAnchorElement>(null);
-  const mobileLinks = isAdmin ? [...primaryLinks, ...activityLinks, { href: "/classes", label: "จัดการอาชีพ" }] : [...primaryLinks, ...activityLinks];
+  const [moreOpen, setMoreOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const secondaryLinks = isAdmin ? [...activityLinks, { href: "/classes", label: "จัดการอาชีพ" }] : activityLinks;
+  const secondaryActive = secondaryLinks.some((l) => isActive(pathname, l.href));
 
-  // On a fresh load / route change, bring whichever tab is active into view
-  // — otherwise someone deep-linked to e.g. "คิวประมูล" (near the right edge
-  // of the scrollable strip) has no visual cue of where they are without
-  // first scrolling to discover it themselves.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
-  }, [pathname]);
+    if (!moreOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [moreOpen]);
 
   return (
-    <nav className="flex items-center gap-1 overflow-x-auto px-4 pb-2 sm:hidden">
-      {mobileLinks.map((link) => {
+    <nav ref={containerRef} className="relative flex items-center gap-1 overflow-x-auto px-4 pb-2 sm:hidden">
+      {primaryLinks.map((link) => {
         const active = isActive(pathname, link.href);
         return (
           <Link
             key={link.href}
-            ref={active ? activeRef : undefined}
             href={link.href}
             className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
               active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
@@ -138,6 +142,39 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
           </Link>
         );
       })}
+      <button
+        type="button"
+        onClick={() => setMoreOpen((v) => !v)}
+        className={`ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
+          secondaryActive ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+        }`}
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+          <circle cx="5" cy="12" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="19" cy="12" r="2" />
+        </svg>
+        เพิ่มเติม
+      </button>
+      {moreOpen && (
+        <div className="absolute right-4 top-full z-20 mt-1 flex w-52 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
+          {secondaryLinks.map((link) => {
+            const active = isActive(pathname, link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMoreOpen(false)}
+                className={`block rounded-lg px-3 py-1.5 text-sm ${
+                  active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </nav>
   );
 }
