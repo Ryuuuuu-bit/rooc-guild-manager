@@ -15,13 +15,13 @@ import {
 export function PvpReviewBadge({ status }: { status: string | null }) {
   if (!isReviewStatus(status)) {
     return (
-      <span className="inline-flex items-center rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 ring-1 ring-inset ring-zinc-700">
+      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-400 ring-1 ring-inset ring-zinc-700">
         รอตรวจ
       </span>
     );
   }
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${reviewStatusColors[status]}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${reviewStatusColors[status]}`}>
       {reviewStatusLabels[status]}
     </span>
   );
@@ -62,7 +62,7 @@ export function PvpReviewButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md px-1.5 py-0.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+        className="whitespace-nowrap rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300 transition hover:border-amber-500/70 hover:bg-amber-500/20 hover:text-amber-200"
       >
         ตรวจ
       </button>
