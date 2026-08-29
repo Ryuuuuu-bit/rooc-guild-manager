@@ -198,6 +198,24 @@ export async function deleteChannelMessage(channelId: string, messageId: string)
   }
 }
 
+/**
+ * Best-effort DM to a guild member via the bot's own credentials — opens (or
+ * reuses) a DM channel then posts into it. Discord rejects this (403) for a
+ * user who has server DMs turned off, or who no longer shares a guild with
+ * the bot — callers should treat that as non-fatal, the same as the other
+ * "best effort" notification-style calls in this file.
+ */
+export async function sendDirectMessage(userId: string, content: string): Promise<void> {
+  const channel: { id: string } = await discordBotFetch(`/users/@me/channels`, {
+    method: "POST",
+    body: JSON.stringify({ recipient_id: userId }),
+  });
+  await discordBotFetch(`/channels/${channel.id}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
 export interface DiscordGuildMember {
   user?: {
     id: string;

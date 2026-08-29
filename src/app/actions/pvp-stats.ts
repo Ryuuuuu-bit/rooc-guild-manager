@@ -7,6 +7,7 @@ import { members, pvpStatEntries, pvpStatFieldDefs } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/authz";
 import { PVP_ROLES, type PvpRole } from "@/lib/pvp-roles";
 import { isReviewStatus, type ReviewStatus } from "@/lib/pvp-stat-review";
+import { sendDirectMessage } from "@/lib/discord";
 import type { ActionResult } from "@/app/actions/party";
 
 // Every numeric field is optional — a member filling this in on their phone
@@ -178,21 +179,49 @@ export async function reviewPvpStat(
     return { ok: false, error: "สถานะไม่ถูกต้อง" };
   }
 
+  const trimmedNote = note?.trim() || null;
+
   const [updated] = await db
     .update(pvpStatEntries)
     .set({
       reviewStatus: status,
-      reviewNote: note?.trim() || null,
+      reviewNote: trimmedNote,
       reviewedByUsername: session.user.username,
       reviewedAt: new Date(),
     })
     .where(eq(pvpStatEntries.id, entryId))
-    .returning({ id: pvpStatEntries.id });
+    .returning({ id: pvpStatEntries.id, memberId: pvpStatEntries.memberId });
 
   if (!updated) return { ok: false, error: "ไม่พบรายการนี้" };
 
   revalidatePath("/pvp-stats");
+
+  // Best-effort — a member with DMs off or who left the server shouldn't
+  // block the review itself from saving, so failures here are only logged.
+  if (status === "FAIL") {
+    try {
+      await notifyReviewFail(updated.memberId, trimmedNote);
+    } catch (err) {
+      console.error("Failed to DM member about a failed PVP stat review", err);
+    }
+  }
+
   return { ok: true };
+}
+
+/** DMs the member whose submission just got marked ไม่ผ่าน, so they find out
+ * right away instead of only on their next visit to the site. */
+async function notifyReviewFail(memberId: string, note: string | null): Promise<void> {
+  const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!member) return;
+
+  const lines = [
+    "⚠️ สถิติ PVP ล่าสุดของคุณถูกแอดมินตรวจแล้ว: **ไม่ผ่าน**",
+    note ? `หมายเหตุ: ${note}` : null,
+    "กรุณาปรับตามนี้แล้วอัปเดตใหม่ได้ที่หน้า Stats PVP บนเว็บกิลด์",
+  ].filter((line): line is string => Boolean(line));
+
+  await sendDirectMessage(member.discordId, lines.join("\n"));
 }
 
 function slugifyFieldKey(label: string): string {
