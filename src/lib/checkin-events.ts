@@ -17,6 +17,12 @@ export interface CheckinEventConfig {
   endTime: string;
   /** Being in ANY of these channels counts as present for this event — e.g. two separate team rooms for the same event. */
   channelIds: string[];
+  /** Name (partyBoards.name, exact match) of the party board whose "ลา"
+   * reaction tracks approved leave for this event — lets the /checkin
+   * report exclude someone who clicked ลา on the matching board from
+   * looking like an unexplained no-show. Omit if this event has no
+   * matching board (leave just won't be shown for it). */
+  attendanceBoardName?: string;
 }
 
 export const CHECKIN_EVENTS: CheckinEventConfig[] = [
@@ -27,6 +33,7 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:20:00",
     channelIds: ["1488971259113902090", "1488971308225269943"],
+    attendanceBoardName: "GL",
   },
   {
     key: "woe",
@@ -35,6 +42,7 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:40:00",
     channelIds: ["1490330449275260988"],
+    attendanceBoardName: "WOE",
   },
 ];
 

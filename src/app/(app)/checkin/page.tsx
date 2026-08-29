@@ -94,11 +94,22 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
 
           {report && (
             <>
-              <p className="text-sm text-zinc-400">
-                รอบ {fmtDatePill(report.window.start)} ({fmtTime(report.window.start)}-{fmtTime(report.window.end)} น.)
-                — เข้าร่วม <span className="font-medium text-emerald-400">{report.attendedCount}</span>/
-                {report.totalCount} คน
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-zinc-400">
+                  รอบ {fmtDatePill(report.window.start)} ({fmtTime(report.window.start)}-{fmtTime(report.window.end)} น.)
+                  — เข้าร่วม <span className="font-medium text-emerald-400">{report.attendedCount}</span>/
+                  {report.totalCount} คน
+                </p>
+                {report.onLeaveCount > 0 && (
+                  <p className="text-sm text-zinc-400">
+                    ลา (<span className="font-medium text-amber-400">{report.onLeaveCount}</span>):{" "}
+                    {report.results
+                      .filter((r) => r.onLeave)
+                      .map((r) => memberDisplayName(r.member))
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
 
               <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
                 <table className="w-full min-w-[820px] text-left text-sm">
@@ -122,7 +133,12 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                       </tr>
                     )}
                     {report.results.map((row, i) => (
-                      <tr key={row.member.id} className={`hover:bg-zinc-800/40 ${row.attended ? "" : "bg-rose-950/10"}`}>
+                      <tr
+                        key={row.member.id}
+                        className={`hover:bg-zinc-800/40 ${
+                          row.attended ? "" : row.onLeave ? "bg-amber-950/10" : "bg-rose-950/10"
+                        }`}
+                      >
                         <td className="px-5 py-3 text-zinc-500">{i + 1}</td>
                         <td className="px-5 py-3">
                           <Link href={`/members/${row.member.id}`} className="flex items-center gap-3">
@@ -137,9 +153,18 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                           </Link>
                         </td>
                         <td className="px-5 py-3">
+                          {/* Excused (confirmed ลา on the matching party
+                              board) takes priority over the plain "ไม่เข้าร่วม"
+                              label for an absent row — same person, but this
+                              distinguishes an approved no-show from an
+                              unexplained one at a glance. */}
                           {row.attended ? (
                             <span className="inline-block whitespace-nowrap rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
                               เข้าร่วม
+                            </span>
+                          ) : row.onLeave ? (
+                            <span className="inline-block whitespace-nowrap rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-400/30">
+                              ลา
                             </span>
                           ) : (
                             <span className="inline-block whitespace-nowrap rounded-full bg-rose-400/15 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30">

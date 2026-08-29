@@ -1,6 +1,6 @@
-import { and, asc, gte, lte, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, gte, lte, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { checkinNotes, members, voiceAttendanceEvents } from "@/db/schema";
+import { checkinNotes, members, membershipEvents, partyBoards, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
 import { CHECKIN_EVENTS, getCheckinEvent, type CheckinEventConfig } from "@/lib/checkin-events";
 
@@ -134,13 +134,72 @@ export interface CheckinMemberResult {
    * member's row on this specific window — see checkinNotes in schema.ts.
    * Most useful on an absent row, but not restricted to one. */
   note: string | null;
+  /** Had a confirmed "ลา" reaction in effect on this event's matching party
+   * board as of this window (see getLeaveMemberIds) — an absent row with
+   * this set is an excused no-show, not an unexplained one. */
+  onLeave: boolean;
 }
 
 export interface CheckinReport {
   window: CheckinWindow;
   attendedCount: number;
   totalCount: number;
+  onLeaveCount: number;
   results: CheckinMemberResult[];
+}
+
+/**
+ * Member IDs with a CONFIRMED "ลา" reaction in effect, on the party board
+ * matching this check-in event (see attendanceBoardName in
+ * checkin-events.ts), as of `asOf` — i.e. their most recent ATTENDANCE_LEAVE
+ * (confirmed) / ATTENDANCE_RETURN event on that board, at or before `asOf`,
+ * was a LEAVE rather than a RETURN. Mirrors listOnlineMemberIds's
+ * last-write-wins reduction over an ascending-time event log, and only
+ * counts confirmed leaves for the same reason getAttendanceStats does — a
+ * quick test-click that gets un-reacted inside 30 minutes never became a
+ * real leave (see confirmDueLeaves/handleReactionRemove in bot/). RETURN
+ * events carry no confirmedAt gating of their own (every board is a single
+ * always-current sheet, so a return only ever follows an already-confirmed
+ * leave — see handleReactionRemove).
+ *
+ * Returns an empty set if this event has no matching board configured, or
+ * the board itself doesn't exist (e.g. renamed/deleted) — leave just won't
+ * be shown rather than erroring the whole report.
+ */
+async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): Promise<Set<string>> {
+  if (!event.attendanceBoardName) return new Set();
+
+  const board = await db.query.partyBoards.findFirst({
+    where: eq(partyBoards.name, event.attendanceBoardName),
+  });
+  if (!board) return new Set();
+
+  const rows = await db
+    .select({
+      memberId: membershipEvents.memberId,
+      type: membershipEvents.type,
+    })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.boardId, board.id),
+        lte(membershipEvents.createdAt, asOf),
+        or(
+          and(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)),
+          eq(membershipEvents.type, "ATTENDANCE_RETURN")
+        )
+      )
+    )
+    .orderBy(asc(membershipEvents.memberId), asc(membershipEvents.createdAt));
+
+  const lastTypeByMember = new Map<string, string>();
+  for (const r of rows) lastTypeByMember.set(r.memberId, r.type); // ascending order — last write wins = most recent event
+
+  const onLeave = new Set<string>();
+  for (const [memberId, type] of lastTypeByMember) {
+    if (type === "ATTENDANCE_LEAVE") onLeave.add(memberId);
+  }
+  return onLeave;
 }
 
 /**
@@ -210,6 +269,14 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     .where(and(eq(checkinNotes.eventKey, eventKey), eq(checkinNotes.date, date)));
   const noteByMember = new Map(notes.map((n) => [n.memberId, n.note]));
 
+  // Evaluated at the window's own end (capped at `now` for a window that
+  // hasn't finished yet) so a past window's report doesn't get "helped" by
+  // someone who only clicked ลา on that board afterwards — kept fully
+  // separate per event/board (see attendanceBoardName in checkin-events.ts:
+  // "gl" only ever reads the "GL" board, "woe" only ever reads "WOE").
+  const asOf = end.getTime() < now.getTime() ? end : now;
+  const leaveMemberIds = await getLeaveMemberIds(event, asOf);
+
   const results: CheckinMemberResult[] = roster.map((member) => {
     const intervals = reconstructIntervals(eventsByMember.get(member.id) ?? [], now);
     const overlapping = intervals.filter((iv) => iv.end.getTime() > start.getTime() && iv.start.getTime() < end.getTime());
@@ -224,6 +291,7 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
       lastLeaveAt: stillConnected ? null : (last?.end ?? null),
       stillConnected,
       note: noteByMember.get(member.id) ?? null,
+      onLeave: leaveMemberIds.has(member.id),
     };
   });
 
@@ -236,6 +304,7 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     window: { date, start, end },
     attendedCount: results.filter((r) => r.attended).length,
     totalCount: results.length,
+    onLeaveCount: results.filter((r) => r.onLeave).length,
     results,
   };
 }
