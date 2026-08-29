@@ -288,3 +288,22 @@ export async function setPvpStatFieldActive(id: string, active: boolean): Promis
   revalidatePath("/pvp-stats");
   return { ok: true };
 }
+
+/**
+ * Admin permanently removes a field definition (hard delete, not the
+ * "ปิดใช้งาน" soft-delete above). Only the *definition row* is deleted —
+ * `customValues` on old pvpStatEntries rows is a plain jsonb blob keyed by
+ * `key` with no foreign key back to this table (see the comment on
+ * customValues in schema.ts), so any already-submitted values for this field
+ * are left in place; they simply have no live column to render against
+ * anymore and stop showing up anywhere. This is intentionally irreversible —
+ * the confirming UI is in PvpFieldManagerButton.
+ */
+export async function deletePvpStatField(id: string): Promise<ActionResult> {
+  await requireAdmin();
+  const [deleted] = await db.delete(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.id, id)).returning({ id: pvpStatFieldDefs.id });
+  if (!deleted) return { ok: false, error: "ไม่พบฟิลด์นี้" };
+
+  revalidatePath("/pvp-stats");
+  return { ok: true };
+}

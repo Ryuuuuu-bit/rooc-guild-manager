@@ -1,9 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createPvpStatField, setPvpStatFieldActive } from "@/app/actions/pvp-stats";
+import { createPvpStatField, deletePvpStatField, setPvpStatFieldActive } from "@/app/actions/pvp-stats";
 import type { PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
+
+// How long the "ยืนยันการลบ" state stays armed before reverting — long enough
+// to read the warning and click again, short enough that walking away
+// doesn't leave a live "delete" button primed by accident.
+const DELETE_CONFIRM_MS = 4000;
 
 /** Admin adds/retires stat columns — the web-UI equivalent of what used to need a schema migration + deploy. */
 export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] }) {
@@ -14,7 +19,16 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
   const [isPercent, setIsPercent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    };
+  }, []);
 
   const knownGroups = [...new Set(fields.map((f) => f.groupTitle))];
 
@@ -43,6 +57,26 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
     router.refresh();
   }
 
+  function armDelete(id: string) {
+    setError(null);
+    setConfirmDeleteId(id);
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    confirmTimerRef.current = setTimeout(() => setConfirmDeleteId((cur) => (cur === id ? null : cur)), DELETE_CONFIRM_MS);
+  }
+
+  async function handleDelete(id: string) {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmDeleteId(null);
+    setDeletingId(id);
+    const result = await deletePvpStatField(id);
+    setDeletingId(null);
+    if (!result.ok) {
+      setError(result.error ?? "ลบไม่สำเร็จ ลองใหม่อีกครั้ง");
+      return;
+    }
+    router.refresh();
+  }
+
   return (
     <>
       <button
@@ -65,33 +99,53 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
               </button>
             </div>
             <p className="text-xs text-zinc-500">
-              เพิ่มช่องสถิติใหม่ให้ทุกคนกรอกได้ทันที ไม่ต้องแก้โค้ด — ปิดใช้งานฟิลด์เก่าได้โดยไม่ลบข้อมูลที่เคยกรอกไว้
+              เพิ่มช่องสถิติใหม่ให้ทุกคนกรอกได้ทันที ไม่ต้องแก้โค้ด — ปิดใช้งานฟิลด์เก่าได้โดยไม่ลบข้อมูลที่เคยกรอกไว้ หรือลบถาวรได้ถ้าไม่ต้องการฟิลด์นั้นอีกเลย
             </p>
 
             {fields.length > 0 && (
               <div className="flex flex-col gap-1.5 rounded-xl border border-zinc-800 p-2">
-                {fields.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/50">
-                    <div className="min-w-0">
-                      <p className={`truncate text-sm ${f.active ? "text-zinc-100" : "text-zinc-500 line-through"}`}>{f.label}</p>
-                      <p className="text-[11px] text-zinc-500">
-                        {f.groupTitle} {f.isPercent && "· %"}
-                      </p>
+                {fields.map((f) => {
+                  const confirming = confirmDeleteId === f.id;
+                  return (
+                    <div key={f.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-800/50">
+                      <div className="min-w-0">
+                        <p className={`truncate text-sm ${f.active ? "text-zinc-100" : "text-zinc-500 line-through"}`}>{f.label}</p>
+                        <p className="text-[11px] text-zinc-500">
+                          {f.groupTitle} {f.isPercent && "· %"}
+                        </p>
+                        {confirming && <p className="mt-0.5 text-[11px] text-rose-400">ลบถาวร ย้อนกลับไม่ได้ — กดอีกครั้งเพื่อยืนยัน</p>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {!confirming && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggle(f.id, !f.active)}
+                            disabled={togglingId === f.id || deletingId === f.id}
+                            className={`rounded-md px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                              f.active
+                                ? "text-zinc-400 hover:bg-zinc-800 hover:text-rose-400"
+                                : "text-zinc-400 hover:bg-zinc-800 hover:text-emerald-400"
+                            }`}
+                          >
+                            {f.active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => (confirming ? handleDelete(f.id) : armDelete(f.id))}
+                          disabled={deletingId === f.id}
+                          className={`rounded-md px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
+                            confirming
+                              ? "bg-rose-500/15 text-rose-300 hover:bg-rose-500/25"
+                              : "text-zinc-500 hover:bg-zinc-800 hover:text-rose-400"
+                          }`}
+                        >
+                          {deletingId === f.id ? "กำลังลบ..." : confirming ? "ยืนยันลบ" : "ลบถาวร"}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(f.id, !f.active)}
-                      disabled={togglingId === f.id}
-                      className={`shrink-0 rounded-md px-2 py-1 text-xs font-medium transition disabled:opacity-50 ${
-                        f.active
-                          ? "text-zinc-400 hover:bg-zinc-800 hover:text-rose-400"
-                          : "text-zinc-400 hover:bg-zinc-800 hover:text-emerald-400"
-                      }`}
-                    >
-                      {f.active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
