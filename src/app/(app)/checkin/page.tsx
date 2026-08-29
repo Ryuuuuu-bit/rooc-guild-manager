@@ -155,15 +155,16 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                           {row.stillConnected ? "ยังอยู่ในห้อง" : row.lastLeaveAt ? fmtTime(row.lastLeaveAt) : "—"}
                         </td>
                         <td className="px-5 py-3">
-                          {/* key includes the date: without it, switching
-                              date tabs reuses the same component instance
-                              for a given member (the <tr> above is keyed
-                              only by member.id), and its local `saved`
-                              state from the previously-viewed date leaks
-                              into the newly-selected date's row until a
-                              full page reload. */}
+                          {/* key includes both eventKey and date: without
+                              it, switching date OR event (GL/WOE) tabs
+                              reuses the same component instance for a
+                              given member (the <tr> above is keyed only by
+                              member.id), and its local `saved` state from
+                              the previously-viewed date/event leaks into
+                              the newly-selected one until a full page
+                              reload. */}
                           <CheckinNoteCell
-                            key={`${report.window.date}-${row.member.id}`}
+                            key={`${event.key}-${report.window.date}-${row.member.id}`}
                             eventKey={event.key}
                             date={report.window.date}
                             memberId={row.member.id}
