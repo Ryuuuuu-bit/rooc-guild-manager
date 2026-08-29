@@ -57,13 +57,17 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
             <span className="absolute -top-4 left-0 text-[10px] text-zinc-600">100%</span>
             <span className="absolute -bottom-4 left-0 text-[10px] text-zinc-600">0%</span>
 
-            {/* bars */}
-            <div className="absolute inset-0 flex items-end gap-2.5">
+            {/* bars — columns are capped with max-w so a handful of points
+                (a fresh event with little history yet) cluster at a normal
+                bar width instead of each stretching to fill the panel and
+                leaving huge gaps; justify-center keeps the cluster balanced
+                in the available space rather than pinned to one edge. */}
+            <div className="absolute inset-0 flex items-end justify-center gap-2.5">
               {points.map((p, i) => {
                 const isLast = i === points.length - 1;
                 const heightPct = p.rate === null ? 0 : Math.max(3, Math.round(p.rate * 100));
                 return (
-                  <div key={p.date} className="group relative flex h-full flex-1 items-end justify-center">
+                  <div key={p.date} className="group relative flex h-full max-w-16 flex-1 items-end justify-center">
                     {/* hover tooltip */}
                     <div className="pointer-events-none absolute bottom-[calc(100%+8px)] z-10 hidden flex-col items-center gap-0.5 whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] shadow-xl group-hover:flex">
                       <span className="font-medium text-zinc-200">{fmtShortDate(p.date)}</span>
@@ -98,9 +102,9 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
             </div>
           </div>
 
-          <div className="mt-2 flex gap-2.5">
+          <div className="mt-2 flex justify-center gap-2.5">
             {points.map((p) => (
-              <span key={p.date} className="flex-1 text-center text-[10px] whitespace-nowrap text-zinc-500">
+              <span key={p.date} className="max-w-16 flex-1 text-center text-[10px] whitespace-nowrap text-zinc-500">
                 {fmtShortDate(p.date)}
               </span>
             ))}
