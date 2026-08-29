@@ -209,6 +209,17 @@ export async function reviewPvpStat(
   return { ok: true };
 }
 
+/** Base URL of this deployment — prefers AUTH_URL (already configured for
+ * Discord OAuth callbacks, so it's guaranteed to be the real public URL),
+ * falls back to Railway's own public-domain var, then a hardcoded last
+ * resort so a DM link is never just missing if both are absent. */
+function appBaseUrl(): string {
+  const fromAuth = process.env.AUTH_URL?.replace(/\/+$/, "");
+  if (fromAuth) return fromAuth;
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  return "https://web-production-32c2a1.up.railway.app";
+}
+
 /** DMs the member whose submission just got marked ไม่ผ่าน, so they find out
  * right away instead of only on their next visit to the site. */
 async function notifyReviewFail(memberId: string, note: string | null): Promise<void> {
@@ -218,7 +229,8 @@ async function notifyReviewFail(memberId: string, note: string | null): Promise<
   const lines = [
     "⚠️ สถิติ PVP ล่าสุดของคุณถูกแอดมินตรวจแล้ว: **ไม่ผ่าน**",
     note ? `หมายเหตุ: ${note}` : null,
-    "กรุณาปรับตามนี้แล้วอัปเดตใหม่ได้ที่หน้า Stats PVP บนเว็บกิลด์",
+    "กรุณาปรับตามนี้แล้วอัปเดตใหม่ได้ที่ลิงก์นี้:",
+    `${appBaseUrl()}/pvp-stats`,
   ].filter((line): line is string => Boolean(line));
 
   await sendDirectMessage(member.discordId, lines.join("\n"));
