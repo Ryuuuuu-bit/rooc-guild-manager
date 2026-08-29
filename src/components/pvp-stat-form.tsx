@@ -83,7 +83,7 @@ export function PvpStatForm({
         onClick={() => setOpen(true)}
         className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500"
       >
-        {initial ? "อัปเดตสถิติของฉัน" : "กรอกสถิติของฉัน"}
+        {initial ? "อัปเดตสถานะตัวละคร" : "กรอกสถิติของฉัน"}
       </button>
     );
   }
@@ -95,7 +95,7 @@ export function PvpStatForm({
     >
       <div className="flex items-center justify-between">
         <h2 className="font-medium text-zinc-100">
-          {initial ? "อัปเดตสถิติของฉัน" : "กรอกสถิติของฉัน"}
+          {initial ? "อัปเดตสถานะตัวละคร" : "กรอกสถิติของฉัน"}
         </h2>
         <button
           type="button"
