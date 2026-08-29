@@ -169,6 +169,13 @@
       "when": 1788016307349,
       "tag": "0023_add_pvp_stat_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1788017304839,
+      "tag": "0024_add_pvp_stat_review",
+      "breakpoints": true
     }
   ]
 }

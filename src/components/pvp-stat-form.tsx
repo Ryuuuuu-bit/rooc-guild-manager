@@ -4,42 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { submitPvpStat, type PvpStatInput } from "@/app/actions/pvp-stats";
 import { PVP_ROLES } from "@/lib/pvp-roles";
+import { PVP_STAT_FIELD_GROUPS as FIELD_GROUPS } from "@/lib/pvp-stat-fields";
 import type { PvpStatEntry } from "@/db/schema";
-
-interface NumberField {
-  key: keyof Omit<PvpStatInput, "role" | "bossCards">;
-  label: string;
-  /** Percent fields allow one decimal place (step 0.01); flat stats are whole numbers. */
-  isPercent?: boolean;
-}
-
-// Grouped to mirror how the guild's own Google Sheet reads left-to-right —
-// members switching over from filling that in should recognize this layout.
-const FIELD_GROUPS: { title: string; fields: NumberField[] }[] = [
-  { title: "พื้นฐาน", fields: [{ key: "cp", label: "CP" }] },
-  {
-    title: "ป้องกัน",
-    fields: [
-      { key: "pDef", label: "P.DEF" },
-      { key: "mDef", label: "M.DEF" },
-      { key: "pvpReduction", label: "PVP Reduction" },
-      { key: "pDmgReductionPct", label: "P.DMG Reduction %", isPercent: true },
-      { key: "mDmgReductionPct", label: "M.DMG Reduction %", isPercent: true },
-    ],
-  },
-  {
-    title: "โจมตี",
-    fields: [
-      { key: "atk", label: "ATK" },
-      { key: "matk", label: "MATK" },
-      { key: "pvpBonus", label: "PVP Bonus" },
-      { key: "ignorePDef", label: "Ignore P.DEF" },
-      { key: "ignoreMDef", label: "Ignore M.DEF" },
-      { key: "pDmgBonusPct", label: "P.DMG Bonus %", isPercent: true },
-      { key: "mDmgBonusPct", label: "M.DMG Bonus %", isPercent: true },
-    ],
-  },
-];
 
 function toInputValue(n: number | null | undefined): string {
   return n === null || n === undefined ? "" : String(n);

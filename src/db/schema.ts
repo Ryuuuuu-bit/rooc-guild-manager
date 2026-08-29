@@ -357,6 +357,16 @@ export const pvpStatEntries = pgTable(
     // combination to normalize into their own table for what's essentially
     // a self-reported note.
     bossCards: text("boss_cards"),
+    // Admin review of THIS specific submission — "ผ่าน"/"ไม่ผ่าน" plus a note
+    // on what to adjust (mirrors the "Status" column on the guild's original
+    // Sheet). Unlike the member-filled fields above, only requireAdmin() can
+    // write these (see reviewPvpStat in app/actions/pvp-stats.ts). Free text
+    // rather than a pgEnum for the same reason as `role` above — REVIEW_STATUSES
+    // in src/lib/pvp-stat-review.ts is the single place the fixed option list lives.
+    reviewStatus: text("review_status"),
+    reviewNote: text("review_note"),
+    reviewedByUsername: text("reviewed_by_username"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     // Append-only: every submission is a new row (never updated in place),
     // so this doubles as the history log the guild's admin wanted kept —
     // "latest per member" is just the most recent row by this column.
