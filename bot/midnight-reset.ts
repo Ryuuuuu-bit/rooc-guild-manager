@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../src/db";
 import { botReactionMessages, partyBoards, partyBusyEntries } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
-import { removeAllReactionsForEmoji } from "../src/lib/discord";
+import { addMessageReaction, removeAllReactionsForEmoji } from "../src/lib/discord";
 
 /**
  * "YYYY-MM-DD" for the given instant in Thailand's local time (UTC+7),
@@ -46,7 +46,20 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number }> {
     if (tracked) {
       // Per-board emoji (see partyBoards.emoji) — falls back to the app-wide
       // default for boards that never customized theirs.
-      await removeAllReactionsForEmoji(tracked.channelId, tracked.messageId, board.emoji || ATTENDANCE_EMOJI);
+      const emoji = board.emoji || ATTENDANCE_EMOJI;
+      await removeAllReactionsForEmoji(tracked.channelId, tracked.messageId, emoji);
+      // removeAllReactionsForEmoji wipes EVERY reaction for that emoji off
+      // the message, including the bot's own seed reaction from when the
+      // message was first posted — without re-adding it, the message is
+      // left with zero reactions of that emoji. For a role-restricted custom
+      // emoji, Discord only lets a member without that role react by
+      // clicking an *existing* reaction already on the message — they can't
+      // add a brand-new one themselves — so once the seed reaction is gone,
+      // those members silently lose the ability to react ลา at all until an
+      // admin reposts the message. Re-seed it right after clearing so the
+      // one-click option (and that piggyback path) survives every night's
+      // reset. Best-effort — same as the seeding in postAttendanceMessage.
+      await addMessageReaction(tracked.channelId, tracked.messageId, emoji).catch(() => {});
     }
   }
 
