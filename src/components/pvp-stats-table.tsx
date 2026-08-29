@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Member, PvpStatEntry } from "@/db/schema";
 import { memberDisplayName } from "@/lib/ui";
 import { fmtInt, fmtPct, type PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
 import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassBadge } from "@/components/badges";
+import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
 import { PvpReviewBadge, PvpReviewButton } from "@/components/pvp-stat-review";
@@ -135,6 +136,91 @@ function StaleIcon() {
   );
 }
 
+/** Multi-select dropdown filtering the list to one or more job classes — reads
+ * the same admin-configured class list (name/emoji/color) as ClassBadge, so
+ * this never drifts out of sync with what /classes actually defines. */
+function ClassFilterDropdown({
+  selected,
+  onToggle,
+  onClear,
+}: {
+  selected: Set<string>;
+  onToggle: (name: string) => void;
+  onClear: () => void;
+}) {
+  const { classes } = useJobClasses();
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`whitespace-nowrap rounded-xl border px-3 py-2 text-sm font-medium transition ${
+          selected.size > 0
+            ? "border-amber-500/60 bg-amber-500/15 text-amber-300"
+            : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+        }`}
+      >
+        อาชีพ{selected.size > 0 ? ` · ${selected.size}` : ""}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 flex max-h-80 w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
+          {classes.length === 0 && <p className="px-2.5 py-2 text-xs text-zinc-500">ยังไม่มีอาชีพในระบบ</p>}
+          {classes.map((c) => {
+            const active = selected.has(c.name);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onToggle(c.name)}
+                className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition ${
+                  active ? "bg-zinc-800/80" : "hover:bg-zinc-800/50"
+                }`}
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    active ? "border-amber-500 bg-amber-500 text-zinc-950" : "border-zinc-700"
+                  }`}
+                >
+                  {active && (
+                    <svg viewBox="0 0 12 12" fill="currentColor" className="h-3 w-3">
+                      <path d="M4.7 8.3 2.4 6l-.9.9L4.7 10l6-6-.9-.9z" />
+                    </svg>
+                  )}
+                </span>
+                <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${c.colorClass}`}>
+                  <ClassIcon job={c.name} size={12} />
+                  {c.name}
+                </span>
+              </button>
+            );
+          })}
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="mt-1 rounded-lg border-t border-zinc-800 px-2.5 pt-2 text-left text-xs text-zinc-500 transition hover:text-zinc-300"
+            >
+              ล้างตัวกรองอาชีพ
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Sortable + searchable desktop table and mobile card list for the
  * /pvp-stats leaderboard. Client-side because both are interactive (click a
@@ -155,9 +241,19 @@ export function PvpStatsTable({
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "cp", dir: "desc" });
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [selectedClasses, setSelectedClasses] = useState<Set<string>>(() => new Set());
 
   function handleSort(key: SortKey) {
     setSort((cur) => (cur.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: defaultDirFor(key) }));
+  }
+
+  function toggleClass(name: string) {
+    setSelectedClasses((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   }
 
   // Guild-wide count, off the full unfiltered list — the badge should read
@@ -167,6 +263,7 @@ export function PvpStatsTable({
   const filteredRows = useMemo(() => {
     let result = rows;
     if (pendingOnly) result = result.filter((r) => r.entry && !isReviewStatus(r.entry.reviewStatus));
+    if (selectedClasses.size > 0) result = result.filter((r) => r.member.characterClass && selectedClasses.has(r.member.characterClass));
     const q = query.trim().toLowerCase();
     if (!q) return result;
     return result.filter(({ member }) => {
@@ -174,7 +271,7 @@ export function PvpStatsTable({
       const inGame = (member.inGameName ?? "").toLowerCase();
       return name.includes(q) || inGame.includes(q);
     });
-  }, [rows, query, pendingOnly]);
+  }, [rows, query, pendingOnly, selectedClasses]);
 
   const sortedRows = useMemo(() => {
     // Admin-configured class order (from /classes) — unknown/no class sorts after every real class.
@@ -206,9 +303,9 @@ export function PvpStatsTable({
   const emptyMessage =
     rows.length === 0
       ? "ยังไม่มีสมาชิกในระบบ"
-      : pendingOnly && !query.trim()
+      : pendingOnly && selectedClasses.size === 0 && !query.trim()
         ? "ไม่มีรายการรอตรวจแล้วตอนนี้"
-        : "ไม่พบสมาชิกที่ตรงกับคำค้นหา";
+        : "ไม่พบสมาชิกที่ตรงกับตัวกรอง";
 
   return (
     <>
@@ -229,6 +326,8 @@ export function PvpStatsTable({
             className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 transition focus:border-amber-500 focus:outline-none"
           />
         </div>
+
+        <ClassFilterDropdown selected={selectedClasses} onToggle={toggleClass} onClear={() => setSelectedClasses(new Set())} />
 
         {isAdmin && (
           <button
