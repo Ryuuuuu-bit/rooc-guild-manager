@@ -14,10 +14,15 @@ import { getPartyBoardDetail, listPartyBoards, type PartyBoardMemberRef } from "
 // Components V2 card reads as the same product, not a generic bot embed.
 const PARTY_ACCENT_COLOR = 0xf59e0b;
 
-function formatMemberLine(member: PartyBoardMemberRef): string {
+// Compact by design — one line per PARTY, not one per member. The class
+// emoji alone carries the job (no "— WizMeteo" suffix); with 5-6+ parties
+// per group this is the difference between a card that fits on one screen
+// and one that takes several screens of scrolling in Discord's mobile app
+// (the original one-line-per-member layout did the latter — reported by a
+// guild admin after trying it live).
+function formatMemberInline(member: PartyBoardMemberRef): string {
   const emoji = member.classEmoji ?? "❔";
-  const className = member.className ?? "ไม่ระบุอาชีพ";
-  return `${emoji} **${member.displayName}** — ${className}`;
+  return `${emoji} ${member.displayName}`;
 }
 
 function formatNameList(members: PartyBoardMemberRef[]): string {
@@ -61,9 +66,9 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${group.name}`));
     for (const party of group.parties) {
       const filled = party.slots.filter((s) => s.member).length;
-      const lines = party.slots.map((s) => (s.member ? formatMemberLine(s.member) : "🔸 _ว่าง_"));
+      const inline = party.slots.map((s) => (s.member ? formatMemberInline(s.member) : "🔸 ว่าง")).join(" · ");
       container.addTextDisplayComponents(
-        new TextDisplayBuilder().setContent(`**${party.label}** (${filled}/${party.slots.length})\n${lines.join("\n")}`)
+        new TextDisplayBuilder().setContent(`**${party.label}** (${filled}/${party.slots.length})\n${inline}`)
       );
     }
   }
