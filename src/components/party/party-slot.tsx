@@ -24,6 +24,14 @@ interface PartySlotProps {
    * member chip's class badge below the name instead of beside it so the
    * name stays readable. See MemberChip's `stacked` prop. */
   stacked?: boolean;
+  /** Tap-to-move (see PartyBoardView): the pending selection, if any; a way
+   * to select the member sitting in this slot; and a way to drop the
+   * pending selection onto this slot (works whether it's empty or occupied
+   * — occupied bumps the current occupant back to unassigned, same as
+   * dragging one member onto another's slot already does). */
+  selectedMember?: PartyBoardMemberRef | null;
+  onSelectMember?: (member: PartyBoardMemberRef) => void;
+  onPlaceSelected?: () => void;
 }
 
 export function PartySlot({
@@ -38,9 +46,16 @@ export function PartySlot({
   pickerOpen,
   onPickerOpenChange,
   stacked = false,
+  selectedMember = null,
+  onSelectMember,
+  onPlaceSelected,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const { options: classOptions } = useJobClasses();
+
+  // A pending selection makes every OTHER slot look tappable — the same
+  // affordance drag gives via isOver, just driven by tap state instead.
+  const isTapTarget = isAdmin && !!selectedMember && selectedMember.id !== member?.id;
 
   return (
     <div
@@ -53,12 +68,24 @@ export function PartySlot({
       // shoves everything below it up or down with no scroll compensation
       // — reported as the page "jumping" when clicking ✕.
       className={`flex min-h-[77px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
-        isOver ? "border-amber-400 bg-amber-500/10" : "border-zinc-800"
+        isOver || isTapTarget ? "border-amber-400 bg-amber-500/10" : "border-zinc-800"
       }`}
     >
       {member ? (
         <div className="flex w-full flex-col gap-1">
-          <MemberChip member={member} draggable={isAdmin} compact showClassBadge={!isAdmin} stacked={stacked} />
+          <MemberChip
+            member={member}
+            draggable={isAdmin}
+            compact
+            showClassBadge={!isAdmin}
+            stacked={stacked}
+            selected={selectedMember?.id === member.id}
+            onSelect={
+              isAdmin && onSelectMember
+                ? () => (isTapTarget && onPlaceSelected ? onPlaceSelected() : onSelectMember(member))
+                : undefined
+            }
+          />
           {isAdmin && (
             <div className="flex items-center gap-1">
               <select
@@ -94,6 +121,16 @@ export function PartySlot({
             </div>
           )}
         </div>
+      ) : isAdmin && isTapTarget && onPlaceSelected ? (
+        // A selection is already pending (tapped elsewhere) — skip the
+        // search picker below and place them here in one tap.
+        <button
+          type="button"
+          onClick={onPlaceSelected}
+          className="block w-full rounded px-1 py-1.5 text-center text-[10px] font-medium text-amber-300 transition hover:text-amber-200"
+        >
+          วางที่นี่
+        </button>
       ) : isAdmin && onAssign ? (
         <MemberPicker
           members={pickableMembers}

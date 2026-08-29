@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -16,6 +16,7 @@ import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
 import { PostAttendanceButton } from "./post-attendance-button";
+import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
 import {
   createBoard,
@@ -33,7 +34,7 @@ import {
 } from "@/app/actions/party";
 import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
 
-function parseDestination(id: string): PartyDestination | null {
+export function parseDestination(id: string): PartyDestination | null {
   if (id === "busy") return { type: "busy" };
   if (id === "unassigned") return { type: "unassigned" };
   const match = id.match(/^slot:(.+):(\d+)$/);
@@ -102,6 +103,8 @@ function DroppableZone({
   children,
   label,
   maxHeightClass = "max-h-36",
+  tapTarget = false,
+  onBackgroundClick,
 }: {
   id: string;
   children: React.ReactNode;
@@ -112,13 +115,21 @@ function DroppableZone({
    * screenshot can't capture past). Still bounded so a big influx of
    * members doesn't shove the rest of the page down and feel like a jump. */
   maxHeightClass?: string;
+  /** True while a member is selected via tap-to-move, so this zone can look
+   * tappable the same way it looks "isOver" during a drag. */
+  tapTarget?: boolean;
+  /** Fires when the zone's own background (not a member chip inside it,
+   * which stops propagation on its own click) is tapped while a selection
+   * is pending — completes a tap-to-move here. */
+  onBackgroundClick?: () => void;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
     <div
       ref={setNodeRef}
+      onClick={onBackgroundClick}
       className={`flex ${maxHeightClass} min-h-[52px] flex-wrap content-start gap-1.5 overflow-y-auto rounded-xl border p-2 transition ${
-        isOver ? "border-amber-400 bg-amber-500/10" : "border-zinc-800 bg-zinc-900/40"
+        isOver || tapTarget ? "border-amber-400 bg-amber-500/10" : "border-zinc-800 bg-zinc-900/40"
       }`}
       aria-label={label}
     >
@@ -138,10 +149,29 @@ interface PartyCardProps {
   onDelete: (partyId: string, label: string) => void;
   /** Passed through to each slot's MemberChip — see MemberChip's `stacked` prop. */
   stacked?: boolean;
+  /** Tap-to-move: the currently selected member (if any), and the two
+   * actions a slot needs — select the member sitting in it, or complete a
+   * pending move onto it. See PartyBoardView for the selection state itself. */
+  selectedMember?: PartyBoardMemberRef | null;
+  onSelectMember?: (member: PartyBoardMemberRef) => void;
+  onPlaceSelected?: (partyId: string, slotIndex: number) => void;
 }
 
 /** One party as a self-contained card (header + 5 slot rows) so cards can wrap freely regardless of party count. */
-function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, onAssign, onSendBusy, onDelete, stacked = false }: PartyCardProps) {
+function PartyCard({
+  party,
+  isAdmin,
+  pickableMembers,
+  onClassChange,
+  onClear,
+  onAssign,
+  onSendBusy,
+  onDelete,
+  stacked = false,
+  selectedMember = null,
+  onSelectMember,
+  onPlaceSelected,
+}: PartyCardProps) {
   // Which empty slot's "pick a member" popover is open. Controlled here (rather
   // than left uncontrolled inside each PartySlot) so a successful pick can
   // auto-advance straight to the next empty slot for fast sequential filling.
@@ -192,6 +222,9 @@ function PartyCard({ party, isAdmin, pickableMembers, onClassChange, onClear, on
               pickerOpen={openSlotIndex === slotIndex}
               onPickerOpenChange={(open) => setOpenSlotIndex(open ? slotIndex : null)}
               stacked={stacked}
+              selectedMember={selectedMember}
+              onSelectMember={onSelectMember}
+              onPlaceSelected={onPlaceSelected ? () => onPlaceSelected(party.id, slotIndex) : undefined}
             />
           );
         })}
@@ -212,6 +245,12 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   const { options: classOptions } = useJobClasses();
   const [board, setBoard] = useState<PartyBoardDetail | null>(initialBoard);
   const [activeMember, setActiveMember] = useState<PartyBoardMemberRef | null>(null);
+  // Tap-to-move: an alternative to dragging, mainly for touch screens where
+  // precise drag-and-drop is fiddly. Tap a member to select them, then tap
+  // any slot/pool/busy zone to place them there — same placeMember() as
+  // drag underneath, so it's a second way to trigger the same move, not a
+  // parallel implementation. Purely additive: drag keeps working unchanged.
+  const [selectedMember, setSelectedMember] = useState<PartyBoardMemberRef | null>(null);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(initialBoard?.groups[0]?.id ?? null);
   const [poolQuery, setPoolQuery] = useState("");
   const [poolClassFilter, setPoolClassFilter] = useState("");
@@ -230,12 +269,24 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   if (initialBoard !== syncedInitialBoard) {
     setSyncedInitialBoard(initialBoard);
     setBoard(initialBoard);
+    setSelectedMember(null); // a pending tap-selection from the old board wouldn't mean anything on the new one
     setActiveGroupId((prev) =>
       initialBoard?.groups.some((g) => g.id === prev) ? prev : initialBoard?.groups[0]?.id ?? null
     );
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  // Escape backs out of a pending tap-selection, same as it already does
+  // for the member-picker popover.
+  useEffect(() => {
+    if (!selectedMember) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedMember(null);
+    }
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [selectedMember]);
 
   function placeMember(member: PartyBoardMemberRef, destination: PartyDestination) {
     if (!selectedBoardId) return;
@@ -272,6 +323,16 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (!destination) return;
 
     placeMember(data.member, destination);
+  }
+
+  function handleToggleSelect(member: PartyBoardMemberRef) {
+    setSelectedMember((prev) => (prev?.id === member.id ? null : member));
+  }
+
+  function handlePlaceSelected(destination: PartyDestination) {
+    if (!selectedMember) return;
+    placeMember(selectedMember, destination);
+    setSelectedMember(null);
   }
 
   function handleAssignToSlot(partyId: string, slotIndex: number, memberId: string) {
@@ -484,6 +545,11 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   {effectiveAdmin && selectedBoardId && (
                     <>
                       <PostAttendanceButton boardId={selectedBoardId} boardName={board.name} />
+                      <PartyTemplatePanel
+                        boardId={selectedBoardId}
+                        boardName={board.name}
+                        onApplied={() => router.refresh()}
+                      />
                       <button
                         type="button"
                         onClick={handleRenameBoard}
@@ -544,14 +610,28 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     ))}
                   </select>
                 </div>
-                <DroppableZone id="unassigned" label="รอลงปาร์ตี้" maxHeightClass="max-h-[420px]">
+                <DroppableZone
+                  id="unassigned"
+                  label="รอลงปาร์ตี้"
+                  maxHeightClass="max-h-[420px]"
+                  tapTarget={effectiveAdmin && !!selectedMember}
+                  onBackgroundClick={
+                    effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "unassigned" }) : undefined
+                  }
+                >
                   {filteredUnassigned.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
                       {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาร์ตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
                     </span>
                   )}
                   {filteredUnassigned.map((member) => (
-                    <MemberChip key={member.id} member={member} draggable={effectiveAdmin} />
+                    <MemberChip
+                      key={member.id}
+                      member={member}
+                      draggable={effectiveAdmin}
+                      selected={selectedMember?.id === member.id}
+                      onSelect={effectiveAdmin ? () => handleToggleSelect(member) : undefined}
+                    />
                   ))}
                 </DroppableZone>
               </section>
@@ -651,6 +731,13 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onSendBusy={handleSendBusy}
                         onDelete={handleDeleteParty}
                         stacked={screenshotMode}
+                        selectedMember={selectedMember}
+                        onSelectMember={effectiveAdmin ? handleToggleSelect : undefined}
+                        onPlaceSelected={
+                          effectiveAdmin
+                            ? (partyId, slotIndex) => handlePlaceSelected({ type: "slot", partyId, slotIndex })
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -692,15 +779,30 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   )}
                 </div>
               ) : (
-                <DroppableZone id="busy" label="Busy / ลา">
+                <DroppableZone
+                  id="busy"
+                  label="Busy / ลา"
+                  tapTarget={effectiveAdmin && !!selectedMember}
+                  onBackgroundClick={
+                    effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "busy" }) : undefined
+                  }
+                >
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้
+                      ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้ (หรือแตะรายชื่อ
+                      แล้วแตะที่นี่)
                     </span>
                   )}
                   {board.busy.map((member) => (
                     <div key={member.id} className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 py-1 pl-1.5 pr-1">
-                      <MemberChip member={member} draggable={effectiveAdmin} compact showClassBadge={!effectiveAdmin} />
+                      <MemberChip
+                        member={member}
+                        draggable={effectiveAdmin}
+                        compact
+                        showClassBadge={!effectiveAdmin}
+                        selected={selectedMember?.id === member.id}
+                        onSelect={effectiveAdmin ? () => handleToggleSelect(member) : undefined}
+                      />
                       {effectiveAdmin && (
                         <>
                           <select
@@ -737,6 +839,26 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       <DragOverlay>
         {activeMember ? <MemberChip member={activeMember} draggable={false} showClassBadge={false} /> : null}
       </DragOverlay>
+
+      {/* Tap-to-move status bar — the whole point is that it's obvious a
+          selection is pending and how to get out of it, since nothing else
+          on the page announces this the way a held drag naturally does. */}
+      {effectiveAdmin && selectedMember && (
+        <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
+          <div className="flex items-center gap-3 rounded-full border border-amber-500/40 bg-zinc-900 py-2 pl-3 pr-2 text-sm shadow-xl shadow-black/40">
+            <span className="text-zinc-400">
+              กำลังย้าย <span className="font-medium text-amber-300">{selectedMember.displayName}</span> — แตะช่องที่ต้องการ
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedMember(null)}
+              className="shrink-0 rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      )}
     </DndContext>
   );
 }

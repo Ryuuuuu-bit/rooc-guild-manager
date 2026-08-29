@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   boolean,
+  jsonb,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
@@ -227,6 +228,36 @@ export const partyBusyEntries = pgTable(
   (table) => [uniqueIndex("party_busy_board_member_idx").on(table.boardId, table.memberId)]
 );
 
+/** One saved board layout — group names, each group's parties, and which
+ * member (by id) sat in each of a party's 5 slots. Applying a template
+ * overwrites a board's current groups/parties/slots wholesale, so this is
+ * captured and replayed as one JSON blob rather than its own set of
+ * relational tables — nothing here is ever queried piecemeal. Not tied to
+ * a specific board: the whole point is reusing the same composition across
+ * different boards/events, so it outlives the board it was first saved
+ * from (which may since have been renamed, reset, or deleted). */
+export interface PartyTemplateData {
+  groups: {
+    name: string;
+    parties: {
+      label: string;
+      /** Exactly 5 entries, index = slot index; null = empty slot. A
+       * memberId that no longer resolves to an active member when the
+       * template is applied (left the guild, etc.) is just skipped —
+       * see applyPartyTemplate. */
+      slots: (string | null)[];
+    }[];
+  }[];
+}
+
+export const partyTemplates = pgTable("party_templates", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  name: text("name").notNull(),
+  createdByUsername: text("created_by_username"),
+  data: jsonb("data").notNull().$type<PartyTemplateData>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Free-form, admin-only comment log on a member (e.g. "AFK ใน GVG 20/8") —
 // distinct from `membershipEvents`, which is an audit trail of status
 // changes shown more broadly. This is an append-only running log meant only
@@ -445,6 +476,7 @@ export type PartyGroupParty = typeof partyGroupParties.$inferSelect;
 export type PartySlot = typeof partySlots.$inferSelect;
 export type NewPartySlot = typeof partySlots.$inferInsert;
 export type PartyBusyEntry = typeof partyBusyEntries.$inferSelect;
+export type PartyTemplateRow = typeof partyTemplates.$inferSelect;
 export type BotReactionMessage = typeof botReactionMessages.$inferSelect;
 export type NewBotReactionMessage = typeof botReactionMessages.$inferInsert;
 export type JobClassRow = typeof jobClasses.$inferSelect;

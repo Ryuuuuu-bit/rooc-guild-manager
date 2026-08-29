@@ -3,14 +3,17 @@ import { getClassDistribution, getDashboardStats, getRecentActivity } from "@/li
 import { requireUser } from "@/lib/authz";
 import { StatCard } from "@/components/stat-card";
 import { ActivityListItem } from "@/components/activity-list-item";
+import { AttendanceTrendChart } from "@/components/attendance-trend-chart";
 import { SWATCH_CLASS } from "@/lib/job-class-colors";
+import { CHECKIN_EVENTS, getAttendanceTrend } from "@/lib/checkin-data";
 
 export default async function DashboardPage() {
   const session = await requireUser();
-  const [stats, activity, classDistribution] = await Promise.all([
+  const [stats, activity, classDistribution, attendanceTrends] = await Promise.all([
     getDashboardStats(),
     getRecentActivity(8),
     getClassDistribution(),
+    Promise.all(CHECKIN_EVENTS.map((e) => getAttendanceTrend(e.key))),
   ]);
   const totalClassed = classDistribution.known.reduce((sum, c) => sum + c.count, 0) + classDistribution.unassignedCount;
   const maxClassCount = Math.max(1, ...classDistribution.known.map((c) => c.count), classDistribution.unassignedCount);
@@ -38,6 +41,14 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard label="พักการเล่น" value={stats.benched} />
       </div>
+
+      {CHECKIN_EVENTS.some((_, i) => attendanceTrends[i].some((p) => p.rate !== null)) && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {CHECKIN_EVENTS.map((e, i) => (
+            <AttendanceTrendChart key={e.key} title={`เทรนด์การเข้าร่วม — ${e.label}`} points={attendanceTrends[i]} />
+          ))}
+        </div>
+      )}
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
         <h2 className="mb-4 font-medium text-zinc-100">สัดส่วนอาชีพ</h2>

@@ -308,3 +308,33 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     results,
   };
 }
+
+export interface AttendanceTrendPoint {
+  date: string;
+  attendedCount: number;
+  totalCount: number;
+  /** 0–1, or null when totalCount is 0 (no eligible roster that day — not
+   * the same as 0% attendance, so the chart can render it as "no data"
+   * instead of an empty bar). */
+  rate: number | null;
+}
+
+/**
+ * The last `limit` check-in windows for one event, oldest first (left-to-
+ * right on a trend chart), each reduced to just its attendance rate — reuses
+ * getCheckinReport per window rather than re-deriving the roster/attendance
+ * rules a second time, since this is an admin-facing dashboard glance, not
+ * a hot path (at most a handful of windows).
+ */
+export async function getAttendanceTrend(eventKey: string, limit = 8): Promise<AttendanceTrendPoint[]> {
+  const windows = await listCheckinWindows(eventKey); // most recent first
+  const recent = windows.slice(0, limit).reverse(); // oldest first, for left-to-right reading
+
+  const reports = await Promise.all(recent.map((w) => getCheckinReport(eventKey, w.date)));
+  return reports.map((report, i) => ({
+    date: recent[i].date,
+    attendedCount: report?.attendedCount ?? 0,
+    totalCount: report?.totalCount ?? 0,
+    rate: report && report.totalCount > 0 ? report.attendedCount / report.totalCount : null,
+  }));
+}

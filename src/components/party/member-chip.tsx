@@ -19,6 +19,12 @@ interface MemberChipProps {
    * vertical space, which the card has plenty of, for the name staying
    * readable, which is the whole point of the screenshot. */
   stacked?: boolean;
+  /** Tap-to-move alternative to dragging (see PartyBoardView's selection
+   * state) — a separate onClick alongside dnd-kit's pointer listeners, not
+   * a replacement for drag. dnd-kit only wires up pointer/keyboard
+   * listeners, never onClick, so the two never fight over the same event. */
+  selected?: boolean;
+  onSelect?: () => void;
 }
 
 /** A draggable chip representing one member, used in the pool, busy list, and party slots. */
@@ -28,6 +34,8 @@ export function MemberChip({
   compact = false,
   showClassBadge = true,
   stacked = false,
+  selected = false,
+  onSelect,
 }: MemberChipProps) {
   const { colorClassOf } = useJobClasses();
   const className = member.className;
@@ -47,9 +55,19 @@ export function MemberChip({
       style={style}
       {...(draggable ? listeners : {})}
       {...(draggable ? attributes : {})}
-      className={`flex rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1.5 text-xs ${
-        stacked ? "flex-col gap-1" : "items-center gap-1.5"
-      } ${isDragging ? "z-50 opacity-40" : ""} ${draggable ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""}`}
+      onClick={
+        onSelect
+          ? (e) => {
+              e.stopPropagation();
+              onSelect();
+            }
+          : undefined
+      }
+      className={`flex rounded-lg border px-2 py-1.5 text-xs ${
+        selected ? "border-amber-400 bg-amber-500/15 ring-1 ring-amber-400" : "border-zinc-700 bg-zinc-800/80"
+      } ${stacked ? "flex-col gap-1" : "items-center gap-1.5"} ${isDragging ? "z-50 opacity-40" : ""} ${
+        draggable ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""
+      }`}
     >
       {/* `contents` keeps the avatar+name acting as direct flex children when
        * not stacked (unchanged layout); when stacked they form their own row. */}
