@@ -13,6 +13,8 @@ import { handleReactionAdd, handleReactionRemove } from "./reactions";
 import { confirmDueLeaves } from "./attendance-confirm";
 import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
 import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
+import { commands } from "./commands";
+import { handleInteractionCreate } from "./interactions";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
@@ -33,6 +35,22 @@ client.once(Events.ClientReady, async (readyClient) => {
 
   const guild = await readyClient.guilds.fetch(GUILD_ID!);
   console.log(`[bot] watching guild: ${guild.name} (${guild.id})`);
+
+  // Guild-scoped (not global) commands apply instantly — global commands can
+  // take up to an hour to propagate, which would make every new/renamed
+  // command look broken for a while after each deploy. Registering the full
+  // set on every startup keeps it in sync automatically as commands.ts
+  // changes, at the cost of one extra API call per restart (negligible).
+  try {
+    await guild.commands.set(commands);
+    console.log(`[bot] registered ${commands.length} slash command(s)`);
+  } catch (err) {
+    console.error(
+      "[bot] failed to register slash commands — if this says 'Missing Access', the bot was invited without the " +
+        "'applications.commands' OAuth scope and needs to be re-invited with it added",
+      err
+    );
+  }
 
   const runSync = async (reason: string) => {
     try {
@@ -185,6 +203,16 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     await handleVoiceStateUpdate(oldState, newState);
   } catch (err) {
     console.error("[bot] failed to handle voiceStateUpdate", err);
+  }
+});
+
+// /party slash command — see bot/commands.ts (definition) and
+// bot/interactions.ts (autocomplete + reply logic).
+client.on(Events.InteractionCreate, async (interaction) => {
+  try {
+    await handleInteractionCreate(interaction);
+  } catch (err) {
+    console.error("[bot] failed to handle interactionCreate", err);
   }
 });
 
