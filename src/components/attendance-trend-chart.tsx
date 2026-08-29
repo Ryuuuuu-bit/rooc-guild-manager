@@ -39,12 +39,12 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
       {withData.length === 0 ? (
         <p className="text-sm text-zinc-500">ยังไม่มีข้อมูลเพียงพอสำหรับกราฟ</p>
       ) : (
-        <div className="flex h-28 items-end gap-2">
+        <div className="flex h-28 items-end gap-3">
           {points.map((p, i) => {
             const isLast = i === points.length - 1;
             const heightPct = p.rate === null ? 0 : Math.max(4, Math.round(p.rate * 100));
             return (
-              <div key={p.date} className="flex flex-1 flex-col items-center gap-1.5">
+              <div key={p.date} className="flex w-11 shrink-0 flex-col items-center gap-1.5">
                 <div className="relative flex h-20 w-full items-end justify-center">
                   {isLast && p.rate !== null && (
                     <span className="absolute -top-5 text-[11px] font-medium text-zinc-300">
@@ -52,7 +52,7 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
                     </span>
                   )}
                   <div
-                    className={`w-full max-w-6 rounded-t ${p.rate === null ? "bg-zinc-800" : "bg-amber-500"}`}
+                    className={`w-full rounded-t ${p.rate === null ? "bg-zinc-800" : "bg-amber-500"}`}
                     style={{ height: `${heightPct}%` }}
                     title={
                       p.rate === null
