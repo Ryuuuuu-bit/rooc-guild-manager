@@ -34,6 +34,29 @@ export function colorClassFor(colorKey: string): string {
   return COLOR_PALETTE[colorKey as ColorKey] ?? COLOR_PALETTE.stone;
 }
 
+/** Translucent-to-solid two-stop gradient per key, for bar-style
+ * visualizations (the dashboard's class-distribution panel) that want more
+ * depth than a flat fill. Same "every option written out in full" reasoning
+ * as SWATCH_CLASS below — Tailwind's build-time scanner needs the literal
+ * class strings to appear somewhere in source. */
+export const GRADIENT_CLASS: Record<ColorKey, string> = {
+  red: "from-red-500/40 to-red-500",
+  orange: "from-orange-400/40 to-orange-400",
+  amber: "from-amber-400/40 to-amber-400",
+  yellow: "from-yellow-400/40 to-yellow-400",
+  lime: "from-lime-400/40 to-lime-400",
+  emerald: "from-emerald-400/40 to-emerald-400",
+  teal: "from-teal-400/40 to-teal-400",
+  sky: "from-sky-400/40 to-sky-400",
+  indigo: "from-indigo-400/40 to-indigo-400",
+  violet: "from-violet-400/40 to-violet-400",
+  purple: "from-purple-400/40 to-purple-400",
+  fuchsia: "from-fuchsia-400/40 to-fuchsia-400",
+  pink: "from-pink-400/40 to-pink-400",
+  rose: "from-rose-500/40 to-rose-500",
+  stone: "from-stone-400/40 to-stone-400",
+};
+
 /** Solid (full-opacity) swatch color per key — used only by the color-picker UI in /classes, where the translucent badge tints above would look washed out as small swatch dots. */
 export const SWATCH_CLASS: Record<ColorKey, string> = {
   red: "bg-red-500",
