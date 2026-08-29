@@ -21,18 +21,17 @@ const primaryLinks: NavLink[] = [
   { href: "/members", label: "สมาชิก" },
 ];
 
-// Grouped by what the pages are FOR, not how often they're used — mixing an
-// active "run this week's event" tool with a passive "look at past records"
-// one in the same menu made the categories read as arbitrary. Split into
-// two: tools you use to run something now, vs. pages you check to look
-// something up.
+// Grouped by what the pages are FOR, not how often they're used: tools you
+// use to organize/run something now (party board, random picker, loot
+// queue), vs. pages you check to look something up (activity log, leave
+// stats, and the check-in report — that one's a record of who showed up,
+// not a tool for running the event itself).
 const groups: NavGroup[] = [
   {
     label: "จัดกิจกรรม",
     links: [
       { href: "/party", label: "จัดปาร์ตี้" },
       { href: "/random", label: "สุ่มสมาชิก" },
-      { href: "/checkin", label: "เช็คชื่อ [DC]" },
       { href: "/loot-queue", label: "คิวประมูล" },
     ],
   },
@@ -41,6 +40,7 @@ const groups: NavGroup[] = [
     links: [
       { href: "/activity", label: "ประวัติกิจกรรม" },
       { href: "/attendance", label: "สถิติการลา" },
+      { href: "/checkin", label: "เช็คชื่อ [DC]" },
     ],
   },
 ];
