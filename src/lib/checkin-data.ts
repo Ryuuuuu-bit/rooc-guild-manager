@@ -1,4 +1,4 @@
-import { and, asc, gte, lte, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, gte, lte, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { checkinNotes, members, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
@@ -145,9 +145,12 @@ export interface CheckinReport {
 
 /**
  * Report for one event's check-in window: for every currently-active,
- * non-benched member (mirrors the roster scope used by /attendance's leave
- * stats — benched members aren't expected at events), whether they had ANY
- * voice presence — on any of this event's channels — overlapping the
+ * non-benched member who had already joined the guild by the time this
+ * window's event happened (mirrors the roster scope used by /attendance's
+ * leave stats — benched members aren't expected at events — plus this
+ * join-date cutoff so someone who joined the guild after an old event
+ * doesn't retroactively show up as "ไม่เข้าร่วม" for it), whether they had
+ * ANY voice presence — on any of this event's channels — overlapping the
  * window ("attended", no minimum-duration threshold, per admin's call)
  * plus the accumulated minutes they were actually present, as
  * supplementary context. Sorted absent-first (fastest to spot who to
@@ -163,7 +166,17 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
   const roster = await db
     .select()
     .from(members)
-    .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)));
+    .where(
+      and(
+        eq(members.status, "ACTIVE"),
+        eq(members.benched, false),
+        // Someone who joined the guild AFTER this window's event happened
+        // wasn't around to check in — don't hold that against them (a
+        // missing joinedDiscordAt is legacy data from before this column
+        // existed, treated as "always eligible" rather than excluded).
+        or(isNull(members.joinedDiscordAt), lte(members.joinedDiscordAt, end))
+      )
+    );
 
   // Pad well before the window so an interval that started (well) earlier
   // and is still open still gets picked up as overlapping.
