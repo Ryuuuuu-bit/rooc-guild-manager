@@ -55,20 +55,34 @@ export function PvpStatFieldsEditor({
       {[...PVP_STAT_FIELD_GROUPS, ...customGroups].map((group) => (
         <div key={group.title} className="flex flex-col gap-2">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{group.title}</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {group.fields.map((f) => (
-              <label key={f.key} className={labelClass}>
-                {f.label}
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step={f.isPercent ? "0.01" : "1"}
-                  value={values[f.key] ?? ""}
-                  onChange={(e) => onValueChange(f.key, e.target.value)}
-                  className={inputClass}
-                />
-              </label>
-            ))}
+          <div className="overflow-x-auto rounded-lg border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-950/60">
+                  {group.fields.map((f) => (
+                    <th key={f.key} className="whitespace-nowrap px-2.5 py-1.5 text-left text-xs font-medium text-zinc-400">
+                      {f.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {group.fields.map((f) => (
+                    <td key={f.key} className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step={f.isPercent ? "0.01" : "1"}
+                        value={values[f.key] ?? ""}
+                        onChange={(e) => onValueChange(f.key, e.target.value)}
+                        className={`w-full min-w-[90px] ${inputClass}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       ))}

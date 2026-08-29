@@ -110,7 +110,7 @@ export function AdminAddEntryButton({
         onClick={openModal}
         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
       >
-        + เพิ่มสถิติให้สมาชิก
+        แก้ไข Stats สมาชิก
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>

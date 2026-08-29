@@ -50,7 +50,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
         onClick={() => setOpen(true)}
         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
       >
-        จัดการฟิลด์สถิติ
+        เพิ่ม Stats ใหม่
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>
