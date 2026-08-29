@@ -200,7 +200,7 @@ export default async function AttendancePage({
             <Link
               key={b.boardId ?? "none"}
               href={b.boardId ? `/attendance?${rangeQuery}&board=${b.boardId}` : "#"}
-              className={`rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 transition ${
+              className={`whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 transition ${
                 b.boardId ? "hover:border-amber-600/60 hover:text-amber-300" : "cursor-default"
               }`}
             >
@@ -212,7 +212,7 @@ export default async function AttendancePage({
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full text-left text-sm">
+        <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="w-10 px-5 py-3 font-medium">#</th>

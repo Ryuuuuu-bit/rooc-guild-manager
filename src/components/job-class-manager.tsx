@@ -141,8 +141,8 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
 
       {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full text-left text-sm">
+      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
+        <table className="w-full min-w-[420px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="w-10 px-3 py-3 font-medium">ลำดับ</th>
@@ -193,7 +193,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                     </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${c.colorClass}`}>
+                    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${c.colorClass}`}>
                       <span className="text-sm">{c.emoji}</span>
                       {c.name}
                     </span>

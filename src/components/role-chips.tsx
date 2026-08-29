@@ -28,7 +28,7 @@ export function RoleChips({ roleIds, rolesById, max = 3 }: RoleChipsProps) {
         return (
           <span
             key={role.id}
-            className="inline-flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-inset ring-zinc-700"
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-inset ring-zinc-700"
           >
             <span
               className="h-1.5 w-1.5 rounded-full"

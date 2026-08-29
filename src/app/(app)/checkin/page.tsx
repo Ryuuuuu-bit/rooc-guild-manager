@@ -101,7 +101,7 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
               </p>
 
               <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
-                <table className="w-full text-left text-sm">
+                <table className="w-full min-w-[820px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
                       <th className="w-10 px-5 py-3 font-medium">#</th>
@@ -138,11 +138,11 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                         </td>
                         <td className="px-5 py-3">
                           {row.attended ? (
-                            <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
+                            <span className="inline-block whitespace-nowrap rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
                               เข้าร่วม
                             </span>
                           ) : (
-                            <span className="rounded-full bg-rose-400/15 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30">
+                            <span className="inline-block whitespace-nowrap rounded-full bg-rose-400/15 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30">
                               ไม่เข้าร่วม
                             </span>
                           )}

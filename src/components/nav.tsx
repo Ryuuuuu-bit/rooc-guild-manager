@@ -90,7 +90,7 @@ export function Nav({ username, avatarUrl, isAdmin }: NavProps) {
 
         <div className="flex items-center gap-3">
           {isAdmin && (
-            <span className="hidden rounded-full bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/30 sm:inline-block">
+            <span className="hidden whitespace-nowrap rounded-full bg-rose-500/15 px-2.5 py-1 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-500/30 sm:inline-block">
               แอดมิน
             </span>
           )}

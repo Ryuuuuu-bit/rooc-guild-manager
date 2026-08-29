@@ -73,7 +73,7 @@ export function ActivityListItem({
           {event.detail ? <span>— {event.detail}</span> : null}
           {isPendingLeave && (
             <span
-              className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
+              className="whitespace-nowrap rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
               title="นับในสถิติหลังกดค้างไว้ครบ 30 นาที"
             >
               รอยืนยัน
