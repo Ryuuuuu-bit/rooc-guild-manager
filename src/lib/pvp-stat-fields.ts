@@ -58,3 +58,36 @@ export function fmtInt(n: number | null | undefined): string {
 export function fmtPct(n: number | null | undefined): string {
   return n === null || n === undefined ? "—" : `${n.toLocaleString("th-TH", { maximumFractionDigits: 2 })}%`;
 }
+
+// Admin-added stat columns (pvpStatFieldDefs in schema.ts) — client-safe
+// shape mirrored from the DB row, used by the form, table, and card
+// renderers the same way PvpStatFieldDef above is. `active: false` fields
+// are still passed around (so old history can still resolve their label)
+// but callers filter them out of anything a member currently fills in or
+// sees as a live column — see the `active` filtering at each call site.
+export interface PvpCustomFieldDef {
+  id: string;
+  key: string;
+  label: string;
+  groupTitle: string;
+  isPercent: boolean;
+  sortOrder: number;
+  active: boolean;
+}
+
+/** Buckets custom fields by their groupTitle, preserving each field's own
+ * sortOrder within the bucket and first-seen order across buckets — the
+ * admin-defined equivalent of PVP_STAT_FIELD_GROUPS' fixed grouping. */
+export function groupCustomFields(defs: PvpCustomFieldDef[]): { title: string; fields: PvpCustomFieldDef[] }[] {
+  const sorted = [...defs].sort((a, b) => a.sortOrder - b.sortOrder);
+  const order: string[] = [];
+  const byTitle = new Map<string, PvpCustomFieldDef[]>();
+  for (const def of sorted) {
+    if (!byTitle.has(def.groupTitle)) {
+      byTitle.set(def.groupTitle, []);
+      order.push(def.groupTitle);
+    }
+    byTitle.get(def.groupTitle)!.push(def);
+  }
+  return order.map((title) => ({ title, fields: byTitle.get(title)! }));
+}

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { submitPvpStat, type PvpStatInput } from "@/app/actions/pvp-stats";
-import { PVP_ROLES } from "@/lib/pvp-roles";
-import { PVP_STAT_FIELD_GROUPS as FIELD_GROUPS } from "@/lib/pvp-stat-fields";
+import { PVP_STAT_FIELD_GROUPS, type PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
+import { PvpStatFieldsEditor } from "@/components/pvp-stat-fields-editor";
 import type { PvpStatEntry } from "@/db/schema";
 
 function toInputValue(n: number | null | undefined): string {
@@ -17,16 +17,23 @@ function parseField(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function PvpStatForm({ initial }: { initial: PvpStatEntry | null }) {
+export function PvpStatForm({
+  initial,
+  customFieldDefs = [],
+}: {
+  initial: PvpStatEntry | null;
+  customFieldDefs?: PvpCustomFieldDef[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [role, setRole] = useState<string>(initial?.role ?? "");
   const [bossCards, setBossCards] = useState(initial?.bossCards ?? "");
   const [values, setValues] = useState<Record<string, string>>(() => {
     const v: Record<string, string> = {};
-    for (const group of FIELD_GROUPS) {
+    for (const group of PVP_STAT_FIELD_GROUPS) {
       for (const f of group.fields) v[f.key] = toInputValue(initial?.[f.key] as number | null | undefined);
     }
+    for (const f of customFieldDefs) v[f.key] = toInputValue(initial?.customValues?.[f.key]);
     return v;
   });
   const [saving, setSaving] = useState(false);
@@ -36,6 +43,9 @@ export function PvpStatForm({ initial }: { initial: PvpStatEntry | null }) {
     e.preventDefault();
     setSaving(true);
     setError(null);
+
+    const customValues: Record<string, number | null> = {};
+    for (const f of customFieldDefs) customValues[f.key] = parseField(values[f.key] ?? "");
 
     const input: PvpStatInput = {
       role: (role || null) as PvpStatInput["role"],
@@ -53,6 +63,7 @@ export function PvpStatForm({ initial }: { initial: PvpStatEntry | null }) {
       ignoreMDef: parseField(values.ignoreMDef),
       pDmgBonusPct: parseField(values.pDmgBonusPct),
       mDmgBonusPct: parseField(values.mDmgBonusPct),
+      customValues,
     };
 
     const result = await submitPvpStat(input);
@@ -101,55 +112,15 @@ export function PvpStatForm({ initial }: { initial: PvpStatEntry | null }) {
         </p>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <label className="flex flex-col gap-1 text-xs text-zinc-400">
-          Role
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="">— ไม่ระบุ —</option>
-            {PVP_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {FIELD_GROUPS.map((group) => (
-        <div key={group.title} className="flex flex-col gap-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{group.title}</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {group.fields.map((f) => (
-              <label key={f.key} className="flex flex-col gap-1 text-xs text-zinc-400">
-                {f.label}
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  step={f.isPercent ? "0.01" : "1"}
-                  value={values[f.key]}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                  className="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-                />
-              </label>
-            ))}
-          </div>
-        </div>
-      ))}
-
-      <label className="flex flex-col gap-1 text-xs text-zinc-400">
-        การ์ดบอสที่มี
-        <input
-          type="text"
-          value={bossCards}
-          onChange={(e) => setBossCards(e.target.value)}
-          placeholder="เช่น Moon/Orclord"
-          className="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-        />
-      </label>
+      <PvpStatFieldsEditor
+        role={role}
+        onRoleChange={setRole}
+        values={values}
+        onValueChange={(key, value) => setValues((v) => ({ ...v, [key]: value }))}
+        bossCards={bossCards}
+        onBossCardsChange={setBossCards}
+        customFieldDefs={customFieldDefs}
+      />
 
       {error && <p className="text-sm text-rose-400">{error}</p>}
 

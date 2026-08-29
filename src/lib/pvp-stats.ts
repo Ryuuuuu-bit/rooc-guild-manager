@@ -1,11 +1,30 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { members, pvpStatEntries, type Member, type PvpStatEntry } from "@/db/schema";
+import { members, pvpStatEntries, pvpStatFieldDefs, type Member, type PvpStatEntry } from "@/db/schema";
 import { memberDisplayName } from "@/lib/ui";
+import type { PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
 
 // Re-exported for convenience — see pvp-roles.ts for why the role list
 // itself lives in a separate, client-safe module.
 export { PVP_ROLES, type PvpRole } from "@/lib/pvp-roles";
+
+/** Every admin-added stat column, active and retired alike — callers filter
+ * to `active` for anything a member currently fills in or sees as a live
+ * column, and use the full list (retired included) when they need to
+ * resolve a label/format for an older entry's customValues, or when
+ * managing the field list itself. */
+export async function getPvpStatFieldDefs(): Promise<PvpCustomFieldDef[]> {
+  const rows = await db.select().from(pvpStatFieldDefs).orderBy(asc(pvpStatFieldDefs.sortOrder));
+  return rows.map((r) => ({
+    id: r.id,
+    key: r.key,
+    label: r.label,
+    groupTitle: r.groupTitle,
+    isPercent: r.isPercent,
+    sortOrder: r.sortOrder,
+    active: r.active,
+  }));
+}
 
 export interface PvpStatRow {
   entry: PvpStatEntry;

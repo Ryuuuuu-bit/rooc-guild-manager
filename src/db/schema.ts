@@ -330,6 +330,29 @@ export const jobClasses = pgTable(
 // and a text column lets that keep drifting without a migration each time —
 // PVP_ROLES in src/lib/pvp-stats.ts is the single place the fixed option
 // list lives for the form's <select>.
+// Admin-managed extra stat columns — added from the web UI (no code change/
+// deploy needed) for whatever the guild starts tracking next. Values for
+// these live in pvpStatEntries.customValues (a JSONB map keyed by `key`
+// below), NOT as their own typed columns like the fixed stats above — that's
+// what lets an admin add one without a migration. `active: false` is a soft
+// delete: a field an admin removes from the live form still resolves its
+// label/format for OLD entries that recorded it, instead of orphaning that
+// history as an unlabeled key.
+export const pvpStatFieldDefs = pgTable(
+  "pvp_stat_field_defs",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    key: text("key").notNull().unique(),
+    label: text("label").notNull(),
+    groupTitle: text("group_title").notNull().default("อื่นๆ"),
+    isPercent: boolean("is_percent").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("pvp_stat_field_defs_sort_order_idx").on(table.sortOrder)]
+);
+
 export const pvpStatEntries = pgTable(
   "pvp_stat_entries",
   {
@@ -357,6 +380,11 @@ export const pvpStatEntries = pgTable(
     // combination to normalize into their own table for what's essentially
     // a self-reported note.
     bossCards: text("boss_cards"),
+    // Values for admin-added fields (pvpStatFieldDefs above), keyed by
+    // `key`. A field removed from `values` here simply renders as "—" —
+    // nothing keys off its presence besides display, so it's safe to leave
+    // gaps for entries submitted before a field existed.
+    customValues: jsonb("custom_values").$type<Record<string, number>>(),
     // Admin review of THIS specific submission — "ผ่าน"/"ไม่ผ่าน" plus a note
     // on what to adjust (mirrors the "Status" column on the guild's original
     // Sheet). Unlike the member-filled fields above, only requireAdmin() can
@@ -367,9 +395,17 @@ export const pvpStatEntries = pgTable(
     reviewNote: text("review_note"),
     reviewedByUsername: text("reviewed_by_username"),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-    // Append-only: every submission is a new row (never updated in place),
-    // so this doubles as the history log the guild's admin wanted kept —
-    // "latest per member" is just the most recent row by this column.
+    // Set only when an admin corrects a submission's values after the fact
+    // (adminEditPvpStatEntry) — distinct from reviewedAt/reviewedByUsername,
+    // which track the pass/fail judgment, not a data edit.
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    editedByUsername: text("edited_by_username"),
+    // Append-only BY DEFAULT: every member self-submission is a new row
+    // (never updated in place), so this doubles as the history log the
+    // guild's admin wanted kept — "latest per member" is just the most
+    // recent row by this column. An admin correcting a typo (updatedAt set)
+    // or deleting a bad row (deletePvpStatEntry) is the sanctioned exception
+    // to "never touch an existing row."
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -548,4 +584,6 @@ export type NewLootQueueEntry = typeof lootQueueEntries.$inferInsert;
 export type LootRound = typeof lootRounds.$inferSelect;
 export type PvpStatEntry = typeof pvpStatEntries.$inferSelect;
 export type NewPvpStatEntry = typeof pvpStatEntries.$inferInsert;
+export type PvpStatFieldDefRow = typeof pvpStatFieldDefs.$inferSelect;
+export type NewPvpStatFieldDefRow = typeof pvpStatFieldDefs.$inferInsert;
 export type NewLootRound = typeof lootRounds.$inferInsert;

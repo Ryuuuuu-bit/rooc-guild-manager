@@ -4,13 +4,14 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { members } from "@/db/schema";
 import { requireUser } from "@/lib/authz";
-import { getPvpStatHistory } from "@/lib/pvp-stats";
+import { getPvpStatHistory, getPvpStatFieldDefs } from "@/lib/pvp-stats";
 import { fmtInt, fmtPct } from "@/lib/pvp-stat-fields";
 import { memberDisplayName } from "@/lib/ui";
 import { ClassBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
 import { PvpReviewBadge, PvpReviewButton } from "@/components/pvp-stat-review";
+import { AdminEditEntryButton, AdminDeleteEntryButton } from "@/components/pvp-stat-admin-entry";
 
 export default async function PvpStatHistoryPage({ params }: { params: Promise<{ memberId: string }> }) {
   const session = await requireUser();
@@ -20,7 +21,8 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
   const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!member) notFound();
 
-  const history = await getPvpStatHistory(memberId);
+  const [history, allFieldDefs] = await Promise.all([getPvpStatHistory(memberId), getPvpStatFieldDefs()]);
+  const activeFieldDefs = allFieldDefs.filter((f) => f.active);
 
   return (
     <div className="flex flex-col gap-6">
@@ -46,12 +48,12 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
         </Link>
       </div>
 
-      {/* Desktop: full history table. */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50 lg:block">
+      {/* Same 2xl switch point as the leaderboard table — see that page for why. */}
+      <div className="hidden overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50 2xl:block">
         <table className="w-full min-w-[1300px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="px-4 py-3 font-medium">วันที่</th>
+              <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3 font-medium">วันที่</th>
               <th className="px-4 py-3 font-medium">Role</th>
               <th className="px-4 py-3 font-medium">สถานะ</th>
               <th className="px-4 py-3 text-right font-medium">CP</th>
@@ -67,20 +69,30 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
               <th className="px-4 py-3 text-right font-medium">Ignore M.DEF</th>
               <th className="px-4 py-3 text-right font-medium">P.DMG Bonus%</th>
               <th className="px-4 py-3 text-right font-medium">M.DMG Bonus%</th>
+              {activeFieldDefs.map((f) => (
+                <th key={f.key} className="px-4 py-3 text-right font-medium">
+                  {f.label}
+                </th>
+              ))}
               <th className="px-4 py-3 font-medium">การ์ดบอส</th>
+              {isAdmin && <th className="px-4 py-3 font-medium">จัดการ</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {history.length === 0 && (
               <tr>
-                <td colSpan={17} className="px-4 py-10 text-center text-zinc-500">
+                <td colSpan={40} className="px-4 py-10 text-center text-zinc-500">
                   ยังไม่เคยกรอกสถิติ
                 </td>
               </tr>
             )}
             {history.map((entry, i) => (
-              <tr key={entry.id} className={i === 0 ? "bg-amber-500/5" : ""}>
-                <td className="px-4 py-3 whitespace-nowrap text-zinc-300">
+              <tr key={entry.id} className={`group ${i === 0 ? "bg-amber-500/5" : ""}`}>
+                <td
+                  className={`sticky left-0 z-10 whitespace-nowrap border-r border-zinc-800 px-4 py-3 text-zinc-300 ${
+                    i === 0 ? "bg-zinc-900" : "bg-zinc-900 group-hover:bg-zinc-800/90"
+                  }`}
+                >
                   {new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
                   {i === 0 && <span className="ml-2 text-xs text-amber-400">ล่าสุด</span>}
                 </td>
@@ -110,20 +122,34 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                 <td className="px-4 py-3 text-right text-zinc-300">{fmtInt(entry.ignoreMDef)}</td>
                 <td className="px-4 py-3 text-right text-zinc-300">{fmtPct(entry.pDmgBonusPct)}</td>
                 <td className="px-4 py-3 text-right text-zinc-300">{fmtPct(entry.mDmgBonusPct)}</td>
+                {activeFieldDefs.map((f) => (
+                  <td key={f.key} className="px-4 py-3 text-right text-zinc-300">
+                    {f.isPercent ? fmtPct(entry.customValues?.[f.key]) : fmtInt(entry.customValues?.[f.key])}
+                  </td>
+                ))}
                 <td className="px-4 py-3 text-zinc-400">{entry.bossCards ?? "—"}</td>
+                {isAdmin && (
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+                      <AdminDeleteEntryButton entryId={entry.id} />
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Mobile / tablet: one card per submission. */}
-      <div className="flex flex-col gap-3 lg:hidden">
+      {/* Card list is the default on anything narrower than 2xl — laptops included. */}
+      <div className="flex flex-col gap-3 2xl:hidden">
         {history.length === 0 && <p className="py-10 text-center text-sm text-zinc-500">ยังไม่เคยกรอกสถิติ</p>}
         {history.map((entry, i) => (
           <PvpStatCard
             key={entry.id}
             entry={entry}
+            customFieldDefs={activeFieldDefs}
             header={
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-100">
@@ -143,6 +169,14 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                   />
                 )}
               </>
+            }
+            footer={
+              isAdmin && (
+                <div className="flex justify-end gap-1 border-t border-zinc-800 pt-2">
+                  <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+                  <AdminDeleteEntryButton entryId={entry.id} />
+                </div>
+              )
             }
           />
         ))}

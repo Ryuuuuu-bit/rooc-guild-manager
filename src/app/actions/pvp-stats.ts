@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members, pvpStatEntries } from "@/db/schema";
+import { members, pvpStatEntries, pvpStatFieldDefs } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/authz";
 import { PVP_ROLES, type PvpRole } from "@/lib/pvp-roles";
 import { isReviewStatus, type ReviewStatus } from "@/lib/pvp-stat-review";
@@ -13,7 +13,8 @@ import type { ActionResult } from "@/app/actions/party";
 // mid-event shouldn't be blocked from saving because they don't have one
 // stat handy. `null` means "leave this one blank", not "clear the group's
 // last value" — each submission is its own independent snapshot row (see
-// pvpStatEntries in schema.ts), never an edit of a previous one.
+// pvpStatEntries in schema.ts), never an edit of a previous one (except the
+// admin correction path below, which is the deliberate exception).
 export interface PvpStatInput {
   role: PvpRole | null;
   cp: number | null;
@@ -30,29 +31,36 @@ export interface PvpStatInput {
   pDmgBonusPct: number | null;
   mDmgBonusPct: number | null;
   bossCards: string | null;
+  /** Admin-added stat columns (pvpStatFieldDefs), keyed by field `key`. Any
+   * key not currently an active field def is silently dropped — see
+   * sanitizeCustomValues — so a field retired between page-load and submit
+   * can't sneak a stray value back in. */
+  customValues?: Record<string, number | null>;
 }
 
-function cleanNumber(n: number | null): number | null {
+function cleanNumber(n: number | null | undefined): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
-/**
- * Any signed-in member submits their OWN stats — no admin gate, this is
- * self-reported data the same trust level as picking your own class via
- * Discord reaction. Always INSERTs a new row rather than updating the
- * member's last one, since the guild wants a running weekly history, not
- * just a current snapshot.
- */
-export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> {
-  const session = await requireUser();
-  const member = await db.query.members.findFirst({ where: eq(members.discordId, session.user.discordId) });
-  if (!member) return { ok: false, error: "ไม่พบข้อมูลสมาชิกของคุณในระบบ" };
+async function getActiveFieldKeys(): Promise<Set<string>> {
+  const rows = await db.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.active, true));
+  return new Set(rows.map((r) => r.key));
+}
 
+function sanitizeCustomValues(raw: Record<string, number | null> | undefined, activeKeys: Set<string>): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw) return out;
+  for (const [key, value] of Object.entries(raw)) {
+    if (!activeKeys.has(key)) continue;
+    const n = cleanNumber(value);
+    if (n !== null) out[key] = n;
+  }
+  return out;
+}
+
+function buildEntryValues(input: PvpStatInput, customValues: Record<string, number>) {
   const role = input.role && (PVP_ROLES as readonly string[]).includes(input.role) ? input.role : null;
-  const bossCards = input.bossCards?.trim() || null;
-
-  await db.insert(pvpStatEntries).values({
-    memberId: member.id,
+  return {
     role,
     cp: cleanNumber(input.cp),
     pDef: cleanNumber(input.pDef),
@@ -67,10 +75,89 @@ export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> 
     ignoreMDef: cleanNumber(input.ignoreMDef),
     pDmgBonusPct: cleanNumber(input.pDmgBonusPct),
     mDmgBonusPct: cleanNumber(input.mDmgBonusPct),
-    bossCards,
-  });
+    bossCards: input.bossCards?.trim() || null,
+    customValues: Object.keys(customValues).length > 0 ? customValues : null,
+  };
+}
+
+async function insertPvpStatEntry(memberId: string, input: PvpStatInput): Promise<ActionResult> {
+  const activeKeys = await getActiveFieldKeys();
+  const customValues = sanitizeCustomValues(input.customValues, activeKeys);
+
+  await db.insert(pvpStatEntries).values({ memberId, ...buildEntryValues(input, customValues) });
 
   revalidatePath("/pvp-stats");
+  revalidatePath(`/pvp-stats/${memberId}`);
+  return { ok: true };
+}
+
+/**
+ * Any signed-in member submits their OWN stats — no admin gate, this is
+ * self-reported data the same trust level as picking your own class via
+ * Discord reaction. Always INSERTs a new row rather than updating the
+ * member's last one, since the guild wants a running weekly history, not
+ * just a current snapshot.
+ */
+export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> {
+  const session = await requireUser();
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, session.user.discordId) });
+  if (!member) return { ok: false, error: "ไม่พบข้อมูลสมาชิกของคุณในระบบ" };
+  return insertPvpStatEntry(member.id, input);
+}
+
+/**
+ * Admin fills in a submission ON BEHALF of a member — e.g. someone who
+ * reported their numbers in Discord instead of the form. Same append-only
+ * insert as submitPvpStat, just targeting an arbitrary member instead of
+ * the caller's own.
+ */
+export async function adminCreatePvpStatFor(memberId: string, input: PvpStatInput): Promise<ActionResult> {
+  await requireAdmin();
+  const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!member) return { ok: false, error: "ไม่พบสมาชิกนี้" };
+  return insertPvpStatEntry(memberId, input);
+}
+
+/**
+ * Admin corrects the actual VALUES of an existing submission in place —
+ * fixing a typo, not logging a new weekly update. The one sanctioned
+ * exception to "every submission is its own row": this UPDATEs the row and
+ * stamps updatedAt/editedByUsername, leaving reviewStatus/reviewNote (a
+ * separate judgment, see reviewPvpStat) untouched.
+ */
+export async function adminEditPvpStatEntry(entryId: string, input: PvpStatInput): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const existing = await db.query.pvpStatEntries.findFirst({ where: eq(pvpStatEntries.id, entryId) });
+  if (!existing) return { ok: false, error: "ไม่พบรายการนี้" };
+
+  const activeKeys = await getActiveFieldKeys();
+  const customValues = sanitizeCustomValues(input.customValues, activeKeys);
+
+  await db
+    .update(pvpStatEntries)
+    .set({
+      ...buildEntryValues(input, customValues),
+      updatedAt: new Date(),
+      editedByUsername: session.user.username,
+    })
+    .where(eq(pvpStatEntries.id, entryId));
+
+  revalidatePath("/pvp-stats");
+  revalidatePath(`/pvp-stats/${existing.memberId}`);
+  return { ok: true };
+}
+
+/** Admin permanently removes a bad submission (test entry, duplicate, entered for the wrong member). */
+export async function deletePvpStatEntry(entryId: string): Promise<ActionResult> {
+  await requireAdmin();
+  const [deleted] = await db
+    .delete(pvpStatEntries)
+    .where(eq(pvpStatEntries.id, entryId))
+    .returning({ id: pvpStatEntries.id, memberId: pvpStatEntries.memberId });
+  if (!deleted) return { ok: false, error: "ไม่พบรายการนี้" };
+
+  revalidatePath("/pvp-stats");
+  revalidatePath(`/pvp-stats/${deleted.memberId}`);
   return { ok: true };
 }
 
@@ -103,6 +190,59 @@ export async function reviewPvpStat(
     .returning({ id: pvpStatEntries.id });
 
   if (!updated) return { ok: false, error: "ไม่พบรายการนี้" };
+
+  revalidatePath("/pvp-stats");
+  return { ok: true };
+}
+
+function slugifyFieldKey(label: string): string {
+  const slug = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9ก-๙]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return slug || "field";
+}
+
+/** Admin adds a new stat column that shows up in the form/table/cards immediately — no code change or deploy. */
+export async function createPvpStatField(input: {
+  label: string;
+  groupTitle: string;
+  isPercent: boolean;
+}): Promise<ActionResult> {
+  await requireAdmin();
+  const label = input.label.trim();
+  if (!label) return { ok: false, error: "กรุณาใส่ชื่อฟิลด์" };
+  const groupTitle = input.groupTitle.trim() || "อื่นๆ";
+
+  const existing = await db.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs);
+  const existingKeys = new Set(existing.map((e) => e.key));
+  const base = slugifyFieldKey(label);
+  let key = base;
+  let suffix = 1;
+  while (existingKeys.has(key)) {
+    suffix += 1;
+    key = `${base}_${suffix}`;
+  }
+
+  const [top] = await db.select({ sortOrder: pvpStatFieldDefs.sortOrder }).from(pvpStatFieldDefs).orderBy(desc(pvpStatFieldDefs.sortOrder)).limit(1);
+  const sortOrder = (top?.sortOrder ?? 0) + 1;
+
+  await db.insert(pvpStatFieldDefs).values({ key, label, groupTitle, isPercent: input.isPercent, sortOrder });
+
+  revalidatePath("/pvp-stats");
+  return { ok: true };
+}
+
+/** Toggle a field's visibility on the live form/table without losing the label for old entries that recorded it (soft delete). */
+export async function setPvpStatFieldActive(id: string, active: boolean): Promise<ActionResult> {
+  await requireAdmin();
+  const [updated] = await db
+    .update(pvpStatFieldDefs)
+    .set({ active })
+    .where(eq(pvpStatFieldDefs.id, id))
+    .returning({ id: pvpStatFieldDefs.id });
+  if (!updated) return { ok: false, error: "ไม่พบฟิลด์นี้" };
 
   revalidatePath("/pvp-stats");
   return { ok: true };
