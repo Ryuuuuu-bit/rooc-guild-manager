@@ -331,9 +331,15 @@ export async function handleReactionRemove(
     return;
   }
 
+  // boardId included here too (not just on the LEAVE side above) — without
+  // it this return's audit-log row can't be attributed to a board, which
+  // silently broke both /attendance's per-board breakdown and /checkin's
+  // "who's on leave" lookup for the LEAVE half of the same pair (found via
+  // a real member showing up in /attendance's "ไม่ระบุกระดาน" bucket).
   await logEvent(
     member.id,
     "ATTENDANCE_RETURN",
-    `ยกเลิกลาในกระดาน "${board?.name ?? row.boardId}" ผ่าน Discord reaction`
+    `ยกเลิกลาในกระดาน "${board?.name ?? row.boardId}" ผ่าน Discord reaction`,
+    { boardId: row.boardId }
   );
 }

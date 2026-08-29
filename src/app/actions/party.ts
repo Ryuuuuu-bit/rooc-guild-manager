@@ -186,6 +186,14 @@ export async function moveMember(
       type: "ATTENDANCE_LEAVE",
       detail: `ลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
       actor: session.user.username,
+      // Without this, an admin-added ลา has no board attached to its
+      // audit-log row — it still shows up in the board's own busy list
+      // (partyBusyEntries always has boardId), but /attendance's per-board
+      // breakdown dumps it in "ไม่ระบุกระดาน" and /checkin's "who's on
+      // leave" lookup can't find it at all (both read membershipEvents.
+      // boardId, not partyBusyEntries). Found via two real members an
+      // admin had marked ลา manually not showing up in either place.
+      boardId,
     });
   } else if (destination.type !== "busy" && wasBusy) {
     const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
@@ -194,6 +202,7 @@ export async function moveMember(
       type: "ATTENDANCE_RETURN",
       detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
       actor: session.user.username,
+      boardId,
     });
   }
 
