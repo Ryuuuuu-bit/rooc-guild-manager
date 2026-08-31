@@ -242,6 +242,12 @@ export function PvpStatsTable({
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedClasses, setSelectedClasses] = useState<Set<string>>(() => new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Only a "more columns to the right" cue — the member column is sticky
+  // (always pinned in view), so there's never hidden content to its left to
+  // signal for; a left-edge fade would just look like it's obscuring that
+  // column instead of meaning anything.
+  const [showRightShadow, setShowRightShadow] = useState(false);
 
   function handleSort(key: SortKey) {
     setSort((cur) => (cur.key === key ? { key, dir: cur.dir === "asc" ? "desc" : "asc" } : { key, dir: defaultDirFor(key) }));
@@ -307,6 +313,29 @@ export function PvpStatsTable({
         ? "ไม่มีรายการรอตรวจแล้วตอนนี้"
         : "ไม่พบสมาชิกที่ตรงกับตัวกรอง";
 
+  // Tracks whether the table's own horizontal scroll container has more
+  // content past its right edge — re-checked on scroll, on window resize,
+  // and via ResizeObserver whenever the table's own content width changes
+  // (e.g. an admin adds/removes a stat column and the list re-renders).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function update() {
+      if (!el) return;
+      setShowRightShadow(el.scrollWidth - el.clientWidth - el.scrollLeft > 2);
+    }
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      ro.disconnect();
+    };
+  }, [sortedRows.length, activeFieldDefs.length]);
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-3">
@@ -346,96 +375,130 @@ export function PvpStatsTable({
 
       {/* Wide table only once the viewport is actually wide enough to show it without an awkward
           drag-to-scroll (19+ columns need ~1500px) — below that, the card list reads far better,
-          so the switch point is 2xl (1536px), not the usual lg (1024px) a typical laptop still hits. */}
-      <div className="hidden overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50 2xl:block">
-        <table className="w-full min-w-[1500px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3">
-                <SortHeader label="สมาชิก" sortKey="name" active={sort.key === "name"} dir={sort.key === "name" ? sort.dir : defaultDirFor("name")} onSort={handleSort} />
-              </th>
-              <th className="px-4 py-3">
-                <SortHeader label="อาชีพ" sortKey="class" active={sort.key === "class"} dir={sort.key === "class" ? sort.dir : defaultDirFor("class")} onSort={handleSort} />
-              </th>
-              <th className="px-4 py-3 font-medium">Role</th>
-              <th className="px-4 py-3 font-medium">สถานะ</th>
-              <StatHeader fieldKey="cp" label="CP" sort={sort} onSort={handleSort} />
-              {FIXED_STAT_COLUMNS.map((col) => (
-                <StatHeader key={col.key} fieldKey={col.key} label={col.label} sort={sort} onSort={handleSort} />
-              ))}
-              {activeFieldDefs.map((f) => (
-                <StatHeader key={f.key} fieldKey={`custom:${f.key}`} label={f.label} sort={sort} onSort={handleSort} />
-              ))}
-              <th className="px-4 py-3 font-medium">การ์ดบอส</th>
-              <th className="px-4 py-3 font-medium">อัปเดตล่าสุด</th>
-              {isAdmin && <th className="px-4 py-3 font-medium">แก้ไข</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800">
-            {sortedRows.length === 0 && (
-              <tr>
-                <td colSpan={40} className="px-4 py-10 text-center text-zinc-500">
-                  {emptyMessage}
-                </td>
-              </tr>
-            )}
-            {sortedRows.map(({ member, entry }) => (
-              <tr key={member.id} className="group transition hover:bg-zinc-800/40">
-                <td className="sticky left-0 z-10 border-r border-zinc-800 bg-zinc-900 px-4 py-3 group-hover:bg-zinc-800/90">
-                  <Link href={`/pvp-stats/${member.id}`} className="flex items-center gap-3">
-                    <MemberAvatar
-                      src={member.discordAvatar}
-                      alt={member.discordUsername}
-                      width={28}
-                      height={28}
-                      className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
-                    />
-                    <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
-                  </Link>
-                </td>
-                <td className="px-4 py-3">
-                  <ClassBadge className={member.characterClass} />
-                </td>
-                <td className="px-4 py-3 text-zinc-300">{entry?.role ?? "—"}</td>
-                <td className="px-4 py-3">
-                  {entry && (
-                    <div className="flex flex-nowrap items-center gap-1.5" title={entry.reviewNote ?? undefined}>
-                      <PvpReviewBadge status={entry.reviewStatus} />
-                      {isAdmin && (
-                        <PvpReviewButton
-                          entryId={entry.id}
-                          currentStatus={entry.reviewStatus}
-                          currentNote={entry.reviewNote}
-                        />
-                      )}
-                    </div>
+          so the switch point is 2xl (1536px), not the usual lg (1024px) a typical laptop still hits.
+
+          The outer div breaks out of the page's centered max-w-6xl content column to the full
+          browser width (the classic `100vw` + negative-margin full-bleed trick) — without this,
+          the table was stuck inside a ~1104px-wide column no matter how big the monitor was, so
+          its 1500px min-width ALWAYS overflowed and needed a horizontal drag-scroll even on huge
+          screens (the bug a member found and "fixed" by hand-editing the width in DevTools).
+          Breaking out gives it the screen's real width instead. See globals overflow-x-hidden on
+          <body> in app/layout.tsx for the scrollbar-width safety net this relies on. */}
+      <div
+        className="hidden w-screen 2xl:block"
+        style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}
+      >
+        {/* Cap is a bit above the table's actual full width (~2260px measured with all
+            columns + a realistic boss-card list) so a monitor with that much room shows
+            it edge-to-edge with zero scrolling, without letting the table stretch
+            pointlessly wide on an even bigger display. */}
+        <div className="mx-auto max-w-[2320px] px-4 sm:px-6">
+          <div className="relative">
+            <div ref={scrollRef} className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
+              <table className="w-full min-w-[1500px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
+                    <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3">
+                      <SortHeader label="สมาชิก" sortKey="name" active={sort.key === "name"} dir={sort.key === "name" ? sort.dir : defaultDirFor("name")} onSort={handleSort} />
+                    </th>
+                    <th className="px-4 py-3">
+                      <SortHeader label="อาชีพ" sortKey="class" active={sort.key === "class"} dir={sort.key === "class" ? sort.dir : defaultDirFor("class")} onSort={handleSort} />
+                    </th>
+                    <th className="px-4 py-3 font-medium">Role</th>
+                    <th className="px-4 py-3 font-medium">สถานะ</th>
+                    <StatHeader fieldKey="cp" label="CP" sort={sort} onSort={handleSort} />
+                    {FIXED_STAT_COLUMNS.map((col) => (
+                      <StatHeader key={col.key} fieldKey={col.key} label={col.label} sort={sort} onSort={handleSort} />
+                    ))}
+                    {activeFieldDefs.map((f) => (
+                      <StatHeader key={f.key} fieldKey={`custom:${f.key}`} label={f.label} sort={sort} onSort={handleSort} />
+                    ))}
+                    <th className="px-4 py-3 font-medium">การ์ดบอส</th>
+                    <th className="px-4 py-3 font-medium">อัปเดตล่าสุด</th>
+                    {isAdmin && <th className="px-4 py-3 font-medium">แก้ไข</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {sortedRows.length === 0 && (
+                    <tr>
+                      <td colSpan={40} className="px-4 py-10 text-center text-zinc-500">
+                        {emptyMessage}
+                      </td>
+                    </tr>
                   )}
-                </td>
-                <td className="px-4 py-3 text-right font-medium text-amber-300">{entry ? fmtInt(entry.cp) : "—"}</td>
-                {FIXED_STAT_COLUMNS.map((col) => (
-                  <td key={col.key} className="px-4 py-3 text-right text-zinc-300">
-                    {entry
-                      ? PERCENT_KEYS.has(col.key)
-                        ? fmtPct(entry[col.key as keyof PvpStatEntry] as number | null)
-                        : fmtInt(entry[col.key as keyof PvpStatEntry] as number | null)
-                      : "—"}
-                  </td>
-                ))}
-                {activeFieldDefs.map((f) => (
-                  <td key={f.key} className="px-4 py-3 text-right text-zinc-300">
-                    {entry ? (f.isPercent ? fmtPct(entry.customValues?.[f.key]) : fmtInt(entry.customValues?.[f.key])) : "—"}
-                  </td>
-                ))}
-                <td className="px-4 py-3 text-zinc-400">{entry?.bossCards ?? "—"}</td>
-                <td className={`px-4 py-3 whitespace-nowrap ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
-                  {isStale(entry) && <StaleIcon />}
-                  {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "ยังไม่กรอก"}
-                </td>
-                {isAdmin && <td className="px-4 py-3">{entry && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}</td>}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  {sortedRows.map(({ member, entry }) => (
+                    <tr key={member.id} className="group transition hover:bg-zinc-800/40">
+                      <td className="sticky left-0 z-10 border-r border-zinc-800 bg-zinc-900 px-4 py-3 group-hover:bg-zinc-800/90">
+                        <Link href={`/pvp-stats/${member.id}`} className="flex items-center gap-3">
+                          <MemberAvatar
+                            src={member.discordAvatar}
+                            alt={member.discordUsername}
+                            width={28}
+                            height={28}
+                            className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
+                          />
+                          <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3">
+                        <ClassBadge className={member.characterClass} />
+                      </td>
+                      <td className="px-4 py-3 text-zinc-300">{entry?.role ?? "—"}</td>
+                      <td className="px-4 py-3">
+                        {entry && (
+                          <div className="flex flex-nowrap items-center gap-1.5" title={entry.reviewNote ?? undefined}>
+                            <PvpReviewBadge status={entry.reviewStatus} />
+                            {isAdmin && (
+                              <PvpReviewButton
+                                entryId={entry.id}
+                                currentStatus={entry.reviewStatus}
+                                currentNote={entry.reviewNote}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-amber-300">{entry ? fmtInt(entry.cp) : "—"}</td>
+                      {FIXED_STAT_COLUMNS.map((col) => (
+                        <td key={col.key} className="px-4 py-3 text-right text-zinc-300">
+                          {entry
+                            ? PERCENT_KEYS.has(col.key)
+                              ? fmtPct(entry[col.key as keyof PvpStatEntry] as number | null)
+                              : fmtInt(entry[col.key as keyof PvpStatEntry] as number | null)
+                            : "—"}
+                        </td>
+                      ))}
+                      {activeFieldDefs.map((f) => (
+                        <td key={f.key} className="px-4 py-3 text-right text-zinc-300">
+                          {entry ? (f.isPercent ? fmtPct(entry.customValues?.[f.key]) : fmtInt(entry.customValues?.[f.key])) : "—"}
+                        </td>
+                      ))}
+                      {/* Free-text field with no natural wrap points (e.g. "Eddga/Angeling/drake/...")
+                          — without a cap it was the single widest column in the table (measured
+                          ~365px unwrapped for a realistic list), ballooning the whole table's
+                          required width well past what any monitor could show without scrolling.
+                          Capped + break-words wraps it onto a couple of lines instead. */}
+                      <td className="max-w-[220px] px-4 py-3 break-words text-zinc-400">{entry?.bossCards ?? "—"}</td>
+                      <td className={`px-4 py-3 whitespace-nowrap ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
+                        {isStale(entry) && <StaleIcon />}
+                        {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "ยังไม่กรอก"}
+                      </td>
+                      {isAdmin && <td className="px-4 py-3">{entry && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Fade cue for more columns off-screen to the right — no matching cue on the
+                left since the member column is sticky and always visible there, so there's
+                never hidden content in that direction to signal. */}
+            <div
+              className={`pointer-events-none absolute inset-y-0 right-0 w-12 rounded-r-2xl bg-gradient-to-l from-zinc-900 to-transparent transition-opacity duration-200 ${
+                showRightShadow ? "opacity-100" : "opacity-0"
+              }`}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Card list is the default on anything narrower than 2xl — laptops included. Same sort/filter as the table above. */}

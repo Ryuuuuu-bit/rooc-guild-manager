@@ -27,7 +27,15 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`h-full antialiased ${loma.variable}`}>
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-100 font-sans">
+      {/* overflow-x-hidden is a safety net for the /pvp-stats table, which
+       * deliberately breaks out to `100vw` (see PvpStatsTable) to get real
+       * screen width instead of being stuck inside the app's centered
+       * max-w-6xl content column. `100vw` is measured including the
+       * vertical scrollbar's own width, which is ~1px wider than the
+       * actual visible viewport on most desktop browsers — this clips that
+       * harmless sliver instead of letting it show up as a page-wide
+       * horizontal scrollbar. */}
+      <body className="min-h-full flex flex-col overflow-x-hidden bg-zinc-950 text-zinc-100 font-sans">
         {children}
       </body>
     </html>
