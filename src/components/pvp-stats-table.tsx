@@ -242,6 +242,14 @@ export function PvpStatsTable({
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedClasses, setSelectedClasses] = useState<Set<string>>(() => new Set());
+  // "table" (default) sorts/scans one stat across everyone at a time — best
+  // for review. "cards" shows every member's FULL stat sheet at once with no
+  // horizontal scrolling ever (each card stacks its stats vertically, then
+  // the cards themselves wrap into as many columns as the screen fits) — best
+  // for browsing several members side by side. Below 2xl there's no real
+  // choice (the table can't fit), so this only changes anything ≥2xl; the
+  // toggle itself is hidden below that width, see the button's className.
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const scrollRef = useRef<HTMLDivElement>(null);
   // Only a "more columns to the right" cue — the member column is sticky
   // (always pinned in view), so there's never hidden content to its left to
@@ -371,11 +379,36 @@ export function PvpStatsTable({
             รอตรวจ · {pendingCount}
           </button>
         )}
+
+        {/* Only meaningful ≥2xl — below that the table can't fit regardless, so cards are
+            already the only real option and this toggle would just do nothing visible. */}
+        <div className="hidden items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1 2xl:flex">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium transition ${
+              viewMode === "table" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            ตาราง
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("cards")}
+            className={`whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-medium transition ${
+              viewMode === "cards" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            การ์ด · ดูทุกสถิติพร้อมกัน
+          </button>
+        </div>
       </div>
 
       {/* Wide table only once the viewport is actually wide enough to show it without an awkward
           drag-to-scroll (19+ columns need ~1500px) — below that, the card list reads far better,
           so the switch point is 2xl (1536px), not the usual lg (1024px) a typical laptop still hits.
+          At 2xl+ it's also gated on viewMode, so the toggle above can swap it out for the card
+          grid even on a big screen (see cardWrapperClassName below for the matching logic).
 
           The outer div breaks out of the page's centered max-w-6xl content column to the full
           browser width (the classic `100vw` + negative-margin full-bleed trick) — without this,
@@ -385,7 +418,7 @@ export function PvpStatsTable({
           Breaking out gives it the screen's real width instead. See globals overflow-x-hidden on
           <body> in app/layout.tsx for the scrollbar-width safety net this relies on. */}
       <div
-        className="hidden w-screen 2xl:block"
+        className={viewMode === "cards" ? "hidden" : "hidden w-screen 2xl:block"}
         style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}
       >
         {/* Cap is a bit above the table's actual full width (~2260px measured with all
@@ -501,63 +534,85 @@ export function PvpStatsTable({
         </div>
       </div>
 
-      {/* Card list is the default on anything narrower than 2xl — laptops included. Same sort/filter as the table above. */}
-      <div className="flex flex-col gap-3 2xl:hidden">
-        {sortedRows.length === 0 && (
-          <p className="py-10 text-center text-sm text-zinc-500">{emptyMessage}</p>
-        )}
-        {sortedRows.map(({ member, entry }) => (
-          <PvpStatCard
-            key={member.id}
-            entry={entry}
-            customFieldDefs={activeFieldDefs}
-            header={
-              <div className="flex items-center justify-between gap-3">
-                <Link href={`/pvp-stats/${member.id}`} className="flex min-w-0 items-center gap-2.5">
-                  <MemberAvatar
-                    src={member.discordAvatar}
-                    alt={member.discordUsername}
-                    width={32}
-                    height={32}
-                    className="h-8 w-8 shrink-0 rounded-full ring-1 ring-zinc-700"
-                  />
-                  <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
-                </Link>
-                <ClassBadge className={member.characterClass} />
-              </div>
-            }
-            reviewAction={
-              entry && (
-                <>
-                  <PvpReviewBadge status={entry.reviewStatus} />
-                  {isAdmin && (
-                    <>
-                      <PvpReviewButton
-                        entryId={entry.id}
-                        currentStatus={entry.reviewStatus}
-                        currentNote={entry.reviewNote}
+      {/* Cards are the default on anything narrower than 2xl (laptops included), and also show
+          at 2xl+ when the toggle above is set to "การ์ด". Same sort/filter as the table above.
+
+          Same full-bleed breakout as the table (see the comment above it) — main's max-w-6xl
+          otherwise caps this at ~1104px regardless of monitor size, fitting only ~2-3 cards per
+          row even on a huge screen. It's applied unconditionally (not gated to 2xl+): the
+          calc(50% - 50vw) margin trick is self-correcting — below ~1152px viewport, main isn't
+          actually capped by max-w-6xl in the first place, so the computed extra margin comes out
+          to ~0 and nothing changes there; it only does real work once the cap would otherwise bite. */}
+      <div className="w-screen" style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}>
+        <div className="mx-auto max-w-[2400px] px-4 sm:px-6">
+          {/* Grid (not a fixed column count) — `auto-fill`/`minmax` packs in as many ~300px-wide
+              cards as the current width allows and reflows automatically as the window resizes,
+              so this scales from one column on a phone up to several on a wide monitor with no
+              breakpoints to maintain. Every stat is stacked vertically inside each card (see
+              PvpStatCard), so unlike the table this view never needs horizontal scrolling at all
+              — that's the trade for only seeing one member's numbers at a glance instead of a
+              whole column of everyone's at once. */}
+          <div
+            className={`grid gap-3 ${viewMode === "cards" ? "" : "2xl:hidden"}`}
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}
+          >
+            {sortedRows.length === 0 && (
+              <p className="col-span-full py-10 text-center text-sm text-zinc-500">{emptyMessage}</p>
+            )}
+            {sortedRows.map(({ member, entry }) => (
+              <PvpStatCard
+                key={member.id}
+                entry={entry}
+                customFieldDefs={activeFieldDefs}
+                header={
+                  <div className="flex items-center justify-between gap-3">
+                    <Link href={`/pvp-stats/${member.id}`} className="flex min-w-0 items-center gap-2.5">
+                      <MemberAvatar
+                        src={member.discordAvatar}
+                        alt={member.discordUsername}
+                        width={32}
+                        height={32}
+                        className="h-8 w-8 shrink-0 rounded-full ring-1 ring-zinc-700"
                       />
-                      <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+                      <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
+                    </Link>
+                    <ClassBadge className={member.characterClass} />
+                  </div>
+                }
+                reviewAction={
+                  entry && (
+                    <>
+                      <PvpReviewBadge status={entry.reviewStatus} />
+                      {isAdmin && (
+                        <>
+                          <PvpReviewButton
+                            entryId={entry.id}
+                            currentStatus={entry.reviewStatus}
+                            currentNote={entry.reviewNote}
+                          />
+                          <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+                        </>
+                      )}
                     </>
-                  )}
-                </>
-              )
-            }
-            footer={
-              <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-xs text-zinc-500">
-                <span className={isStale(entry) ? "text-rose-400" : "text-zinc-500"}>
-                  {isStale(entry) && <StaleIcon />}
-                  {entry
-                    ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })
-                    : "ยังไม่กรอก"}
-                </span>
-                <Link href={`/pvp-stats/${member.id}`} className="text-amber-400 transition hover:text-amber-300">
-                  ดูประวัติทั้งหมด →
-                </Link>
-              </div>
-            }
-          />
-        ))}
+                  )
+                }
+                footer={
+                  <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-xs text-zinc-500">
+                    <span className={isStale(entry) ? "text-rose-400" : "text-zinc-500"}>
+                      {isStale(entry) && <StaleIcon />}
+                      {entry
+                        ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })
+                        : "ยังไม่กรอก"}
+                    </span>
+                    <Link href={`/pvp-stats/${member.id}`} className="text-amber-400 transition hover:text-amber-300">
+                      ดูประวัติทั้งหมด →
+                    </Link>
+                  </div>
+                }
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </>
   );
