@@ -6,6 +6,9 @@ import { db } from "@/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
+import { getPartyBoardDetail } from "@/lib/party-data";
+import { renderPartyBoardImage } from "@/lib/party-image";
+import { createChannelMessageWithImage } from "@/lib/discord";
 
 export interface ActionResult {
   ok: boolean;
@@ -295,4 +298,28 @@ export async function resetPartyBoard(boardId: string): Promise<ActionResult> {
 
   revalidatePath("/party");
   return { ok: true };
+}
+
+/**
+ * Renders the board's CURRENT full layout (every group, every party, every
+ * slot — see renderPartyBoardImage) as a PNG and posts it to a Discord
+ * channel via the bot, so "จัดปาร์ตี้เสร็จแล้ว" can be announced as an
+ * actual picture instead of admins typing out the roster by hand. Re-reads
+ * the board fresh rather than trusting client-side state, so what gets
+ * posted always matches what's actually saved.
+ */
+export async function announcePartyBoardImage(boardId: string, channelId: string): Promise<ActionResult> {
+  await requireAdmin();
+  if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
+
+  const board = await getPartyBoardDetail(boardId);
+  if (!board) return { ok: false, error: "ไม่พบกระดาน" };
+
+  try {
+    const image = renderPartyBoardImage(board);
+    await createChannelMessageWithImage(channelId, `📋 ผังปาร์ตี้ล่าสุด — **${board.name}**`, image, "party-board.png");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "โพสต์ไม่สำเร็จ" };
+  }
 }

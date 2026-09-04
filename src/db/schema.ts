@@ -75,6 +75,14 @@ export const members = pgTable(
     benched: boolean("benched").notNull().default(false),
     notes: text("notes"),
 
+    // Stamped by bot/pvp-stats-reminder.ts the moment a "haven't updated PVP
+    // stats in 3+ weeks" DM goes out — lets it remind at most once per stale
+    // streak instead of every sweep: only re-fires once this member's
+    // reference date (their latest submission, or joinedDiscordAt if they've
+    // never submitted) has moved past this timestamp, i.e. they actually
+    // submitted something new since the last nudge.
+    lastPvpStatsReminderAt: timestamp("last_pvp_stats_reminder_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

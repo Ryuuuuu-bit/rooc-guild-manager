@@ -173,6 +173,22 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
  * assuming one emoji for the whole app. Falls back to the app-wide default
  * (ATTENDANCE_EMOJI) if left blank.
  */
+/** Expands well-known board-name abbreviations in the posted "ลา" message —
+ * members kept mixing up which board a reaction was for (reported: GL vs
+ * WOE misclicks), so spelling the full event name out next to the short
+ * name removes the ambiguity. Falls back to the bare name for anything not
+ * in this list (a future board with some other name), so this never blocks
+ * posting — it's just a nicety for the two names it currently recognizes. */
+const BOARD_NAME_EXPANSIONS: Record<string, string> = {
+  GL: "Guild League",
+  WOE: "War of Emperium",
+};
+
+function expandBoardName(name: string): string {
+  const expansion = BOARD_NAME_EXPANSIONS[name.trim().toUpperCase()];
+  return expansion ? `${name} (${expansion})` : name;
+}
+
 export async function postAttendanceMessage(boardId: string, channelId: string, emoji?: string): Promise<ActionResult> {
   await requireAdmin();
   if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
@@ -189,7 +205,7 @@ export async function postAttendanceMessage(boardId: string, channelId: string, 
     await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
   }
 
-  const content = `📋 **${board.name}** — ถ้า**ลา/ไม่สะดวก**รอบนี้ กด ${resolvedEmoji} (ไม่กด = เข้าร่วมตามปกติ) เอาอิโมจิออกได้ถ้ากลับมาเข้าร่วม`;
+  const content = `📋 **${expandBoardName(board.name)}** — ถ้า**ลา/ไม่สะดวก**รอบนี้ กด ${resolvedEmoji} (ไม่กด = เข้าร่วมตามปกติ) เอาอิโมจิออกได้ถ้ากลับมาเข้าร่วม`;
 
   let messageId: string;
   try {

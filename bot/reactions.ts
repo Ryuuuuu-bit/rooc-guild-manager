@@ -12,6 +12,7 @@ import {
   partySlots,
 } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
+import { sendDirectMessage } from "../src/lib/discord";
 import { getEmojiToClassMap } from "./job-classes";
 import { CONFIRM_AFTER_MS } from "./attendance-confirm";
 
@@ -153,6 +154,27 @@ async function sendTempClassConfirmation(
   }
 }
 
+/**
+ * DMs the member privately with the same information as
+ * sendTempLeaveConfirmation's ephemeral channel post — a durable copy they
+ * can refer back to (the channel version auto-deletes itself in seconds),
+ * and one that reaches them even if they don't happen to be watching the
+ * channel right when they click. Best-effort/non-fatal: a member with DMs
+ * off just doesn't get this, the leave itself is already logged regardless.
+ */
+async function dmMemberLeaveStatus(discordId: string, boardName: string, leaveCount: number) {
+  const confirmMinutes = Math.round(CONFIRM_AFTER_MS / 60_000);
+  try {
+    await sendDirectMessage(
+      discordId,
+      `🗓️ บันทึกคำขอลาในกระดาน "${boardName}" แล้ว (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้ เฉพาะกระดานนี้)\n` +
+        `จะยืนยันอย่างเป็นทางการใน ${confirmMinutes} นาที ถ้าเปลี่ยนใจให้เอารีแอคชั่นออกก่อนเวลานี้เพื่อยกเลิก`
+    );
+  } catch (err) {
+    console.error(`[bot] failed to DM member ${discordId} about pending leave`, err);
+  }
+}
+
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
 async function clearMemberSlotOnBoard(memberId: string, boardId: string) {
   const rows = await db
@@ -280,8 +302,9 @@ export async function handleReactionAdd(
 
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id, boardId);
-    // Fire-and-forget — don't hold up the reaction handler on a channel post.
+    // Fire-and-forget — don't hold up the reaction handler on a channel post/DM.
     void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji);
+    void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount);
   }
 }
 

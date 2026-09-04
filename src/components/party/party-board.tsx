@@ -16,6 +16,7 @@ import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
 import { PostAttendanceButton } from "./post-attendance-button";
+import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
 import {
@@ -545,6 +546,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   {effectiveAdmin && selectedBoardId && (
                     <>
                       <PostAttendanceButton boardId={selectedBoardId} boardName={board.name} />
+                      <AnnounceBoardImageButton boardId={selectedBoardId} boardName={board.name} />
                       <PartyTemplatePanel
                         boardId={selectedBoardId}
                         boardName={board.name}

@@ -13,6 +13,7 @@ import { handleReactionAdd, handleReactionRemove } from "./reactions";
 import { confirmDueLeaves } from "./attendance-confirm";
 import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
 import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
+import { sendPvpStatsReminders } from "./pvp-stats-reminder";
 import { commands } from "./commands";
 import { handleInteractionCreate } from "./interactions";
 
@@ -20,6 +21,10 @@ const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
 const LEAVE_CONFIRM_INTERVAL_MS = 5 * 60 * 1000; // sweep for ลา events due to confirm/discard
 const MIDNIGHT_CHECK_INTERVAL_MS = 60 * 1000; // check for a Thai-date rollover once a minute
+// 3-week staleness only matters at day granularity, so checking every few
+// hours is more than enough precision — mirrors the "safety-net" cadence of
+// the other periodic sweeps above, just much less frequent.
+const PVP_REMINDER_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 if (!process.env.DISCORD_BOT_TOKEN) {
   throw new Error("DISCORD_BOT_TOKEN is not set");
@@ -103,6 +108,17 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
   };
   setInterval(runMidnightResetCheck, MIDNIGHT_CHECK_INTERVAL_MS);
+
+  const runPvpReminderSweep = async () => {
+    try {
+      const { reminded } = await sendPvpStatsReminders();
+      if (reminded) console.log(`[bot] PVP-stats reminder sweep: DMed ${reminded} member(s)`);
+    } catch (err) {
+      console.error("[bot] PVP-stats reminder sweep failed", err);
+    }
+  };
+  await runPvpReminderSweep();
+  setInterval(runPvpReminderSweep, PVP_REMINDER_INTERVAL_MS);
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {

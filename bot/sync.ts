@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
 import { discordRoles, lootCategories, lootQueueEntries, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
+import { sendWelcomeMessage } from "./welcome-message";
 
 /**
  * Removes a member from any party slot / busy entry they're currently
@@ -147,6 +148,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
       .returning();
     await logEvent(inserted.id, "JOIN", "เข้าร่วม Discord server");
     await addToAllLootQueues(inserted.id);
+    await sendWelcomeMessage(inserted);
     return;
   }
 
@@ -277,6 +279,7 @@ export async function runFullSync(guild: Guild) {
         .returning();
       await logEvent(inserted.id, "JOIN", "พบจากการซิงค์ครั้งแรก");
       await addToAllLootQueues(inserted.id);
+      await sendWelcomeMessage(inserted);
       joined++;
       continue;
     }

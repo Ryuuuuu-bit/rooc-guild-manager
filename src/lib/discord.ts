@@ -162,6 +162,59 @@ export async function createChannelMessage(channelId: string, content: string): 
   return message.id as string;
 }
 
+/**
+ * Posts a message with a single image attachment via multipart/form-data —
+ * Discord's create-message endpoint accepts a `payload_json` part (the
+ * normal message body) plus one or more `files[n]` parts for this. Kept
+ * separate from discordBotFetch, which always sends JSON and can't express
+ * multipart, but mirrors its 429 backoff/retry so a burst of posts behaves
+ * the same way either way.
+ */
+export async function createChannelMessageWithImage(
+  channelId: string,
+  content: string,
+  imageBuffer: Buffer,
+  filename = "image.png",
+  retriesLeft = 5
+): Promise<string> {
+  const token = process.env.DISCORD_BOT_TOKEN;
+  if (!token) throw new Error("DISCORD_BOT_TOKEN is not set");
+
+  const form = new FormData();
+  form.append("payload_json", JSON.stringify({ content }));
+  // Buffer's backing ArrayBufferLike can type as SharedArrayBuffer, which
+  // BlobPart's stricter DOM types reject — Uint8Array.from copies into a
+  // fresh, plain ArrayBuffer, sidestepping that without changing any bytes.
+  form.append("files[0]", new Blob([Uint8Array.from(imageBuffer)], { type: "image/png" }), filename);
+
+  const res = await fetch(`${API_BASE}/channels/${channelId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bot ${token}` },
+    body: form,
+  });
+
+  if (res.status === 429 && retriesLeft > 0) {
+    const body = await res.text().catch(() => "");
+    let retryAfterSeconds = 0.5;
+    try {
+      const parsed = body ? JSON.parse(body) : null;
+      if (typeof parsed?.retry_after === "number") retryAfterSeconds = parsed.retry_after;
+    } catch {
+      // Non-JSON body — fall back to the default backoff above.
+    }
+    await sleep(Math.ceil(retryAfterSeconds * 1000) + 50);
+    return createChannelMessageWithImage(channelId, content, imageBuffer, filename, retriesLeft - 1);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new DiscordApiError(`Discord API /channels/${channelId}/messages (image) failed: ${res.status} ${body}`, res.status);
+  }
+
+  const data = await res.json();
+  return data.id as string;
+}
+
 /** Adds the bot's own reaction to a message — used to seed the emoji options members then click. */
 export async function addMessageReaction(channelId: string, messageId: string, emoji: string): Promise<void> {
   await discordBotFetch(`/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/@me`, {

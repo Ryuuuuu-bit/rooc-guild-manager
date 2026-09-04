@@ -1,0 +1,1 @@
+ALTER TABLE "members" ADD COLUMN "last_pvp_stats_reminder_at" timestamp with time zone;

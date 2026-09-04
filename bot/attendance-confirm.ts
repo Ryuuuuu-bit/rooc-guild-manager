@@ -1,10 +1,49 @@
 import { and, eq, isNull, lte } from "drizzle-orm";
 import { db } from "../src/db";
-import { membershipEvents, partyBusyEntries } from "../src/db/schema";
+import { members, membershipEvents, partyBoards, partyBusyEntries } from "../src/db/schema";
+import { sendDirectMessage } from "../src/lib/discord";
 
 // How long a "ลา" reaction has to stay in place before it counts toward
 // /attendance stats — see the confirm/discard flow described below.
 export const CONFIRM_AFTER_MS = 30 * 60 * 1000;
+
+/** Comma-separated Discord user IDs to DM the moment a "ลา" survives
+ * confirmation — lets admins rework the party board well ahead of the event
+ * instead of only noticing on their next visit to /attendance. Read
+ * directly off the env var (bot convention — see DISCORD_TRACKED_ROLE_NAME
+ * in sync.ts) rather than importing src/lib/env, which throws on missing
+ * required vars this bot doesn't need. Empty/unset = no one gets DMed. */
+function leaveNotifyUserIds(): string[] {
+  return (process.env.DISCORD_LEAVE_NOTIFY_USER_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Best-effort DM to every configured admin once a leave is confirmed — a
+ * quick-click-then-undo never reaches here (see confirmDueLeaves), so this
+ * only ever fires for a leave that's genuinely going to hold. */
+async function notifyAdminsOfConfirmedLeave(memberId: string, boardId: string) {
+  const notifyIds = leaveNotifyUserIds();
+  if (notifyIds.length === 0) return;
+
+  const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!member) return;
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
+
+  const text =
+    `📋 ยืนยันลาแล้ว: ${displayName} ลาในกระดาน "${board?.name ?? boardId}" (ผ่านการยืนยัน 30 นาทีแล้ว)\n` +
+    "เตรียมจัดปาร์ตี้ทดแทนได้เลยครับ";
+
+  for (const userId of notifyIds) {
+    try {
+      await sendDirectMessage(userId, text);
+    } catch (err) {
+      console.error(`[bot] failed to DM admin ${userId} about a confirmed leave`, err);
+    }
+  }
+}
 
 /**
  * Promotes pending ATTENDANCE_LEAVE events (member reacted "ลา", not yet
@@ -65,6 +104,8 @@ export async function confirmDueLeaves(): Promise<{ confirmed: number; discarded
         .set({ confirmedAt: new Date() })
         .where(eq(membershipEvents.id, row.id));
       confirmed++;
+      // Fire-and-forget — a slow/failed DM shouldn't hold up the sweep.
+      void notifyAdminsOfConfirmedLeave(row.memberId, row.boardId);
     } else {
       // No longer marked busy on that board (un-reacted through some path
       // that didn't go through the normal remove handler, e.g. the board
