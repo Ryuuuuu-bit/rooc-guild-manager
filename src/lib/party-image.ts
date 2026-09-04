@@ -1,5 +1,6 @@
 import path from "node:path";
 import { GlobalFonts, createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { openSync as openFontSync } from "fontkit";
 import type { PartyBoardDetail, PartyView } from "@/lib/party-data";
 
 // The subsetted @fontsource/* Thai webfonts only cover the Thai unicode
@@ -16,6 +17,56 @@ function ensureFont() {
   const fontPath = path.join(process.cwd(), "src/assets/fonts/NotoSansThai.ttf");
   GlobalFonts.registerFromPath(fontPath, "RoocPartyBoardFont");
   fontRegistered = true;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let glyphFont: any = null;
+function ensureGlyphFont() {
+  if (glyphFont) return glyphFont;
+  const fontPath = path.join(process.cwd(), "src/assets/fonts/NotoSansThai.ttf");
+  glyphFont = openFontSync(fontPath);
+  return glyphFont;
+}
+
+const INVISIBLE_CHARS = /[\p{Cf}\p{Cc}]/gu;
+
+/**
+ * Discord nicknames lean hard on decorative Unicode tricks the canvas
+ * font was never going to have every glyph for: "fancy text generator"
+ * alphabets (mathematical bold/script/fraktur, fullwidth — 𝓢𝓮𝓷𝓞, ＺｅｎＯ)
+ * and stray dingbats/stars/emoji copy-pasted around the name. The live
+ * web page renders these fine because the browser has a huge system font
+ * fallback stack behind it; this renderer only has the one bundled font,
+ * so anything outside its coverage used to fall back to a tofu box.
+ *
+ * NFKD unwinds the "fancy alphabet" trick back to plain Latin (𝓢𝓮𝓷𝓞 -> SenO)
+ * — it's a no-op on ordinary Thai text, which has no precomposed forms to
+ * decompose. Zero-width/format/control characters are stripped outright.
+ * Everything else is checked one codepoint at a time against the actual
+ * font file (never guessed from a Unicode block) and only kept if the
+ * font can really draw it — deliberately NOT a blanket strip of combining
+ * marks, since Thai tone marks and vowel signs are combining marks too
+ * and the font renders those correctly; only marks/symbols the font has
+ * no glyph for (real decorative junk) get dropped instead of tofu.
+ */
+function sanitizeForCanvas(text: string): string {
+  const font = ensureGlyphFont();
+  const decomposed = text.normalize("NFKD").replace(INVISIBLE_CHARS, "");
+
+  let out = "";
+  for (const ch of decomposed) {
+    if (ch === " ") {
+      out += ch;
+      continue;
+    }
+    const codePoint = ch.codePointAt(0);
+    if (codePoint !== undefined && font.hasGlyphForCodePoint(codePoint)) {
+      out += ch;
+    }
+  }
+
+  const cleaned = out.replace(/\s{2,}/g, " ").trim();
+  return cleaned || "(ชื่อพิเศษ)";
 }
 
 // Same dark zinc/amber palette as the live app's own UI, so the posted
@@ -75,13 +126,16 @@ function drawPartyCard(ctx: SKRSContext2D, x: number, y: number, party: PartyVie
 
   ctx.fillStyle = TEXT;
   ctx.font = "700 19px RoocPartyBoardFont";
-  ctx.fillText(truncateToWidth(ctx, party.label, CARD_W - CARD_PADDING * 2), x + CARD_PADDING, y + CARD_PADDING + 16);
+  const partyLabel = sanitizeForCanvas(party.label);
+  ctx.fillText(truncateToWidth(ctx, partyLabel, CARD_W - CARD_PADDING * 2), x + CARD_PADDING, y + CARD_PADDING + 16);
 
   for (const slot of party.slots) {
     const rowY = y + CARD_HEADER_H + CARD_PADDING + slot.slotIndex * ROW_H + 18;
     if (slot.member) {
-      const classSuffix = slot.member.className ? `(${slot.member.className})` : "";
-      const label = `${slot.slotIndex + 1}. ${slot.member.displayName}`;
+      const displayName = sanitizeForCanvas(slot.member.displayName);
+      const className = slot.member.className ? sanitizeForCanvas(slot.member.className) : "";
+      const classSuffix = className ? `(${className})` : "";
+      const label = `${slot.slotIndex + 1}. ${displayName}`;
 
       // Measure everything in the NAME's font (16px) before ever switching
       // ctx.font to the smaller suffix size — measureText always reads
@@ -141,7 +195,7 @@ export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
 
   ctx.fillStyle = TEXT;
   ctx.font = "700 40px RoocPartyBoardFont";
-  ctx.fillText(`ผังปาร์ตี้ — ${board.name}`, PADDING, 62);
+  ctx.fillText(`Party Board — ${sanitizeForCanvas(board.name)}`, PADDING, 62);
 
   ctx.fillStyle = MUTED;
   ctx.font = "400 20px RoocPartyBoardFont";
@@ -169,7 +223,7 @@ export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
   for (const { group, rows } of groupLayouts) {
     ctx.fillStyle = ACCENT;
     ctx.font = "700 24px RoocPartyBoardFont";
-    ctx.fillText(group.name, PADDING, y + 30);
+    ctx.fillText(sanitizeForCanvas(group.name), PADDING, y + 30);
     y += GROUP_HEADER_H;
 
     group.parties.forEach((party, i) => {
