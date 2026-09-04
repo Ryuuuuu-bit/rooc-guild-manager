@@ -1,7 +1,7 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
-import { discordRoles, lootQueueEntries, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
+import { discordRoles, lootCategories, lootQueueEntries, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
 
 /**
  * Removes a member from any party slot / busy entry they're currently
@@ -20,6 +20,35 @@ async function clearPartyAssignments(memberId: string) {
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
   await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
+}
+
+/**
+ * The other direction: adds a member to the BACK of every existing
+ * loot-queue category — called whenever someone starts (or resumes) being
+ * ACTIVE (a brand-new join, or a rejoin after having left), so a new
+ * recruit doesn't have to be added to each category by hand and naturally
+ * queues up behind everyone already there. Skips any category they're
+ * already queued in (defensive — shouldn't normally happen right after a
+ * fresh ACTIVE transition, but keeps this safe to call from more than one
+ * code path without risking the unique (categoryId, memberId) constraint).
+ * Deliberately does NOT touch categories created later — this only ever
+ * runs at the moment of the join/rejoin itself.
+ */
+async function addToAllLootQueues(memberId: string) {
+  const categories = await db.select({ id: lootCategories.id }).from(lootCategories);
+  for (const { id: categoryId } of categories) {
+    const existing = await db.query.lootQueueEntries.findFirst({
+      where: and(eq(lootQueueEntries.categoryId, categoryId), eq(lootQueueEntries.memberId, memberId)),
+    });
+    if (existing) continue;
+
+    const [{ maxPos } = { maxPos: -1 }] = await db
+      .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId));
+
+    await db.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
+  }
 }
 
 interface NormalizedMember {
@@ -117,6 +146,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
       })
       .returning();
     await logEvent(inserted.id, "JOIN", "เข้าร่วม Discord server");
+    await addToAllLootQueues(inserted.id);
     return;
   }
 
@@ -145,6 +175,7 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
 
   if (wasInactive) {
     await logEvent(existing.id, "JOIN", "กลับเข้าร่วม Discord server อีกครั้ง");
+    await addToAllLootQueues(existing.id);
   }
 }
 
@@ -245,6 +276,7 @@ export async function runFullSync(guild: Guild) {
         })
         .returning();
       await logEvent(inserted.id, "JOIN", "พบจากการซิงค์ครั้งแรก");
+      await addToAllLootQueues(inserted.id);
       joined++;
       continue;
     }
@@ -269,6 +301,7 @@ export async function runFullSync(guild: Guild) {
 
     if (wasInactive) {
       await logEvent(existing.id, "JOIN", "กลับเข้าร่วม Discord server (พบจากการซิงค์)");
+      await addToAllLootQueues(existing.id);
       reactivated++;
     }
   }
