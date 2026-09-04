@@ -285,7 +285,11 @@ export async function getDashboardStats() {
   const [totals] = await db
     .select({
       total: sql<number>`count(*)::int`,
-      active: sql<number>`count(*) filter (where ${members.status} = 'ACTIVE')::int`,
+      // Excludes benched members — they're still ACTIVE (Discord role-wise)
+      // but flagged by an admin as not currently playing, and already get
+      // their own "พักการเล่น" card below; without this exclusion the two
+      // cards double-counted the same people instead of partitioning them.
+      active: sql<number>`count(*) filter (where ${members.status} = 'ACTIVE' and ${members.benched} = false)::int`,
       left: sql<number>`count(*) filter (where ${members.status} = 'LEFT')::int`,
       kicked: sql<number>`count(*) filter (where ${members.status} = 'KICKED')::int`,
       benched: sql<number>`count(*) filter (where ${members.status} = 'ACTIVE' and ${members.benched} = true)::int`,
