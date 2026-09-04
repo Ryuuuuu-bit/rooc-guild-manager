@@ -1,7 +1,7 @@
 import path from "node:path";
 import { GlobalFonts, createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { openSync as openFontSync } from "fontkit";
-import type { PartyBoardDetail, PartyView } from "@/lib/party-data";
+import type { PartyBoardDetail, PartyBoardMemberRef, PartyView } from "@/lib/party-data";
 
 // The subsetted @fontsource/* Thai webfonts only cover the Thai unicode
 // block (fine for a <link>, useless here) — member names and job classes
@@ -163,14 +163,90 @@ function drawPartyCard(ctx: SKRSContext2D, x: number, y: number, party: PartyVie
   }
 }
 
+const BUSY_CHIP_H = 34;
+const BUSY_CHIP_GAP_X = 10;
+const BUSY_CHIP_GAP_Y = 10;
+const BUSY_CHIP_PAD_X = 12;
+const BUSY_SECTION_HEADER_H = 40;
+const BUSY_SECTION_GAP_ABOVE = 10;
+
 /**
- * Renders a full board — every group, every party, every slot — as one PNG
- * styled to match the live app, for posting to Discord as an actual picture
- * instead of a wall of text. Deliberately skips the busy/unassigned pools
- * (this is about "who's placed where", which the attendance/ลา system
- * already covers separately) and skips member avatars (would need a network
- * fetch per member plus decode — a lot of extra failure surface for a
- * nice-to-have visual touch); each row still names the member's class so
+ * Lays out Busy/ลา members as wrapping pill chips — the same idea as the
+ * live app's screenshot-mode busy list — and either just measures the
+ * total height it needs (draw=false, using a scratch context purely for
+ * ctx.measureText — text metrics don't depend on which canvas a context is
+ * attached to) or actually paints it (draw=true, once the real canvas has
+ * been created at its final height). Keeps the wrap math in exactly one
+ * place instead of duplicating it between a measure pass and a draw pass.
+ */
+function layoutBusyChips(
+  ctx: SKRSContext2D,
+  members: PartyBoardMemberRef[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  draw: boolean
+): number {
+  if (members.length === 0) {
+    if (draw) {
+      ctx.fillStyle = MUTED;
+      ctx.font = "400 16px RoocPartyBoardFont";
+      ctx.fillText("ไม่มีคน Busy/ลารอบนี้", x, y + 20);
+    }
+    return 30;
+  }
+
+  let cursorX = x;
+  let cursorY = y;
+
+  for (const member of members) {
+    const name = sanitizeForCanvas(member.displayName);
+    const suffix = member.className ? `(${sanitizeForCanvas(member.className)})` : "";
+
+    ctx.font = "600 15px RoocPartyBoardFont";
+    const nameWidth = ctx.measureText(name).width;
+    ctx.font = "400 13px RoocPartyBoardFont";
+    const suffixWidth = suffix ? ctx.measureText(suffix).width + 6 : 0;
+    const chipWidth = BUSY_CHIP_PAD_X * 2 + nameWidth + suffixWidth;
+
+    if (cursorX !== x && cursorX + chipWidth > x + maxWidth) {
+      cursorX = x;
+      cursorY += BUSY_CHIP_H + BUSY_CHIP_GAP_Y;
+    }
+
+    if (draw) {
+      roundRect(ctx, cursorX, cursorY, chipWidth, BUSY_CHIP_H, BUSY_CHIP_H / 2);
+      ctx.fillStyle = PANEL;
+      ctx.fill();
+      ctx.strokeStyle = BORDER;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const textY = cursorY + BUSY_CHIP_H / 2 + 5;
+      ctx.fillStyle = TEXT;
+      ctx.font = "600 15px RoocPartyBoardFont";
+      ctx.fillText(name, cursorX + BUSY_CHIP_PAD_X, textY);
+      if (suffix) {
+        ctx.fillStyle = MUTED;
+        ctx.font = "400 13px RoocPartyBoardFont";
+        ctx.fillText(suffix, cursorX + BUSY_CHIP_PAD_X + nameWidth + 6, textY);
+      }
+    }
+
+    cursorX += chipWidth + BUSY_CHIP_GAP_X;
+  }
+
+  return cursorY + BUSY_CHIP_H - y;
+}
+
+/**
+ * Renders a full board — every group, every party, every slot, plus who's
+ * Busy/ลา — as one PNG styled to match the live app, for posting to
+ * Discord as an actual picture instead of a wall of text. Skips the
+ * unassigned pool (that's a working-list for admins mid-assignment, not
+ * something an announcement needs) and skips member avatars (would need a
+ * network fetch per member plus decode — a lot of extra failure surface for
+ * a nice-to-have visual touch); each row still names the member's class so
  * the image stays useful for spotting a lopsided party at a glance.
  */
 export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
@@ -185,7 +261,20 @@ export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
     return { group, rows, height };
   });
   const contentHeight = groupLayouts.reduce((sum, g) => sum + g.height + GROUP_GAP, 0);
-  const totalHeight = Math.max(HEADER_H + contentHeight + FOOTER_H, 320);
+
+  // The Busy/ลา chip list wraps to however many rows the names need, which
+  // depends on measured text widths — so its height can only be known by
+  // actually laying it out. Measure it with a throwaway context (text
+  // metrics don't depend on which canvas a context is attached to) before
+  // the real canvas is created at its final size.
+  const measureCanvas = createCanvas(10, 10);
+  const measureCtx = measureCanvas.getContext("2d");
+  const busyHeight = layoutBusyChips(measureCtx, board.busy, 0, 0, CANVAS_WIDTH - PADDING * 2, false);
+
+  const totalHeight = Math.max(
+    HEADER_H + contentHeight + BUSY_SECTION_GAP_ABOVE + BUSY_SECTION_HEADER_H + busyHeight + FOOTER_H,
+    320
+  );
 
   const canvas = createCanvas(CANVAS_WIDTH, totalHeight);
   const ctx = canvas.getContext("2d");
@@ -236,6 +325,13 @@ export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
 
     y += rows * cH + (rows - 1) * CARD_GAP + GROUP_GAP;
   }
+
+  y += BUSY_SECTION_GAP_ABOVE;
+  ctx.fillStyle = ACCENT;
+  ctx.font = "700 22px RoocPartyBoardFont";
+  ctx.fillText(`Busy / ลา (${board.busy.length})`, PADDING, y + 24);
+  y += BUSY_SECTION_HEADER_H;
+  layoutBusyChips(ctx, board.busy, PADDING, y, CANVAS_WIDTH - PADDING * 2, true);
 
   ctx.fillStyle = MUTED;
   ctx.font = "400 15px RoocPartyBoardFont";

@@ -76,7 +76,7 @@ export function AnnounceBoardImageButton({ boardId, boardName }: { boardId: stri
             {!loading && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-zinc-500">
-                  สร้างภาพจากผังปัจจุบัน (ทุกกลุ่ม ทุกปาร์ตี้) แล้วโพสต์เป็นรูปเข้า channel ที่เลือกทันที — ไม่รวม Busy/ลา และคนที่ยังไม่ได้ลง
+                  สร้างภาพจากผังปัจจุบัน (ทุกกลุ่ม ทุกปาร์ตี้ + รายชื่อ Busy/ลา) แล้วโพสต์เป็นรูปเข้า channel ที่เลือกทันที — ไม่รวมคนที่ยังไม่ได้ลง
                   (ต้องให้บอทมีสิทธิ์ &quot;Send Messages&quot; และ &quot;Attach Files&quot; ใน channel ที่เลือก)
                 </p>
 
