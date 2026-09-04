@@ -90,7 +90,7 @@ export function AnnounceBoardImageButton({
                 <p className="text-xs text-zinc-500">
                   Generates an image from the current layout (every group, every party + the Busy/Leave list) and
                   posts it immediately to the selected channel — people not yet placed are excluded (the bot needs
-                  &quot;Send Messages&quot; and &quot;Attach Files&quot; permission in the selected channel).
+                  &quot;Send Messages&quot; and &quot;Attach Files&quot; permissions in the selected channel).
                 </p>
 
                 {posted && (

@@ -84,7 +84,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
         <p className="text-xs text-zinc-500">
           {member.benched
             ? "This member still has the Rooc role, but is benched and excluded from the party system."
-            : "For members who still have the Rooc role but are no longer playing — bench them to exclude from the party system."}
+            : "For members who still have the Rooc role but are no longer playing — bench them to exclude them from the party system."}
         </p>
         <button
           type="submit"
@@ -95,7 +95,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
               : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
           }`}
         >
-          {benchPending ? "Processing..." : member.benched ? "Unbench" : "Bench (exclude from party system)"}
+          {benchPending ? "Processing..." : member.benched ? "Unbench" : "Bench (exclude from the party system)"}
         </button>
       </form>
     </div>

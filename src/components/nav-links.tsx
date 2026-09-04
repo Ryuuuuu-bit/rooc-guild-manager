@@ -41,7 +41,7 @@ const groups: NavGroup[] = [
       { href: "/activity", label: "Activity Log" },
       { href: "/attendance", label: "Leave Stats" },
       { href: "/checkin", label: "Check-in [Voice]" },
-      { href: "/pvp-stats", label: "Stats PVP" },
+      { href: "/pvp-stats", label: "PVP Stats" },
     ],
   },
 ];

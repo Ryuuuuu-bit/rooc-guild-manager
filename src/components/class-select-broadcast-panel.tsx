@@ -84,7 +84,7 @@ export function ClassSelectBroadcastPanel() {
                 <p className="text-xs text-zinc-500">
                   The bot will post a message asking members to react with their own class — the system updates
                   their class automatically when they react (the bot needs &quot;Send Messages&quot;, &quot;Add Reactions&quot;, and
-                  &quot;Manage Messages&quot; permission in the selected channel).
+                  &quot;Manage Messages&quot; permissions in the selected channel).
                 </p>
 
                 {status && (

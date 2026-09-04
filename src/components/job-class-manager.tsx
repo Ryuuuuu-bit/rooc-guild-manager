@@ -136,8 +136,8 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-400">
         Classes in this list show up everywhere a class can be selected (member profiles, party
-        setup) and as the emoji in the &quot;select your class&quot; message on Discord — edit here and
-        there is no need to have Claude change the code.
+        setup) and as the emoji in the &quot;select your class&quot; message on Discord — edit here
+        directly, no need to have Claude change the code.
       </p>
 
       {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}

@@ -135,7 +135,7 @@ export default async function MemberDetailPage({
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-1 font-medium text-zinc-100">Manual Leave Log</h2>
               <p className="mb-4 text-xs text-zinc-500">
-                For cases where a member notified their leave privately (e.g. via DM) without reacting in Discord
+                For cases where a member reported their leave privately (e.g. via DM) without reacting in Discord
               </p>
               <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} boards={boards} />
             </section>

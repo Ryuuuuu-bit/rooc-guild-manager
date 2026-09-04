@@ -100,7 +100,7 @@ export default async function MembersPage({
               <th className="px-5 py-3 font-medium">Member</th>
               <th className="px-5 py-3 font-medium">In-game Name</th>
               <th className="px-5 py-3 font-medium">Class</th>
-              <th className="px-5 py-3 font-medium">Discord role</th>
+              <th className="px-5 py-3 font-medium">Discord Role</th>
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium">Joined</th>
             </tr>

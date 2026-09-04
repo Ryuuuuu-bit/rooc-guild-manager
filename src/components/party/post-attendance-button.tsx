@@ -88,7 +88,7 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
                 <p className="text-xs text-zinc-500">
                   The bot will post a message asking members to react with the emoji below if they are on leave this
                   round — no reaction = attending as usual. Anyone who reacts is automatically moved to this board&apos;s
-                  &quot;Busy / Leave&quot; list (the bot needs &quot;Send Messages&quot; and &quot;Add Reactions&quot; permission in the selected channel).
+                  &quot;Busy / Leave&quot; list (the bot needs &quot;Send Messages&quot; and &quot;Add Reactions&quot; permissions in the selected channel).
                 </p>
 
                 <label className="flex flex-col gap-1 text-xs text-zinc-400">
