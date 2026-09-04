@@ -1,15 +1,25 @@
 import { eq } from "drizzle-orm";
 import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
-import { discordRoles, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
+import { discordRoles, lootQueueEntries, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
 
-/** Removes a member from any party slot / busy entry they're currently placed in. */
+/**
+ * Removes a member from any party slot / busy entry they're currently
+ * placed in, AND drops them from every loot-queue category — called
+ * whenever someone stops being ACTIVE (left Discord, kicked/banned, or lost
+ * the tracked role). Without the loot-queue part, a departed member's row
+ * just sits there forever: `lootQueueEntries.memberId` cascades on delete,
+ * but the `members` row itself is never deleted here (only its `status`
+ * flips), so the cascade never fires and an admin had to remove them by
+ * hand before running a round.
+ */
 async function clearPartyAssignments(memberId: string) {
   await db
     .update(partySlots)
     .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+  await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
 }
 
 interface NormalizedMember {

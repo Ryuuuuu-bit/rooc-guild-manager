@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
+import { lootQueueEntries, members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
 import { env } from "@/lib/env";
@@ -100,6 +100,11 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
   await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+  // Also drop them from every loot-queue category — otherwise their row
+  // just sits there forever (the members row itself is never deleted, only
+  // its status, so the table's onDelete: "cascade" never fires) and an
+  // admin has to remove them by hand before running a round.
+  await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
 
   let discordWarning: string | undefined;
   try {
@@ -124,6 +129,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   revalidatePath("/members");
   revalidatePath("/");
   revalidatePath("/party");
+  revalidatePath("/loot-queue");
 
   return discordWarning ? { ok: true, warning: discordWarning } : { ok: true };
 }
