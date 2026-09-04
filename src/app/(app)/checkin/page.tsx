@@ -79,20 +79,33 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
-            {windows.map((w) => (
-              <Link
-                key={w.date}
-                href={`/checkin?event=${event.key}&date=${w.date}`}
-                className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  selected?.date === w.date
-                    ? "bg-amber-600 text-white"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                }`}
-              >
-                {fmtDatePill(w.start)}
-              </Link>
-            ))}
+          {/* Single scrollable row rather than flex-wrap — this list only
+              ever grows (every past round stays in it forever, see
+              listCheckinWindows), so wrapping would make the box taller
+              and taller as history piles up. A fixed-height horizontal
+              strip keeps the page layout stable no matter how many rounds
+              have been recorded; the fade hints there's more to scroll to,
+              and the most recent round (windows[0]) sits at the left edge
+              so it's visible without scrolling at all. */}
+          <div className="relative">
+            <div className="flex flex-nowrap gap-1 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
+              {windows.map((w) => (
+                <Link
+                  key={w.date}
+                  href={`/checkin?event=${event.key}&date=${w.date}`}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    selected?.date === w.date
+                      ? "bg-amber-600 text-white"
+                      : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                  }`}
+                >
+                  {fmtDatePill(w.start)}
+                </Link>
+              ))}
+            </div>
+            {windows.length > 8 && (
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-8 rounded-r-xl bg-gradient-to-l from-zinc-950 to-transparent" />
+            )}
           </div>
 
           {report && (
