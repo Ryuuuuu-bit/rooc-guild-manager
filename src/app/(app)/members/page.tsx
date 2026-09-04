@@ -39,9 +39,9 @@ export default async function MembersPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">สมาชิกกิลด์</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Guild Members</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            พบ {membersList.length} คน
+            {membersList.length} found
           </p>
         </div>
 
@@ -50,7 +50,7 @@ export default async function MembersPage({
             type="text"
             name="q"
             defaultValue={params.q}
-            placeholder="ค้นหาชื่อ Discord หรือชื่อในเกม..."
+            placeholder="Search by Discord name or in-game name..."
             className="w-56 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
           />
           <select
@@ -58,17 +58,17 @@ export default async function MembersPage({
             defaultValue={status}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="ACTIVE">สมาชิกปัจจุบัน</option>
-            <option value="LEFT">ออกจากกิลด์</option>
-            <option value="KICKED">ถูกเตะออก</option>
-            <option value="ALL">แสดงทั้งหมด</option>
+            <option value="ACTIVE">Current Members</option>
+            <option value="LEFT">Left Guild</option>
+            <option value="KICKED">Kicked</option>
+            <option value="ALL">Show All</option>
           </select>
           <select
             name="role"
             defaultValue={params.role ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="">แสดงทุกยศใน Discord</option>
+            <option value="">All Discord Roles</option>
             {discordRoleList.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -80,15 +80,15 @@ export default async function MembersPage({
             defaultValue={benched ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="">แสดงทุกสถานะ</option>
-            <option value="active">สถานะออนไลน์</option>
-            <option value="benched">สถานะออฟไลน์ (พักการเล่น)</option>
+            <option value="">All Statuses</option>
+            <option value="active">Online</option>
+            <option value="benched">Offline (Benched)</option>
           </select>
           <button
             type="submit"
             className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
           >
-            ค้นหา
+            Search
           </button>
         </form>
       </div>
@@ -97,19 +97,19 @@ export default async function MembersPage({
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="px-5 py-3 font-medium">สมาชิก</th>
-              <th className="px-5 py-3 font-medium">ชื่อในเกม</th>
-              <th className="px-5 py-3 font-medium">อาชีพ</th>
+              <th className="px-5 py-3 font-medium">Member</th>
+              <th className="px-5 py-3 font-medium">In-game Name</th>
+              <th className="px-5 py-3 font-medium">Class</th>
               <th className="px-5 py-3 font-medium">Discord role</th>
-              <th className="px-5 py-3 font-medium">สถานะ</th>
-              <th className="px-5 py-3 font-medium">เข้าร่วมเมื่อ</th>
+              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Joined</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {membersList.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-5 py-10 text-center text-zinc-500">
-                  ไม่พบสมาชิกที่ตรงกับเงื่อนไข
+                  No members match the filters
                 </td>
               </tr>
             )}

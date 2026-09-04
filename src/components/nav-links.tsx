@@ -17,8 +17,8 @@ interface NavGroup {
 // Always visible in the top bar / start of the mobile strip — the two pages
 // almost everyone opens first (an overview, and the roster itself).
 const primaryLinks: NavLink[] = [
-  { href: "/", label: "ภาพรวม" },
-  { href: "/members", label: "สมาชิก" },
+  { href: "/", label: "Overview" },
+  { href: "/members", label: "Members" },
 ];
 
 // Grouped by what the pages are FOR, not how often they're used: tools you
@@ -28,19 +28,19 @@ const primaryLinks: NavLink[] = [
 // not a tool for running the event itself).
 const groups: NavGroup[] = [
   {
-    label: "จัดกิจกรรม",
+    label: "Events",
     links: [
-      { href: "/party", label: "จัดปาร์ตี้" },
-      { href: "/random", label: "สุ่มสมาชิก" },
-      { href: "/loot-queue", label: "คิวประมูล" },
+      { href: "/party", label: "Party" },
+      { href: "/random", label: "Random Picker" },
+      { href: "/loot-queue", label: "Loot Queue" },
     ],
   },
   {
-    label: "บันทึก & สถิติ",
+    label: "Logs & Stats",
     links: [
-      { href: "/activity", label: "ประวัติกิจกรรม" },
-      { href: "/attendance", label: "สถิติการลา" },
-      { href: "/checkin", label: "เช็คชื่อ [DC]" },
+      { href: "/activity", label: "Activity Log" },
+      { href: "/attendance", label: "Leave Stats" },
+      { href: "/checkin", label: "Check-in [Voice]" },
       { href: "/pvp-stats", label: "Stats PVP" },
     ],
   },
@@ -128,7 +128,7 @@ export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
       ))}
       {isAdmin && (
         <Link href="/classes" className={isActive(pathname, "/classes") ? activeLinkClass : linkClass}>
-          จัดการอาชีพ
+          Manage Classes
         </Link>
       )}
     </nav>
@@ -141,7 +141,7 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const secondaryGroups: NavGroup[] = isAdmin
-    ? [...groups, { label: "ระบบ", links: [{ href: "/classes", label: "จัดการอาชีพ" }] }]
+    ? [...groups, { label: "System", links: [{ href: "/classes", label: "Manage Classes" }] }]
     : groups;
   const secondaryActive = secondaryGroups.some((g) => g.links.some((l) => isActive(pathname, l.href)));
 
@@ -192,7 +192,7 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
           <circle cx="12" cy="12" r="2" />
           <circle cx="19" cy="12" r="2" />
         </svg>
-        เพิ่มเติม
+        More
       </button>
       {moreOpen && (
         <div className="absolute right-4 top-full z-20 mt-1 flex w-56 flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2 shadow-xl">

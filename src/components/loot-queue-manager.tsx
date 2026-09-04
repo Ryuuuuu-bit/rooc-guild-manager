@@ -59,7 +59,7 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
     listDiscordChannels().then((res) => {
       setLoading(false);
       if (!res.ok || !res.channels) {
-        setError(res.error ?? "ดึงรายชื่อ channel ไม่สำเร็จ");
+        setError(res.error ?? "Failed to fetch channels");
         return;
       }
       setChannels(res.channels);
@@ -74,7 +74,7 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
     const res = await postLootRoundMessage(channelId, text);
     setPosting(false);
     if (!res.ok) {
-      setError(res.error ?? "โพสต์ไม่สำเร็จ");
+      setError(res.error ?? "Failed to post");
       return;
     }
     setPosted(true);
@@ -84,17 +84,17 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-16">
       <div className="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100">โพสต์ผลรอบนี้ลง Discord</h2>
+          <h2 className="text-sm font-semibold text-zinc-100">Post Round Results to Discord</h2>
           <button type="button" onClick={onClose} className="rounded px-2 py-1 text-xs text-zinc-500 hover:text-zinc-200">
-            ปิด ✕
+            Close ✕
           </button>
         </div>
 
-        {loading && <p className="py-6 text-center text-sm text-zinc-500">กำลังโหลด...</p>}
+        {loading && <p className="py-6 text-center text-sm text-zinc-500">Loading...</p>}
 
         {!loading && !posted && (
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-zinc-500">แก้ข้อความก่อนโพสต์ได้ตามต้องการ (เช่น เติม @Rooc เอง)</p>
+            <p className="text-xs text-zinc-500">You can edit the message before posting (e.g. add @Rooc yourself)</p>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -120,7 +120,7 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
                 onClick={handlePost}
                 className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {posting ? "กำลังโพสต์..." : "โพสต์ข้อความ"}
+                {posting ? "Posting..." : "Post Message"}
               </button>
             </div>
           </div>
@@ -128,9 +128,9 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
 
         {posted && (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="text-sm text-emerald-300">โพสต์เรียบร้อย ✓</p>
+            <p className="text-sm text-emerald-300">Posted ✓</p>
             <button type="button" onClick={onClose} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800">
-              ปิดหน้าต่างนี้
+              Close this window
             </button>
           </div>
         )}
@@ -155,7 +155,7 @@ function NumberingBaseControl({ category, categories }: { category: LootCategory
     setSaving(true);
     setLootCategoryNumberingBase(category.id, value || null).then((res) => {
       setSaving(false);
-      if (!res.ok) alert(res.error ?? "ตั้งค่าไม่สำเร็จ");
+      if (!res.ok) alert(res.error ?? "Failed to save setting");
       router.refresh();
     });
   }
@@ -164,14 +164,14 @@ function NumberingBaseControl({ category, categories }: { category: LootCategory
 
   return (
     <label className="flex flex-wrap items-center gap-1.5 text-xs text-zinc-500">
-      เลขเริ่มต่อจาก:
+      Numbering starts from:
       <select
         value={category.numberingBaseCategoryId ?? ""}
         disabled={saving}
         onChange={(e) => handleChange(e.target.value)}
         className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:border-amber-500 focus:outline-none disabled:opacity-50"
       >
-        <option value="">— เริ่มที่ 1 เสมอ —</option>
+        <option value="">— Always start at 1 —</option>
         {options.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
@@ -200,7 +200,7 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
     startTransition(async () => {
       const res = await runLootRound(category.id, n, label);
       if (!res.ok) {
-        setError(res.error ?? "รันรอบไม่สำเร็จ");
+        setError(res.error ?? "Failed to run round");
         return;
       }
       setResult(res);
@@ -213,7 +213,7 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
     return (
       <div className="flex flex-col gap-2 rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-3">
         <p className="text-sm text-emerald-300">
-          รอบนี้ได้ {result.served.length} คน{result.short ? " (คิวมีไม่พอตามจำนวนที่ขอ เลยเสิร์ฟให้ครบเท่าที่มี)" : ""}
+          This round: {result.served.length} people{result.short ? " (queue did not have enough for the requested amount, so everyone available was served)" : ""}
         </p>
         <p className="whitespace-pre-wrap break-words text-xs text-zinc-300">{text}</p>
         <div className="flex flex-wrap gap-2">
@@ -222,14 +222,14 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
             onClick={() => navigator.clipboard?.writeText(text)}
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
           >
-            คัดลอกข้อความ
+            Copy Message
           </button>
           <button
             type="button"
             onClick={() => setShowPost(true)}
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
           >
-            โพสต์ลง Discord
+            Post to Discord
           </button>
           <button
             type="button"
@@ -240,7 +240,7 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
             }}
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
           >
-            รันคิวใหม่อีก
+            Run Another Round
           </button>
         </div>
         {showPost && <PostToDiscordModal initialText={text} onClose={() => setShowPost(false)} />}
@@ -250,39 +250,39 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
-      <p className="text-sm font-medium text-zinc-300">รันคิวใหม่</p>
+      <p className="text-sm font-medium text-zinc-300">Run New Round</p>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="number"
           min={1}
           value={count}
           onChange={(e) => setCount(e.target.value)}
-          placeholder="จำนวนคน"
+          placeholder="Number of people"
           className="w-28 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
         />
         <input
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          placeholder="หัวข้อรอบ เช่น GL 25/8 (ไม่บังคับ)"
+          placeholder="Round label, e.g. GL 25/8 (optional)"
           className="min-w-40 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
         />
         <button
           type="button"
           disabled={!n || n <= 0 || pending || category.queue.length === 0}
           onClick={handleRun}
-          title="ดึงคนหัวคิวเท่าจำนวนที่กรอกออกจากคิว แล้วย้ายคนเหล่านั้นไปท้ายคิว"
+          title="Pull the entered number of people from the front of the queue and move them to the back"
           className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pending ? "กำลังรันคิวใหม่..." : "รันคิวใหม่"}
+          {pending ? "Running..." : "Run New Round"}
         </button>
       </div>
       <NumberingBaseControl category={category} categories={categories} />
       {error && <p className="text-xs text-rose-400">{error}</p>}
-      {category.queue.length === 0 && <p className="text-xs text-zinc-500">คิวหมวดนี้ยังไม่มีสมาชิก — เพิ่มสมาชิกเข้าคิวก่อน</p>}
+      {category.queue.length === 0 && <p className="text-xs text-zinc-500">This category&apos;s queue has no members yet — add members to the queue first</p>}
       {preview.length > 0 && (
         <div className="rounded-lg border border-dashed border-zinc-700 bg-zinc-950/60 p-2">
-          <p className="mb-1 text-xs text-zinc-500">ตัวอย่างคนที่จะได้ ({preview.length}{n > category.queue.length ? ` — คิวมีแค่ ${category.queue.length}` : ""} คน):</p>
+          <p className="mb-1 text-xs text-zinc-500">Preview of who will be served ({preview.length}{n > category.queue.length ? ` — queue only has ${category.queue.length}` : ""} people):</p>
           <p className="break-words text-xs text-zinc-300">{preview.map((m) => m.displayName).join(", ")}</p>
         </div>
       )}
@@ -325,7 +325,7 @@ function QueuePositionInput({
     moveLootQueueEntryToPosition(categoryId, memberId, n).then((res) => {
       setSaving(false);
       setEditing(false);
-      if (!res.ok) alert(res.error ?? "ย้ายลำดับไม่สำเร็จ");
+      if (!res.ok) alert(res.error ?? "Failed to move position");
       router.refresh();
     });
   }
@@ -361,7 +361,7 @@ function QueuePositionInput({
         setValue(String(rank));
         setEditing(true);
       }}
-      title="พิมพ์ลำดับที่ต้องการเพื่อย้ายไปตำแหน่งนั้นทันที"
+      title="Type a position to jump there immediately"
       className="w-7 shrink-0 rounded text-center text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-amber-300 disabled:opacity-40"
     >
       {saving ? "…" : rank}
@@ -380,7 +380,7 @@ function AddMemberChip({ member, online, onClick }: { member: LootQueueMemberRef
     <button
       type="button"
       onClick={onClick}
-      title={`เพิ่ม ${member.displayName} เข้าคิว${online ? " (ออนไลน์)" : ""}`}
+      title={`Add ${member.displayName} to queue${online ? " (online)" : ""}`}
       className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1.5 text-xs transition hover:border-amber-500 hover:bg-zinc-800"
     >
       <span className="relative shrink-0">
@@ -428,13 +428,13 @@ function QueueList({
   }
 
   function handleRemove(memberId: string, name: string) {
-    if (!confirm(`เอา ${name} ออกจากคิวหมวดนี้?`)) return;
+    if (!confirm(`Remove ${name} from this category's queue?`)) return;
     removeFromLootQueue(category.id, memberId).then(() => router.refresh());
   }
 
   function handleAdd(memberId: string) {
     addToLootQueue(category.id, memberId).then((res) => {
-      if (!res.ok) alert(res.error ?? "เพิ่มไม่สำเร็จ");
+      if (!res.ok) alert(res.error ?? "Failed to add");
       router.refresh();
     });
   }
@@ -443,7 +443,7 @@ function QueueList({
     <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50">
       <ul className="divide-y divide-zinc-800">
         {category.queue.length === 0 && (
-          <li className="px-5 py-8 text-center text-sm text-zinc-500">คิวหมวดนี้ยังไม่มีสมาชิก</li>
+          <li className="px-5 py-8 text-center text-sm text-zinc-500">This category&apos;s queue has no members</li>
         )}
         {category.queue.map((m, i) => (
           <li key={m.id} className="flex items-center gap-3 px-4 py-2.5">
@@ -478,7 +478,7 @@ function QueueList({
               <button
                 type="button"
                 onClick={() => handleRemove(m.id, m.displayName)}
-                title="เอาออกจากคิว"
+                title="Remove from queue"
                 className="shrink-0 rounded px-1.5 py-1 text-xs text-zinc-600 transition hover:text-rose-400"
               >
                 ✕
@@ -491,26 +491,26 @@ function QueueList({
         <div className="border-t border-zinc-800 p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h3 className="text-xs font-medium text-zinc-400">
-              เพิ่มเข้าคิว ({visiblePickable.length}
+              Add to Queue ({visiblePickable.length}
               {visiblePickable.length !== pickable.length ? ` / ${pickable.length}` : ""})
             </h3>
             <input
               type="text"
               value={addQuery}
               onChange={(e) => setAddQuery(e.target.value)}
-              placeholder="ค้นหาชื่อ..."
+              placeholder="Search name..."
               className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
             />
             <span className="flex select-none items-center gap-1 text-[10px] text-zinc-500">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" /> = อยู่ในวอยซ์ตอนนี้
+              <span className="h-2 w-2 rounded-full bg-emerald-400" /> = currently in voice
             </span>
           </div>
           <div className="flex max-h-56 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-dashed border-zinc-800 p-2">
             {visiblePickable.length === 0 && (
               <span className="px-1 py-1 text-xs text-zinc-600">
                 {pickable.length === 0
-                  ? "ไม่มีสมาชิกให้เพิ่มแล้ว (อยู่ในคิวครบทุกคน)"
-                  : "ไม่พบชื่อที่ตรงกับที่ค้นหา"}
+                  ? "No members left to add (everyone is already in the queue)"
+                  : "No name matches your search"}
               </span>
             )}
             {visiblePickable.map((m) => (
@@ -530,17 +530,17 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
   const [busyId, setBusyId] = useState<string | null>(null);
 
   function handleUndo(id: string) {
-    if (!confirm("ย้อนกลับรอบนี้? คนที่ได้ของรอบนี้จะกลับไปอยู่ตำแหน่งเดิมในคิว")) return;
+    if (!confirm("Undo this round? People served in this round will return to their previous positions in the queue")) return;
     setBusyId(id);
     undoLootRound(id).then((res) => {
       setBusyId(null);
-      if (!res.ok) alert(res.error ?? "ย้อนกลับไม่สำเร็จ");
+      if (!res.ok) alert(res.error ?? "Failed to undo");
       router.refresh();
     });
   }
 
   function handleDelete(id: string) {
-    if (!confirm("ลบประวัติรอบนี้? (ไม่กระทบตำแหน่งคิวปัจจุบัน)")) return;
+    if (!confirm("Delete this round's history? (This will not affect current queue positions)")) return;
     setBusyId(id);
     deleteLootRoundHistory(id).then(() => {
       setBusyId(null);
@@ -548,7 +548,7 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
     });
   }
 
-  if (rounds.length === 0) return <p className="text-xs text-zinc-600">ยังไม่มีประวัติการรันรอบของหมวดนี้</p>;
+  if (rounds.length === 0) return <p className="text-xs text-zinc-600">No round history for this category yet</p>;
 
   return (
     <ul className="flex flex-col gap-2">
@@ -558,7 +558,7 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
             <div className="min-w-0">
               <p className="text-zinc-300">
                 {r.label && <span className="font-medium text-amber-300">{r.label} — </span>}
-                ได้ {r.members.length} คน
+                Served {r.members.length} people
               </p>
               <p className="mt-0.5 break-words text-zinc-500">{r.members.map((m) => m.displayName).join(", ")}</p>
               <p className="mt-0.5 text-[10px] text-zinc-600">
@@ -574,7 +574,7 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
                     onClick={() => handleUndo(r.id)}
                     className="text-amber-400 transition hover:text-amber-300 disabled:opacity-40"
                   >
-                    ย้อนกลับ
+                    Undo
                   </button>
                 )}
                 <button
@@ -583,7 +583,7 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
                   onClick={() => handleDelete(r.id)}
                   className="text-rose-400 transition hover:text-rose-300 disabled:opacity-40"
                 >
-                  ลบประวัติ
+                  Delete History
                 </button>
               </div>
             )}
@@ -619,7 +619,7 @@ function CategoryTabs({
     startTransition(async () => {
       const res = await createLootCategory(trimmed);
       if (!res.ok) {
-        setError(res.error ?? "เพิ่มไม่สำเร็จ");
+        setError(res.error ?? "Failed to add");
         return;
       }
       setNewName("");
@@ -635,7 +635,7 @@ function CategoryTabs({
     startTransition(async () => {
       const res = await renameLootCategory(id, trimmed);
       if (!res.ok) {
-        setError(res.error ?? "แก้ไม่สำเร็จ");
+        setError(res.error ?? "Failed to edit");
         return;
       }
       setRenamingId(null);
@@ -645,7 +645,7 @@ function CategoryTabs({
   }
 
   function handleDelete(id: string, name: string) {
-    if (!confirm(`ลบหมวดหมู่ "${name}" ทั้งคิวและประวัติ? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!confirm(`Delete category "${name}" along with its queue and history? This action cannot be undone`)) return;
     deleteLootCategory(id).then(() => {
       router.push("/loot-queue");
       router.refresh();
@@ -707,11 +707,11 @@ function CategoryTabs({
                       setRenameValue(c.name);
                     }}
                     className="ml-1 hover:text-amber-300"
-                    title="เปลี่ยนชื่อหมวดหมู่"
+                    title="Rename category"
                   >
                     ✎
                   </button>
-                  <button type="button" onClick={() => handleDelete(c.id, c.name)} className="hover:text-rose-400" title="ลบหมวดหมู่">
+                  <button type="button" onClick={() => handleDelete(c.id, c.name)} className="hover:text-rose-400" title="Delete category">
                     🗑
                   </button>
                 </span>
@@ -727,7 +727,7 @@ function CategoryTabs({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                placeholder="ชื่อหมวดหมู่ใหม่"
+                placeholder="New category name"
                 className="w-36 rounded-md border border-amber-500 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
               />
               <button type="button" disabled={pending} onClick={handleAdd} className="text-xs text-emerald-400 hover:text-emerald-300">
@@ -743,7 +743,7 @@ function CategoryTabs({
               onClick={() => setAdding(true)}
               className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
             >
-              + หมวดหมู่ใหม่
+              + New Category
             </button>
           ))}
       </div>
@@ -784,7 +784,7 @@ export function LootQueueManager({
 
       {categories.length === 0 && (
         <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-          ยังไม่มีหมวดหมู่{isAdmin ? ' — กด "+ หมวดหมู่ใหม่" ด้านบนเพื่อเริ่มสร้าง' : ""}
+          No categories yet{isAdmin ? ' — click "+ New Category" above to create one' : ""}
         </div>
       )}
 
@@ -799,7 +799,7 @@ export function LootQueueManager({
            * (see RunRoundPanel/RoundHistory) covers the same failure mode
            * from the other side — belt and suspenders. */}
           <div className="flex min-w-0 flex-col gap-3">
-            <h2 className="text-sm font-medium text-zinc-300">คิว — {selected.name}</h2>
+            <h2 className="text-sm font-medium text-zinc-300">Queue — {selected.name}</h2>
             {/* Same key={selected.id} reasoning as RunRoundPanel below —
              * resets the add-picker's search text and online-only
              * scroll position when switching categories. */}
@@ -814,7 +814,7 @@ export function LootQueueManager({
              * switching to a category that's never been run. */}
             {isAdmin && <RunRoundPanel key={selected.id} category={selected} categories={categories} />}
             <div className="flex flex-col gap-2">
-              <h2 className="text-sm font-medium text-zinc-300">ประวัติล่าสุด</h2>
+              <h2 className="text-sm font-medium text-zinc-300">Recent History</h2>
               <RoundHistory rounds={initialRounds} isAdmin={isAdmin} />
             </div>
           </div>

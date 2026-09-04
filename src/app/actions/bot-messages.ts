@@ -33,7 +33,7 @@ export async function listDiscordChannels(): Promise<{ ok: boolean; channels?: D
     const channels = await listGuildTextChannels(env.discordGuildId);
     return { ok: true, channels };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "ดึงรายชื่อ channel ไม่สำเร็จ" };
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to fetch channel list." };
   }
 }
 
@@ -92,7 +92,7 @@ export async function getBoardEmoji(boardId: string): Promise<string> {
  */
 export async function postClassSelectMessage(channelId: string): Promise<ActionResult> {
   await requireAdmin();
-  if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
+  if (!channelId) return { ok: false, error: "Please select a channel" };
 
   const jobClassesList = await listJobClasses();
   const lines = jobClassesList.map((c) => `${c.emoji} — ${c.name}`).join("\n");
@@ -126,7 +126,7 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
     } catch (err) {
       return {
         ok: false,
-        error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
+        error: `Failed to post message — check whether the bot has "Send Messages" permission in this channel (${err instanceof Error ? err.message : "unknown error"})`,
       };
     }
     // Track the message the moment it exists — even if seeding reactions
@@ -153,7 +153,7 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
   if (failedEmojis.length > 0) {
     return {
       ok: true,
-      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่ครบ (ขาด: ${failedEmojis.join(" ")}) — ลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
+      error: `Message posted successfully, but some emoji reactions failed to seed (missing: ${failedEmojis.join(" ")}) — try clicking "Post Again" to fix it`,
     };
   }
   return { ok: true };
@@ -191,10 +191,10 @@ function expandBoardName(name: string): string {
 
 export async function postAttendanceMessage(boardId: string, channelId: string, emoji?: string): Promise<ActionResult> {
   await requireAdmin();
-  if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
+  if (!channelId) return { ok: false, error: "Please select a channel" };
 
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-  if (!board) return { ok: false, error: "ไม่พบกระดาน" };
+  if (!board) return { ok: false, error: "Board not found" };
 
   const resolvedEmoji = emoji?.trim() || ATTENDANCE_EMOJI;
   await db.update(partyBoards).set({ emoji: resolvedEmoji, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
@@ -213,7 +213,7 @@ export async function postAttendanceMessage(boardId: string, channelId: string, 
   } catch (err) {
     return {
       ok: false,
-      error: `โพสต์ข้อความไม่สำเร็จ — เช็คว่าบอทมีสิทธิ์ "Send Messages" ใน channel นี้หรือยัง (${err instanceof Error ? err.message : "unknown error"})`,
+      error: `Failed to post message — check whether the bot has "Send Messages" permission in this channel (${err instanceof Error ? err.message : "unknown error"})`,
     };
   }
 
@@ -226,7 +226,7 @@ export async function postAttendanceMessage(boardId: string, channelId: string, 
   } catch {
     return {
       ok: true,
-      error: `โพสต์ข้อความสำเร็จ แต่ใส่อิโมจิไม่สำเร็จ — เช็คว่าอิโมจิที่ใส่ถูกต้องไหม แล้วลองกด "โพสต์ใหม่" อีกครั้งเพื่อแก้`,
+      error: `Message posted successfully, but the emoji reaction failed — check whether the emoji you entered is valid, then try clicking "Post Again" to fix it`,
     };
   }
   return { ok: true };

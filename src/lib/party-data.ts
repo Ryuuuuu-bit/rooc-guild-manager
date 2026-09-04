@@ -41,6 +41,8 @@ export interface PartyBoardListItem {
 export interface PartyBoardDetail {
   id: string;
   name: string;
+  /** Discord channel id the image-announce button last posted to, if any — see partyBoards.lastImageAnnounceChannelId. */
+  lastImageAnnounceChannelId: string | null;
   groups: PartyGroupView[];
   busy: PartyBoardMemberRef[];
   unassigned: PartyBoardMemberRef[];
@@ -140,5 +142,12 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     .map(toRef)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
-  return { id: board.id, name: board.name, groups: groupViews, busy, unassigned };
+  return {
+    id: board.id,
+    name: board.name,
+    lastImageAnnounceChannelId: board.lastImageAnnounceChannelId,
+    groups: groupViews,
+    busy,
+    unassigned,
+  };
 }

@@ -5,8 +5,8 @@ export const REVIEW_STATUSES = ["PASS", "FAIL"] as const;
 export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 export const reviewStatusLabels: Record<ReviewStatus, string> = {
-  PASS: "ผ่าน",
-  FAIL: "ไม่ผ่าน",
+  PASS: "Pass",
+  FAIL: "Fail",
 };
 
 export const reviewStatusColors: Record<ReviewStatus, string> = {

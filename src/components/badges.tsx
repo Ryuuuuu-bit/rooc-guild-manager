@@ -19,7 +19,7 @@ export function StatusBadge({ status }: { status: Member["status"] }) {
 export function BenchedBadge() {
   return (
     <span className="inline-flex items-center whitespace-nowrap rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-500/30">
-      พักการเล่น
+      Benched
     </span>
   );
 }

@@ -23,16 +23,16 @@ export const statusColors: Record<Member["status"], string> = {
 };
 
 export const eventLabels: Record<string, string> = {
-  JOIN: "เข้าร่วมกิลด์",
-  LEAVE: "ออกจากกิลด์",
-  KICK: "ถูกเตะออกจากกิลด์",
-  ROLE_UPDATE: "Discord role เปลี่ยนแปลง",
-  PROFILE_UPDATE: "แก้ไขโปรไฟล์",
-  NOTE: "บันทึกเพิ่มเติม",
-  ATTENDANCE_LEAVE: "ลากิจกรรม",
-  ATTENDANCE_RETURN: "ยกเลิกลา / กลับเข้าร่วม",
-  CLASS_CHANGE: "เปลี่ยนอาชีพ",
-  NAME_CHANGE: "เปลี่ยนชื่อใน Discord",
+  JOIN: "Joined guild",
+  LEAVE: "Left guild",
+  KICK: "Kicked from guild",
+  ROLE_UPDATE: "Discord role changed",
+  PROFILE_UPDATE: "Profile edited",
+  NOTE: "Note added",
+  ATTENDANCE_LEAVE: "Leave",
+  ATTENDANCE_RETURN: "Leave cancelled / returned",
+  CLASS_CHANGE: "Class changed",
+  NAME_CHANGE: "Discord name changed",
 };
 
 /**

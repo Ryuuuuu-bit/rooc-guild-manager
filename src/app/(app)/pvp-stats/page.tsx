@@ -30,7 +30,7 @@ export default async function PvpStatsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Stats PVP</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            กรอกเอง อัปเดตได้ทุกสัปดาห์ · {submittedCount}/{rows.length} คนกรอกแล้ว
+            Self-reported, update weekly · {submittedCount}/{rows.length} submitted
           </p>
         </div>
         {isAdmin && (
@@ -53,8 +53,8 @@ export default async function PvpStatsPage() {
         >
           <p className="font-medium">
             {myLatest.reviewStatus === "FAIL"
-              ? "แอดมินตรวจสถิติล่าสุดของคุณแล้ว — กรุณาปรับตามนี้แล้วอัปเดตใหม่"
-              : "หมายเหตุจากแอดมินเกี่ยวกับสถิติล่าสุดของคุณ"}
+              ? "An admin reviewed your latest stats — please adjust and update again."
+              : "Admin note on your latest stats"}
           </p>
           <p className="mt-1 opacity-90">{myLatest.reviewNote}</p>
         </div>

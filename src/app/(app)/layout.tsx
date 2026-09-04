@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <JobClassesProvider classes={jobClasses}>{children}</JobClassesProvider>
       </main>
       <footer className="border-t border-zinc-900 px-4 py-4 text-center text-xs text-zinc-600 sm:px-6">
-        Divine Guild Manager — ซิงค์อัตโนมัติกับ Discord
+        Divine Guild Manager — Auto-synced with Discord
       </footer>
     </div>
   );

@@ -24,7 +24,7 @@ export async function deleteMembershipEvent(eventId: string): Promise<ActionResu
     .delete(membershipEvents)
     .where(eq(membershipEvents.id, eventId))
     .returning({ memberId: membershipEvents.memberId });
-  if (!deleted) return { ok: false, error: "ไม่พบรายการนี้ (อาจถูกลบไปแล้ว)" };
+  if (!deleted) return { ok: false, error: "Entry not found (it may have already been deleted)" };
 
   revalidatePath("/");
   revalidatePath("/activity");

@@ -18,7 +18,7 @@ export interface RaceRacer {
 /**
  * Builds the racer list for one race, including a shuffled lane order and
  * per-racer timing. Deliberately a plain function called from an event
- * handler (RandomPicker's "เริ่มแข่ง!" onClick), NOT from inside the track
+ * handler (RandomPicker's "Start race!" onClick), NOT from inside the track
  * component's render — Math.random() there would make the component
  * impure and re-shuffle on every re-render. The winner is picked by the
  * caller beforehand via the exact same uniform random draw as classic
@@ -186,7 +186,7 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
             key={count}
             className="animate-[divine-pop_0.35s_ease-out] text-7xl font-black text-amber-300 drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]"
           >
-            {count > 0 ? count : "ไป!"}
+            {count > 0 ? count : "Go!"}
           </span>
         </div>
       )}
@@ -194,7 +194,7 @@ export function HorseRaceTrack({ racers, onFinish }: HorseRaceTrackProps) {
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black/55 text-center">
           <span className="animate-[divine-pop_0.35s_ease-out] text-5xl">🏆</span>
           <span className="animate-[divine-pop_0.35s_ease-out] text-xl font-bold text-amber-200">
-            {memberDisplayName(winner)} ชนะ!
+            {memberDisplayName(winner)} wins!
           </span>
         </div>
       )}

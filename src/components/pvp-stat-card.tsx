@@ -23,7 +23,7 @@ export function PvpStatCard({ header, entry, reviewAction, customFieldDefs = [],
       {header}
 
       {!entry ? (
-        <p className="text-sm text-zinc-500">ยังไม่กรอกสถิติ</p>
+        <p className="text-sm text-zinc-500">No stats submitted yet</p>
       ) : (
         <>
           {reviewAction && <div className="flex flex-wrap items-center gap-2">{reviewAction}</div>}
@@ -77,7 +77,7 @@ export function PvpStatCard({ header, entry, reviewAction, customFieldDefs = [],
 
           {entry.bossCards && (
             <p className="text-xs text-zinc-400">
-              <span className="text-zinc-500">การ์ดบอส: </span>
+              <span className="text-zinc-500">Boss Cards: </span>
               {entry.bossCards}
             </p>
           )}

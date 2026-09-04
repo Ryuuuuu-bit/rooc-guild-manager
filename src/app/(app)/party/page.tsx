@@ -22,17 +22,17 @@ export default async function PartyPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">จัดปาร์ตี้ / กิจกรรม</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Party / Event Setup</h1>
           <p className="mt-1 text-sm text-zinc-400">
             {session.user.isAdmin
-              ? "สร้างกระดานแยกตาม content ได้อิสระ (เช่น ปกติ, GVG) ลากรายชื่อสมาชิก (role Rooc) เข้า/ออกปาร์ตี้ได้"
-              : "มุมมองปาร์ตี้ปัจจุบันของกิลด์ — เฉพาะแอดมินแก้ไขได้"}
+              ? "Create separate boards for any content (e.g. Normal, GVG) and drag member names (Rooc role) in/out of parties."
+              : "Current party view for the guild — editable by admins only."}
           </p>
         </div>
         {/* Guild-wide (not tied to any one board), so it lives at page level
          * rather than inside a per-board panel — kept here rather than on
          * /members since setting up classes is part of the same event-prep
-         * flow as posting each board's ลา message below. */}
+         * flow as posting each board's Leave message below. */}
         {session.user.isAdmin && <ClassSelectBroadcastPanel />}
       </div>
       <PartyBoardView

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { addManualLeave } from "@/app/actions/attendance";
 
 /**
- * Admin-only form for logging a "ลา" a member reported outside Discord
+ * Admin-only form for logging a "leave" a member reported outside Discord
  * (DM, in person, etc.) — never went through the reaction flow, so
  * without this there's no way to reflect it in /attendance stats.
  */
@@ -32,7 +32,7 @@ export function LogManualLeaveForm({
     startTransition(async () => {
       const res = await addManualLeave(memberId, formData);
       if (!res.ok) {
-        setError(res.error ?? "บันทึกไม่สำเร็จ");
+        setError(res.error ?? "Failed to save");
         return;
       }
       setSuccess(true);
@@ -45,7 +45,7 @@ export function LogManualLeaveForm({
     <form ref={formRef} action={handleSubmit} className="flex flex-col gap-2">
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">วันที่ลา</label>
+          <label className="text-[10px] text-zinc-500">Leave date</label>
           <input
             type="date"
             name="date"
@@ -55,23 +55,23 @@ export function LogManualLeaveForm({
           />
         </div>
         <div className="flex min-w-32 flex-1 flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">เหตุผล (ถ้ามี)</label>
+          <label className="text-[10px] text-zinc-500">Reason (optional)</label>
           <input
             type="text"
             name="reason"
-            placeholder="เช่น แจ้งลาส่วนตัวทาง DM"
+            placeholder="e.g. reported a personal leave via DM"
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
           />
         </div>
         {boards.length > 0 && (
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] text-zinc-500">กระดานที่ลา (ถ้าระบุได้)</label>
+            <label className="text-[10px] text-zinc-500">Board (if known)</label>
             <select
               name="boardId"
               defaultValue=""
               className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
             >
-              <option value="">ไม่ระบุ</option>
+              <option value="">Unspecified</option>
               {boards.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -85,11 +85,11 @@ export function LogManualLeaveForm({
           disabled={pending}
           className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pending ? "กำลังบันทึก..." : "บันทึกการลา"}
+          {pending ? "Saving..." : "Log Leave"}
         </button>
       </div>
       {error && <p className="text-xs text-rose-400">{error}</p>}
-      {success && <p className="text-xs text-emerald-400">บันทึกแล้ว — นับในสถิติการลาทันที</p>}
+      {success && <p className="text-xs text-emerald-400">Saved — counted in leave stats immediately</p>}
     </form>
   );
 }

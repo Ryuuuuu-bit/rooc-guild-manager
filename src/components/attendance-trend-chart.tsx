@@ -6,10 +6,10 @@ interface AttendanceTrendChartProps {
 }
 
 function fmtShortDate(dateStr: string): string {
-  // dateStr is "YYYY-MM-DD" (Thai calendar) — render as "27 ส.ค." to match
-  // the compact date pills used elsewhere (checkin/attendance pages).
+  // dateStr is "YYYY-MM-DD" — render as "Aug 27" to match the compact date
+  // pills used elsewhere (checkin/attendance pages).
   const d = new Date(`${dateStr}T00:00:00Z`);
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
+  return d.toLocaleDateString("en-US", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
 const CHART_HEIGHT = 132;
@@ -38,13 +38,13 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
         <h2 className="font-medium text-zinc-100">{title}</h2>
         {latest && latest.rate !== null && (
           <span className="text-xs text-zinc-500">
-            ล่าสุด <span className="font-semibold tabular-nums text-amber-400">{Math.round(latest.rate * 100)}%</span>
+            Latest <span className="font-semibold tabular-nums text-amber-400">{Math.round(latest.rate * 100)}%</span>
           </span>
         )}
       </div>
 
       {withData.length === 0 ? (
-        <p className="py-10 text-center text-sm text-zinc-500">ยังไม่มีข้อมูลเพียงพอสำหรับกราฟ</p>
+        <p className="py-10 text-center text-sm text-zinc-500">Not enough data for a chart yet</p>
       ) : (
         <>
           <div className="relative" style={{ height: CHART_HEIGHT }}>
@@ -73,8 +73,8 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
                       <span className="font-medium text-zinc-200">{fmtShortDate(p.date)}</span>
                       <span className="text-zinc-500">
                         {p.rate === null
-                          ? "ไม่มีข้อมูล"
-                          : `เข้าร่วม ${p.attendedCount}/${p.totalCount} คน · ${Math.round(p.rate * 100)}%`}
+                          ? "No data"
+                          : `Attended ${p.attendedCount}/${p.totalCount} · ${Math.round(p.rate * 100)}%`}
                       </span>
                     </div>
 

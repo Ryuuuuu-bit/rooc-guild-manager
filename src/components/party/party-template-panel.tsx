@@ -19,7 +19,7 @@ interface PartyTemplatePanelProps {
 }
 
 function fmtDate(d: Date): string {
-  return d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Bangkok" });
+  return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "2-digit", timeZone: "Asia/Bangkok" });
 }
 
 /**
@@ -42,16 +42,16 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
   }
 
   async function handleSave() {
-    const name = window.prompt(`บันทึกผังของ "${boardName}" เป็น template ชื่อ:`);
+    const name = window.prompt(`Save "${boardName}"'s layout as a template named:`);
     if (!name) return;
     const result = await saveBoardAsTemplate(boardId, name);
-    if (!result.ok) alert(result.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+    if (!result.ok) alert(result.error ?? "Failed to save. Please try again.");
   }
 
   async function handleApply(t: PartyTemplateListItem) {
     if (
       !confirm(
-        `ใช้ template "${t.name}" กับกระดาน "${boardName}"?\n\nผังปาร์ตี้ปัจจุบันของกระดานนี้จะถูกแทนที่ทั้งหมด (ไม่กระทบรายชื่อ Busy/ลา ของคนที่ template ไม่ได้จัดลง)`
+        `Apply template "${t.name}" to board "${boardName}"?\n\nThis board's current party layout will be completely replaced (the Busy/Leave list is unaffected for anyone the template does not place).`
       )
     )
       return;
@@ -62,12 +62,12 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
       setOpen(false);
       onApplied();
     } else {
-      alert(result.error ?? "โหลด template ไม่สำเร็จ ลองใหม่อีกครั้ง");
+      alert(result.error ?? "Failed to load template. Please try again.");
     }
   }
 
   async function handleDelete(t: PartyTemplateListItem) {
-    if (!confirm(`ลบ template "${t.name}"? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!confirm(`Delete template "${t.name}"? This cannot be undone.`)) return;
     setBusyId(t.id);
     const result = await deletePartyTemplate(t.id);
     setBusyId(null);
@@ -81,14 +81,14 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
         onClick={handleSave}
         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
       >
-        บันทึกเป็น Template
+        Save as Template
       </button>
       <button
         type="button"
         onClick={openPanel}
         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
       >
-        โหลด Template
+        Load Template
       </button>
 
       {open && (
@@ -101,7 +101,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">เลือก Template</h3>
+              <h3 className="font-medium text-zinc-100">Select Template</h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -112,10 +112,11 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
             </div>
 
             {templates === null ? (
-              <p className="py-4 text-center text-sm text-zinc-500">กำลังโหลด...</p>
+              <p className="py-4 text-center text-sm text-zinc-500">Loading...</p>
             ) : templates.length === 0 ? (
               <p className="py-4 text-center text-sm text-zinc-500">
-                ยังไม่มี template ที่บันทึกไว้ — กด &quot;บันทึกเป็น Template&quot; จากผังที่จัดไว้แล้วเพื่อเริ่มเก็บ
+                No templates saved yet — click &quot;Save as Template&quot; from a layout you have already set up to
+                start collecting them.
               </p>
             ) : (
               <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
@@ -127,7 +128,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-zinc-100">{t.name}</p>
                       <p className="text-xs text-zinc-500">
-                        {t.groupCount} กลุ่ม · {t.partyCount} ปาร์ตี้ · {t.filledSlotCount} คน · {fmtDate(t.createdAt)}
+                        {t.groupCount} groups · {t.partyCount} parties · {t.filledSlotCount} people · {fmtDate(t.createdAt)}
                         {t.createdByUsername ? ` · ${t.createdByUsername}` : ""}
                       </p>
                     </div>
@@ -138,7 +139,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
                         onClick={() => handleApply(t)}
                         className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
                       >
-                        ใช้
+                        Apply
                       </button>
                       <button
                         type="button"
@@ -146,7 +147,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
                         onClick={() => handleDelete(t)}
                         className="rounded-lg border border-rose-900/60 px-2 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40 disabled:opacity-50"
                       >
-                        ลบ
+                        Delete
                       </button>
                     </div>
                   </li>

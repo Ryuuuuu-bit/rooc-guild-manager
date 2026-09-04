@@ -69,7 +69,7 @@ export function PvpStatForm({
     const result = await submitPvpStat(input);
     setSaving(false);
     if (!result.ok) {
-      setError(result.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Save failed, please try again");
       return;
     }
     setOpen(false);
@@ -83,7 +83,7 @@ export function PvpStatForm({
         onClick={() => setOpen(true)}
         className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500"
       >
-        {initial ? "อัปเดตสถานะตัวละคร" : "กรอกสถิติของฉัน"}
+        {initial ? "Update character status" : "Submit my stats"}
       </button>
     );
   }
@@ -95,7 +95,7 @@ export function PvpStatForm({
     >
       <div className="flex items-center justify-between">
         <h2 className="font-medium text-zinc-100">
-          {initial ? "อัปเดตสถานะตัวละคร" : "กรอกสถิติของฉัน"}
+          {initial ? "Update character status" : "Submit my stats"}
         </h2>
         <button
           type="button"
@@ -108,7 +108,7 @@ export function PvpStatForm({
 
       {initial && (
         <p className="text-xs text-zinc-500">
-          ค่าด้านล่างเติมจากครั้งล่าสุดที่คุณกรอกไว้ ({new Date(initial.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}) — แก้เฉพาะที่เปลี่ยนแล้วบันทึกได้เลย ระบบจะเก็บเป็นรายการใหม่แยกไว้ ไม่ทับของเดิม
+          The values below are filled in from your last submission ({new Date(initial.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}) — just change what needs updating and save. This is stored as a new separate entry, not overwriting the old one.
         </p>
       )}
 
@@ -130,9 +130,9 @@ export function PvpStatForm({
           disabled={saving}
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
         >
-          {saving ? "กำลังบันทึก..." : "บันทึก"}
+          {saving ? "Saving..." : "Save"}
         </button>
-        <span className="text-xs text-zinc-500">ทุกช่องไม่บังคับ เว้นว่างได้ถ้าไม่มีข้อมูล</span>
+        <span className="text-xs text-zinc-500">All fields are optional — leave blank if you don&apos;t have the data</span>
       </div>
     </form>
   );

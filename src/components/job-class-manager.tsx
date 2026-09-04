@@ -56,7 +56,7 @@ function ClassForm({
     startTransition(async () => {
       const res = await onSubmit(fd);
       if (!res.ok) {
-        setError(res.error ?? "บันทึกไม่สำเร็จ");
+        setError(res.error ?? "Save failed");
         return;
       }
       router.refresh();
@@ -68,16 +68,16 @@ function ClassForm({
       {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_100px]">
         <label className="flex flex-col gap-1 text-xs">
-          <span className="text-zinc-400">ชื่ออาชีพ</span>
+          <span className="text-zinc-400">Class name</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="เช่น Sura, Guillotine Cross"
+            placeholder="e.g. Sura, Guillotine Cross"
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
-          <span className="text-zinc-400">อิโมจิ</span>
+          <span className="text-zinc-400">Emoji</span>
           <input
             value={emoji}
             onChange={(e) => setEmoji(e.target.value)}
@@ -87,19 +87,19 @@ function ClassForm({
         </label>
       </div>
       <div className="flex flex-col gap-1 text-xs">
-        <span className="text-zinc-400">สี</span>
+        <span className="text-zinc-400">Color</span>
         <ColorPicker value={colorKey} onChange={setColorKey} />
       </div>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800">
-          ยกเลิก
+          Cancel
         </button>
         <button
           type="submit"
           disabled={pending}
           className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? "กำลังบันทึก..." : submitLabel}
+          {pending ? "Saving..." : submitLabel}
         </button>
       </div>
     </form>
@@ -122,10 +122,10 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`ลบอาชีพ "${name}"? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!confirm(`Delete class "${name}"? This cannot be undone.`)) return;
     const res = await deleteJobClass(id);
     if (!res.ok) {
-      setError(res.error ?? "ลบไม่สำเร็จ");
+      setError(res.error ?? "Delete failed");
       return;
     }
     setError(null);
@@ -135,8 +135,9 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-400">
-        อาชีพในรายชื่อนี้จะโผล่ในทุกจุดที่เลือกอาชีพ (โปรไฟล์สมาชิก, จัดปาร์ตี้) และเป็นอิโมจิในข้อความ &quot;เลือกอาชีพ&quot; บน
-        Discord — แก้ที่นี่แล้วไม่ต้องรอให้ Claude แก้โค้ดอีก
+        Classes in this list show up everywhere a class can be selected (member profiles, party
+        setup) and as the emoji in the &quot;select your class&quot; message on Discord — edit here and
+        there is no need to have Claude change the code.
       </p>
 
       {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}
@@ -145,16 +146,16 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
         <table className="w-full min-w-[420px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="w-10 px-3 py-3 font-medium">ลำดับ</th>
-              <th className="px-3 py-3 font-medium">ตัวอย่าง</th>
-              <th className="px-3 py-3 font-medium text-right">จัดการ</th>
+              <th className="w-10 px-3 py-3 font-medium">Order</th>
+              <th className="px-3 py-3 font-medium">Preview</th>
+              <th className="px-3 py-3 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {classes.length === 0 && (
               <tr>
                 <td colSpan={3} className="px-4 py-8 text-center text-sm text-zinc-500">
-                  ยังไม่มีอาชีพในระบบ — กด &quot;เพิ่มอาชีพใหม่&quot; ด้านล่าง
+                  No classes yet — click &quot;+ Add class&quot; below
                 </td>
               </tr>
             )}
@@ -164,7 +165,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                   <td colSpan={3} className="p-2">
                     <ClassForm
                       initial={c}
-                      submitLabel="บันทึก"
+                      submitLabel="Save"
                       onCancel={() => setEditingId(null)}
                       onSubmit={(fd) => updateJobClass(c.id, fd)}
                     />
@@ -204,14 +205,14 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                       onClick={() => setEditingId(c.id)}
                       className="mr-3 text-xs text-amber-400 transition hover:text-amber-300"
                     >
-                      แก้ไข
+                      Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => handleDelete(c.id, c.name)}
                       className="text-xs text-rose-400 transition hover:text-rose-300"
                     >
-                      ลบ
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -222,14 +223,14 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
       </div>
 
       {showAdd ? (
-        <ClassForm submitLabel="เพิ่มอาชีพ" onCancel={() => setShowAdd(false)} onSubmit={createJobClass} />
+        <ClassForm submitLabel="Add class" onCancel={() => setShowAdd(false)} onSubmit={createJobClass} />
       ) : (
         <button
           type="button"
           onClick={() => setShowAdd(true)}
           className="self-start rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
         >
-          + เพิ่มอาชีพใหม่
+          + Add class
         </button>
       )}
     </div>

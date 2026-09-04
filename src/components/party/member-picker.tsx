@@ -36,7 +36,7 @@ export function MemberPicker({
   onSelect,
   trigger,
   align = "left",
-  emptyLabel = "ไม่มีรายชื่อ",
+  emptyLabel = "No names",
   open: controlledOpen,
   onOpenChange,
 }: MemberPickerProps) {
@@ -145,7 +145,7 @@ export function MemberPicker({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder="ค้นหาชื่อ / class... (Enter = เลือกคนแรก)"
+              placeholder="Search name / class... (Enter = select the first match)"
               className="mb-1.5 w-full rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
             />
             <div className="max-h-56 overflow-auto">

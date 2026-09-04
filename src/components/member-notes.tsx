@@ -24,13 +24,13 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
     startTransition(async () => {
       const res = await addMemberNote(memberId, body);
       if (!res.ok) {
-        setError(res.error ?? "เพิ่มบันทึกไม่สำเร็จ");
+        setError(res.error ?? "Failed to add note");
         return;
       }
       // Optimistic prepend — good enough for a same-admin single-tab flow;
       // a full refresh will reconcile author/timestamp precision anyway.
       setItems((prev) => [
-        { id: `temp-${Date.now()}`, memberId, body, authorUsername: "คุณ", createdAt: new Date() },
+        { id: `temp-${Date.now()}`, memberId, body, authorUsername: "You", createdAt: new Date() },
         ...prev,
       ]);
       setText("");
@@ -39,7 +39,7 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
   }
 
   function handleDelete(noteId: string) {
-    if (!confirm("ลบบันทึกนี้?")) return;
+    if (!confirm("Delete this note?")) return;
     setItems((prev) => prev.filter((n) => n.id !== noteId));
     startTransition(async () => {
       await deleteMemberNote(noteId, memberId);
@@ -54,7 +54,7 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
           rows={2}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="เช่น AFK ใน GVG วันที่ 20/8, พูดคุยแจ้งเตือนแล้ว..."
+          placeholder="e.g. AFK during GVG on 8/20, already warned..."
           className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
         />
         {error && <p className="text-xs text-rose-400">{error}</p>}
@@ -63,12 +63,12 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
           disabled={pending || !text.trim()}
           className="self-start rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          เพิ่มบันทึก
+          Add Note
         </button>
       </form>
 
       <ul className="flex flex-col gap-2">
-        {items.length === 0 && <li className="text-xs text-zinc-600">ยังไม่มีบันทึก</li>}
+        {items.length === 0 && <li className="text-xs text-zinc-600">No notes yet</li>}
         {items.map((note) => (
           <li key={note.id} className="flex items-start justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-2.5">
             <div className="min-w-0">
@@ -81,7 +81,7 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
               type="button"
               onClick={() => handleDelete(note.id)}
               className="shrink-0 rounded px-1.5 py-0.5 text-xs text-zinc-600 transition hover:text-rose-400"
-              title="ลบบันทึก"
+              title="Delete note"
             >
               ✕
             </button>

@@ -23,7 +23,7 @@ export function MemberEditForm({ member }: Props) {
     <form action={formAction} className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">ชื่อในเกม (ROOC)</span>
+          <span className="text-zinc-400">In-game Name (ROOC)</span>
           <input
             name="inGameName"
             defaultValue={member.inGameName ?? ""}
@@ -31,13 +31,13 @@ export function MemberEditForm({ member }: Props) {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">อาชีพ</span>
+          <span className="text-zinc-400">Class</span>
           <select
             name="characterClass"
             defaultValue={member.characterClass ?? ""}
             className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none"
           >
-            <option value="">- ไม่ระบุ -</option>
+            <option value="">- Not set -</option>
             {classOptions.map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -45,13 +45,13 @@ export function MemberEditForm({ member }: Props) {
             ))}
           </select>
           <span className="text-xs text-zinc-500">
-            แก้จากหน้านี้หรือจากหน้าจัดปาร์ตี้ก็ได้ ค่าเดียวกันใช้ทุกกระดาน
+            Can be edited here or from the party board — the same value is used everywhere
           </span>
         </label>
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-zinc-400">โน้ตภายใน (แอดมินเท่านั้นที่เห็น)</span>
+        <span className="text-zinc-400">Internal Note (admins only)</span>
         <textarea
           name="notes"
           rows={3}
@@ -70,7 +70,7 @@ export function MemberEditForm({ member }: Props) {
           disabled={pending}
           className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {pending ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
+          {pending ? "Saving..." : "Save Changes"}
         </button>
       </div>
     </form>

@@ -6,10 +6,10 @@ import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
 
 const DAY_OPTIONS = [
-  { value: "7", label: "7 วัน" },
-  { value: "30", label: "30 วัน" },
-  { value: "90", label: "90 วัน" },
-  { value: "all", label: "ทั้งหมด" },
+  { value: "7", label: "7 days" },
+  { value: "30", label: "30 days" },
+  { value: "90", label: "90 days" },
+  { value: "all", label: "All" },
 ];
 
 const ALL_BOARDS_VALUE = "all";
@@ -73,7 +73,7 @@ export default async function AttendancePage({
 
   const [{ stats, totalLeaveEvents }, breakdown] = await Promise.all([
     getAttendanceStats({ ...rangeFilter, boardId }),
-    // Only needed for the "ทุกกระดาน" view's summary pills — skip the extra
+    // Only needed for the "All Boards" view's summary pills — skip the extra
     // query when a specific board is already selected (its total is already
     // shown above the table).
     boardId ? Promise.resolve(null) : getAttendanceBoardBreakdown(rangeFilter),
@@ -85,17 +85,20 @@ export default async function AttendancePage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">สถิติการลา</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Leave Stats</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            จำนวนครั้งที่แต่ละสมาชิกกด &quot;ลา&quot;{selectedBoardName ? ` ในกระดาน "${selectedBoardName}"` : ""}
-            ในช่วงเวลาที่เลือก — รวม{selectedBoardName ? "" : "ทั้งหมด"} {totalLeaveEvents} ครั้ง เรียงจากลาบ่อยสุดไปน้อยสุด
+            Number of times each member clicked &quot;Leave&quot;
+            {selectedBoardName ? ` on the "${selectedBoardName}" board` : ""}
+            {" "}in the selected period — {totalLeaveEvents} total{selectedBoardName ? "" : " across all boards"}, sorted
+            most to least frequent
           </p>
           {session.user.isAdmin && (
             <p className="mt-1 text-xs text-zinc-500">
-              ต้องการแก้ไขรายการลาของใครสักคน? กดชื่อสมาชิกด้านล่างเพื่อไปหน้าโปรไฟล์ — ลบรายการทดสอบ/ผิดพลาดได้จาก
-              &quot;ประวัติกิจกรรม&quot; หรือเพิ่มลาย้อนหลัง (เช่นแจ้งลาทาง DM) ได้จาก &quot;บันทึกการลาย้อนหลัง&quot;
-              (ทุกรายการลาบันทึกวันที่และเวลาไว้เป๊ะอยู่แล้ว — ดูเวลาเต็มได้ตอนชี้เมาส์ที่คอลัมน์
-              &quot;ลาล่าสุด&quot; ด้านล่าง หรือดูทุกรายการแยกวันได้ที่ &quot;ประวัติกิจกรรม&quot; ของสมาชิกคนนั้น)
+              Need to fix someone&apos;s leave entry? Click a member&apos;s name below to go to their profile — remove
+              test/mistaken entries from their &quot;Activity Log&quot;, or add a backdated leave (e.g. one reported via
+              DM) from &quot;Log Manual Leave&quot;. (Every leave entry already stores an exact date and time — hover
+              the &quot;Last Leave&quot; column below to see the full timestamp, or view every entry broken down by day
+              in that member&apos;s &quot;Activity Log&quot;.)
             </p>
           )}
         </div>
@@ -110,7 +113,7 @@ export default async function AttendancePage({
                     : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
                 }`}
               >
-                ทุกกระดาน
+                All Boards
               </Link>
               {boards.map((b) => (
                 <Link
@@ -158,7 +161,7 @@ export default async function AttendancePage({
       >
         <input type="hidden" name="board" value={boardParam} />
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">จากวันที่</label>
+          <label className="text-[10px] text-zinc-500">From</label>
           <input
             type="date"
             name="from"
@@ -167,7 +170,7 @@ export default async function AttendancePage({
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">ถึงวันที่</label>
+          <label className="text-[10px] text-zinc-500">To</label>
           <input
             type="date"
             name="to"
@@ -179,20 +182,20 @@ export default async function AttendancePage({
           type="submit"
           className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
         >
-          ดูช่วงนี้
+          View Range
         </button>
         {isCustomRange && (
           <Link
             href={`/attendance?days=30&board=${boardParam}`}
             className="rounded-lg px-3 py-1.5 text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-300"
           >
-            ล้างช่วงที่กำหนดเอง
+            Clear custom range
           </Link>
         )}
       </form>
 
-      {/* Per-board split — only shown on the "ทุกกระดาน" view, e.g. lets an
-          admin see "GL: 12 ครั้ง · WOE: 8 ครั้ง" at a glance without having
+      {/* Per-board split — only shown on the "All Boards" view, e.g. lets an
+          admin see "GL: 12 times · WOE: 8 times" at a glance without having
           to click through each board's tab one at a time. */}
       {breakdown && breakdown.length > 0 && (
         <div className="flex flex-wrap gap-2">
@@ -205,7 +208,7 @@ export default async function AttendancePage({
               }`}
             >
               <span className="font-medium text-zinc-100">{b.boardName}</span>
-              <span className="text-zinc-500"> — {b.leaveCount} ครั้ง</span>
+              <span className="text-zinc-500"> — {b.leaveCount} times</span>
             </Link>
           ))}
         </div>
@@ -216,16 +219,16 @@ export default async function AttendancePage({
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="w-10 px-5 py-3 font-medium">#</th>
-              <th className="px-5 py-3 font-medium">สมาชิก</th>
-              <th className="px-5 py-3 font-medium">จำนวนครั้งที่ลา</th>
-              <th className="px-5 py-3 font-medium">ลาล่าสุด</th>
+              <th className="px-5 py-3 font-medium">Member</th>
+              <th className="px-5 py-3 font-medium">Leave Count</th>
+              <th className="px-5 py-3 font-medium">Last Leave</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {stats.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-5 py-10 text-center text-zinc-500">
-                  ไม่มีข้อมูลสมาชิก
+                  No member data
                 </td>
               </tr>
             )}

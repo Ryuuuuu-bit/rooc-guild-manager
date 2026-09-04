@@ -102,7 +102,7 @@ async function insertPvpStatEntry(memberId: string, input: PvpStatInput): Promis
 export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> {
   const session = await requireUser();
   const member = await db.query.members.findFirst({ where: eq(members.discordId, session.user.discordId) });
-  if (!member) return { ok: false, error: "ไม่พบข้อมูลสมาชิกของคุณในระบบ" };
+  if (!member) return { ok: false, error: "Your member record was not found in the system" };
   return insertPvpStatEntry(member.id, input);
 }
 
@@ -115,7 +115,7 @@ export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> 
 export async function adminCreatePvpStatFor(memberId: string, input: PvpStatInput): Promise<ActionResult> {
   await requireAdmin();
   const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  if (!member) return { ok: false, error: "ไม่พบสมาชิกนี้" };
+  if (!member) return { ok: false, error: "Member not found" };
   return insertPvpStatEntry(memberId, input);
 }
 
@@ -129,7 +129,7 @@ export async function adminCreatePvpStatFor(memberId: string, input: PvpStatInpu
 export async function adminEditPvpStatEntry(entryId: string, input: PvpStatInput): Promise<ActionResult> {
   const session = await requireAdmin();
   const existing = await db.query.pvpStatEntries.findFirst({ where: eq(pvpStatEntries.id, entryId) });
-  if (!existing) return { ok: false, error: "ไม่พบรายการนี้" };
+  if (!existing) return { ok: false, error: "Entry not found" };
 
   const activeKeys = await getActiveFieldKeys();
   const customValues = sanitizeCustomValues(input.customValues, activeKeys);
@@ -155,7 +155,7 @@ export async function deletePvpStatEntry(entryId: string): Promise<ActionResult>
     .delete(pvpStatEntries)
     .where(eq(pvpStatEntries.id, entryId))
     .returning({ id: pvpStatEntries.id, memberId: pvpStatEntries.memberId });
-  if (!deleted) return { ok: false, error: "ไม่พบรายการนี้" };
+  if (!deleted) return { ok: false, error: "Entry not found" };
 
   revalidatePath("/pvp-stats");
   revalidatePath(`/pvp-stats/${deleted.memberId}`);
@@ -176,7 +176,7 @@ export async function reviewPvpStat(
 ): Promise<ActionResult> {
   const session = await requireAdmin();
   if (status !== null && !isReviewStatus(status)) {
-    return { ok: false, error: "สถานะไม่ถูกต้อง" };
+    return { ok: false, error: "Invalid status" };
   }
 
   const trimmedNote = note?.trim() || null;
@@ -192,7 +192,7 @@ export async function reviewPvpStat(
     .where(eq(pvpStatEntries.id, entryId))
     .returning({ id: pvpStatEntries.id, memberId: pvpStatEntries.memberId });
 
-  if (!updated) return { ok: false, error: "ไม่พบรายการนี้" };
+  if (!updated) return { ok: false, error: "Entry not found" };
 
   revalidatePath("/pvp-stats");
 
@@ -253,8 +253,8 @@ export async function createPvpStatField(input: {
 }): Promise<ActionResult> {
   await requireAdmin();
   const label = input.label.trim();
-  if (!label) return { ok: false, error: "กรุณาใส่ชื่อฟิลด์" };
-  const groupTitle = input.groupTitle.trim() || "อื่นๆ";
+  if (!label) return { ok: false, error: "Please enter a field name" };
+  const groupTitle = input.groupTitle.trim() || "Other";
 
   const existing = await db.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs);
   const existingKeys = new Set(existing.map((e) => e.key));
@@ -283,7 +283,7 @@ export async function setPvpStatFieldActive(id: string, active: boolean): Promis
     .set({ active })
     .where(eq(pvpStatFieldDefs.id, id))
     .returning({ id: pvpStatFieldDefs.id });
-  if (!updated) return { ok: false, error: "ไม่พบฟิลด์นี้" };
+  if (!updated) return { ok: false, error: "Field not found" };
 
   revalidatePath("/pvp-stats");
   return { ok: true };
@@ -302,7 +302,7 @@ export async function setPvpStatFieldActive(id: string, active: boolean): Promis
 export async function deletePvpStatField(id: string): Promise<ActionResult> {
   await requireAdmin();
   const [deleted] = await db.delete(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.id, id)).returning({ id: pvpStatFieldDefs.id });
-  if (!deleted) return { ok: false, error: "ไม่พบฟิลด์นี้" };
+  if (!deleted) return { ok: false, error: "Field not found" };
 
   revalidatePath("/pvp-stats");
   return { ok: true };

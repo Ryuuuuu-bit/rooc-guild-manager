@@ -10,14 +10,14 @@ interface SearchParams {
   date?: string;
 }
 
-const WEEKDAY_LABELS = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสฯ", "ศุกร์", "เสาร์"];
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function fmtDatePill(d: Date): string {
-  return d.toLocaleDateString("th-TH", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
+  return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
 }
 
 function fmtTime(d: Date): string {
-  return d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 }
 
 function fmtHHMM(time: string): string {
@@ -29,7 +29,7 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
   const params = await searchParams;
 
   const event = getCheckinEvent(params.event ?? "") ?? CHECKIN_EVENTS[0];
-  const scheduleLabel = `${event.weekdays.map((w) => WEEKDAY_LABELS[w]).join("/")} ${fmtHHMM(event.startTime)}-${fmtHHMM(event.endTime)} น.`;
+  const scheduleLabel = `${event.weekdays.map((w) => WEEKDAY_LABELS[w]).join("/")} ${fmtHHMM(event.startTime)}-${fmtHHMM(event.endTime)}`;
 
   const windows = await listCheckinWindows(event.key);
   const selected = windows.find((w) => w.date === params.date) ?? windows[0] ?? null;
@@ -40,16 +40,18 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">เช็คชื่อกิจกรรม — {event.label}</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Event Check-in — {event.label}</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            ใครอยู่ใน voice channel ช่วงกิจกรรม ({scheduleLabel}) บ้าง — นับว่า &quot;เข้าร่วม&quot; ถ้าเข้าห้องแม้แค่
-            ช่วงเดียวในช่วงเวลานี้ ไม่บังคับเวลาขั้นต่ำ พร้อมเวลาสะสมที่อยู่จริงให้ดูประกอบ
+            Who was in the event&apos;s voice channel ({scheduleLabel}) — counted as &quot;Attended&quot; if they
+            joined the channel for even one moment during this window, no minimum time required, with total time
+            present shown alongside.
           </p>
           {session.user.isAdmin && (
             <p className="mt-1 text-xs text-zinc-500">
-              ระบบเริ่มเก็บข้อมูลอัตโนมัติตั้งแต่วันที่ deploy ฟีเจอร์นี้ (หรือแต่ละกิจกรรม) เป็นต้นไป — Discord
-              ไม่มีประวัติ voice ย้อนหลังให้ดึงมาได้ รอบก่อนหน้านั้นต้องใช้การแคปแบบเดิม และถ้าบอทออฟไลน์ช่วงกิจกรรม
-              (เช่นตอน deploy) ข้อมูลช่วงนั้นจะขาดหายไปบางส่วน
+              The system started collecting data automatically from the day this feature (or each event) was
+              deployed onward — Discord has no voice history to pull from before that, so earlier rounds still rely
+              on manual screenshots. If the bot was offline during an event (e.g. during a deploy), some data for
+              that window will be missing.
             </p>
           )}
         </div>
@@ -72,7 +74,8 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
 
       {windows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/50 p-8 text-center text-sm text-zinc-500">
-          ยังไม่มีข้อมูล — ระบบจะเริ่มเก็บอัตโนมัติตั้งแต่รอบ {scheduleLabel.split(" ")[0]} ถัดไปที่มีคนเข้าห้อง
+          No data yet — the system will start collecting automatically from the next {scheduleLabel.split(" ")[0]}{" "}
+          round where someone joins the channel
         </div>
       ) : (
         <>
@@ -96,13 +99,13 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
             <>
               <div className="flex flex-col gap-1">
                 <p className="text-sm text-zinc-400">
-                  รอบ {fmtDatePill(report.window.start)} ({fmtTime(report.window.start)}-{fmtTime(report.window.end)} น.)
-                  — เข้าร่วม <span className="font-medium text-emerald-400">{report.attendedCount}</span>/
-                  {report.totalCount} คน
+                  Round {fmtDatePill(report.window.start)} ({fmtTime(report.window.start)}-{fmtTime(report.window.end)})
+                  — Attended <span className="font-medium text-emerald-400">{report.attendedCount}</span>/
+                  {report.totalCount}
                 </p>
                 {report.onLeaveCount > 0 && (
                   <p className="text-sm text-zinc-400">
-                    ลา (<span className="font-medium text-amber-400">{report.onLeaveCount}</span>):{" "}
+                    On Leave (<span className="font-medium text-amber-400">{report.onLeaveCount}</span>):{" "}
                     {report.results
                       .filter((r) => r.onLeave)
                       .map((r) => memberDisplayName(r.member))
@@ -116,19 +119,19 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                   <thead>
                     <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
                       <th className="w-10 px-5 py-3 font-medium">#</th>
-                      <th className="px-5 py-3 font-medium">สมาชิก</th>
-                      <th className="px-5 py-3 font-medium">สถานะ</th>
-                      <th className="px-5 py-3 font-medium">เวลาสะสม</th>
-                      <th className="px-5 py-3 font-medium">เข้าห้องครั้งแรก</th>
-                      <th className="px-5 py-3 font-medium">ออกจากห้องล่าสุด</th>
-                      <th className="px-5 py-3 font-medium">หมายเหตุ</th>
+                      <th className="px-5 py-3 font-medium">Member</th>
+                      <th className="px-5 py-3 font-medium">Status</th>
+                      <th className="px-5 py-3 font-medium">Time Present</th>
+                      <th className="px-5 py-3 font-medium">First Joined</th>
+                      <th className="px-5 py-3 font-medium">Last Left</th>
+                      <th className="px-5 py-3 font-medium">Note</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
                     {report.results.length === 0 && (
                       <tr>
                         <td colSpan={7} className="px-5 py-10 text-center text-zinc-500">
-                          ไม่มีข้อมูลสมาชิก
+                          No member data
                         </td>
                       </tr>
                     )}
@@ -153,31 +156,31 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                           </Link>
                         </td>
                         <td className="px-5 py-3">
-                          {/* Excused (confirmed ลา on the matching party
-                              board) takes priority over the plain "ไม่เข้าร่วม"
+                          {/* Excused (confirmed leave on the matching party
+                              board) takes priority over the plain "Absent"
                               label for an absent row — same person, but this
                               distinguishes an approved no-show from an
                               unexplained one at a glance. */}
                           {row.attended ? (
                             <span className="inline-block whitespace-nowrap rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
-                              เข้าร่วม
+                              Attended
                             </span>
                           ) : row.onLeave ? (
                             <span className="inline-block whitespace-nowrap rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-inset ring-amber-400/30">
-                              ลา
+                              On Leave
                             </span>
                           ) : (
                             <span className="inline-block whitespace-nowrap rounded-full bg-rose-400/15 px-2 py-0.5 text-xs font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30">
-                              ไม่เข้าร่วม
+                              Absent
                             </span>
                           )}
                         </td>
                         <td className="px-5 py-3 text-zinc-300">
-                          {row.attended ? `${row.minutesPresent}/${windowMinutes} นาที` : "—"}
+                          {row.attended ? `${row.minutesPresent}/${windowMinutes} min` : "—"}
                         </td>
                         <td className="px-5 py-3 text-xs text-zinc-400">{row.firstJoinAt ? fmtTime(row.firstJoinAt) : "—"}</td>
                         <td className="px-5 py-3 text-xs text-zinc-400">
-                          {row.stillConnected ? "ยังอยู่ในห้อง" : row.lastLeaveAt ? fmtTime(row.lastLeaveAt) : "—"}
+                          {row.stillConnected ? "Still in channel" : row.lastLeaveAt ? fmtTime(row.lastLeaveAt) : "—"}
                         </td>
                         <td className="px-5 py-3">
                           {/* key includes both eventKey and date: without

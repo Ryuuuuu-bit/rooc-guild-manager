@@ -198,7 +198,7 @@ function PartyCard({
               type="button"
               onClick={() => onDelete(party.id, party.label)}
               className="text-sky-400/60 hover:text-rose-400"
-              title={`ลบ ${party.label}`}
+              title={`Delete ${party.label}`}
             >
               ✕
             </button>
@@ -302,7 +302,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     startTransition(async () => {
       const result = await moveMember(selectedBoardId, member.id, destination);
       if (!result.ok) {
-        alert(result.error ?? "ย้ายสมาชิกไม่สำเร็จ ลองใหม่อีกครั้ง");
+        alert(result.error ?? "Failed to move member. Please try again.");
         router.refresh();
       }
     });
@@ -394,13 +394,13 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   async function handleReset() {
     if (!selectedBoardId) return;
-    if (!confirm("ล้างกระดานนี้ทั้งหมดกลับเป็นค่าว่าง? การกระทำนี้ย้อนกลับไม่ได้")) return;
+    if (!confirm("Clear this entire board back to empty? This cannot be undone.")) return;
     const result = await resetPartyBoard(selectedBoardId);
     if (result.ok) router.refresh();
   }
 
   async function handleCreateBoard() {
-    const name = window.prompt("ชื่อกระดานใหม่ (เช่น GVG, ปกติ, Event พิเศษ):");
+    const name = window.prompt("New board name (e.g. GVG, Normal, Special Event):");
     if (!name) return;
     const result = await createBoard(name);
     if (result.ok && result.id) {
@@ -413,7 +413,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   async function handleRenameBoard() {
     if (!board || !selectedBoardId) return;
-    const name = window.prompt("เปลี่ยนชื่อกระดาน:", board.name);
+    const name = window.prompt("Rename board:", board.name);
     if (!name) return;
     const result = await renameBoard(selectedBoardId, name);
     if (result.ok) router.refresh();
@@ -422,7 +422,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   async function handleDeleteBoard() {
     if (!board || !selectedBoardId) return;
-    if (!confirm(`ลบกระดาน "${board.name}" ทั้งหมด? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!confirm(`Delete the entire "${board.name}" board? This cannot be undone.`)) return;
     const result = await deleteBoard(selectedBoardId);
     if (result.ok) {
       const remaining = boards.filter((b) => b.id !== selectedBoardId);
@@ -433,7 +433,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   async function handleCreateGroup() {
     if (!selectedBoardId) return;
-    const name = window.prompt("ชื่อกลุ่มใหม่ (เช่น Main Stage, Party A, ชื่อหัวหน้าทีม):");
+    const name = window.prompt("New group name (e.g. Main Stage, Party A, team leader's name):");
     if (!name) return;
     const result = await createGroup(selectedBoardId, name);
     if (result.ok) router.refresh();
@@ -441,7 +441,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   }
 
   async function handleRenameGroup(groupId: string, currentName: string) {
-    const name = window.prompt("เปลี่ยนชื่อกลุ่ม:", currentName);
+    const name = window.prompt("Rename group:", currentName);
     if (!name) return;
     const result = await renameGroup(groupId, name);
     if (result.ok) router.refresh();
@@ -449,7 +449,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   }
 
   async function handleDeleteGroup(groupId: string, name: string) {
-    if (!confirm(`ลบกลุ่ม "${name}" ทั้งหมด (รวมทุก Party ข้างใน)? การกระทำนี้ย้อนกลับไม่ได้`)) return;
+    if (!confirm(`Delete the entire "${name}" group (including every party inside it)? This cannot be undone.`)) return;
     const result = await deleteGroup(groupId);
     if (result.ok) router.refresh();
   }
@@ -461,7 +461,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   }
 
   async function handleDeleteParty(partyId: string, label: string) {
-    if (!confirm(`ลบ ${label}?`)) return;
+    if (!confirm(`Delete ${label}?`)) return;
     const result = await deleteParty(partyId);
     if (result.ok) router.refresh();
   }
@@ -512,7 +512,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 onClick={handleCreateBoard}
                 className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
               >
-                + กระดานใหม่
+                + New Board
               </button>
             </>
           )}
@@ -520,33 +520,37 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
         {!board ? (
           <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-            ยังไม่มีกระดาน{effectiveAdmin ? " — กด \"+ กระดานใหม่\" ด้านบนเพื่อเริ่มสร้าง" : ""}
+            No boards yet{effectiveAdmin ? " — click \"+ New Board\" above to create one" : ""}
           </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
               <span>
-                กระดาน <span className="font-medium text-zinc-200">{board.name}</span> · ลงปาร์ตี้แล้ว{" "}
-                {placedCount} คน · ว่าง {board.unassigned.length} คน · Busy / ลา {board.busy.length} คน
+                Board <span className="font-medium text-zinc-200">{board.name}</span> · {placedCount} placed
+                {" "}· {board.unassigned.length} open · Busy / Leave {board.busy.length}
               </span>
               {isAdmin && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setScreenshotMode((v) => !v)}
-                    title="ซ่อนปุ่มจัดการทั้งหมด เหมาะสำหรับแคปภาพไปประกาศ"
+                    title="Hide all management controls — good for taking a screenshot to announce"
                     className={`rounded-lg border px-2.5 py-1 text-xs transition ${
                       screenshotMode
                         ? "border-amber-500 bg-amber-500/10 text-amber-300"
                         : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
                     }`}
                   >
-                    {screenshotMode ? "✓ โหมดแคปภาพ" : "โหมดแคปภาพ"}
+                    {screenshotMode ? "✓ Screenshot mode" : "Screenshot mode"}
                   </button>
                   {effectiveAdmin && selectedBoardId && (
                     <>
                       <PostAttendanceButton boardId={selectedBoardId} boardName={board.name} />
-                      <AnnounceBoardImageButton boardId={selectedBoardId} boardName={board.name} />
+                      <AnnounceBoardImageButton
+                        boardId={selectedBoardId}
+                        boardName={board.name}
+                        lastChannelId={board.lastImageAnnounceChannelId}
+                      />
                       <PartyTemplatePanel
                         boardId={selectedBoardId}
                         boardName={board.name}
@@ -557,21 +561,21 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onClick={handleRenameBoard}
                         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
                       >
-                        เปลี่ยนชื่อกระดาน
+                        Rename Board
                       </button>
                       <button
                         type="button"
                         onClick={handleReset}
                         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
                       >
-                        ล้างกระดานนี้
+                        Clear This Board
                       </button>
                       <button
                         type="button"
                         onClick={handleDeleteBoard}
                         className="rounded-lg border border-rose-900/60 px-2.5 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40"
                       >
-                        ลบกระดานนี้
+                        Delete This Board
                       </button>
                     </>
                   )}
@@ -589,14 +593,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               <section>
                 <div className="mb-2 flex flex-wrap items-center gap-2">
                   <h2 className="text-sm font-medium text-zinc-300">
-                    รอลงปาร์ตี้ ({filteredUnassigned.length}
+                    Waiting to Join ({filteredUnassigned.length}
                     {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
                   </h2>
                   <input
                     type="text"
                     value={poolQuery}
                     onChange={(e) => setPoolQuery(e.target.value)}
-                    placeholder="ค้นหาชื่อ..."
+                    placeholder="Search name..."
                     className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
                   />
                   <select
@@ -604,7 +608,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     onChange={(e) => setPoolClassFilter(e.target.value)}
                     className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="">ทุกอาชีพ</option>
+                    <option value="">All Classes</option>
                     {classOptions.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -614,7 +618,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 </div>
                 <DroppableZone
                   id="unassigned"
-                  label="รอลงปาร์ตี้"
+                  label="Waiting to join"
                   maxHeightClass="max-h-[420px]"
                   tapTarget={effectiveAdmin && !!selectedMember}
                   onBackgroundClick={
@@ -623,7 +627,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 >
                   {filteredUnassigned.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      {board.unassigned.length === 0 ? "ไม่มีใครรอลงปาร์ตี้" : "ไม่พบชื่อที่ตรงกับตัวกรอง"}
+                      {board.unassigned.length === 0 ? "No one is waiting to join" : "No names match the filter"}
                     </span>
                   )}
                   {filteredUnassigned.map((member) => (
@@ -652,7 +656,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       : "border-transparent text-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  {g.name} <span className="ml-1 text-xs text-zinc-500">{g.parties.length} ปาร์ตี้</span>
+                  {g.name} <span className="ml-1 text-xs text-zinc-500">{g.parties.length} parties</span>
                 </button>
               ))}
               {effectiveAdmin && (
@@ -661,14 +665,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   onClick={handleCreateGroup}
                   className="mb-1 rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
                 >
-                  + กลุ่มใหม่
+                  + New Group
                 </button>
               )}
             </div>
 
             {board.groups.length === 0 && (
               <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-                ยังไม่มีกลุ่มในกระดานนี้{effectiveAdmin ? " — กด \"+ กลุ่มใหม่\" ด้านบน" : ""}
+                No groups on this board yet{effectiveAdmin ? " — click \"+ New Group\" above" : ""}
               </div>
             )}
 
@@ -681,7 +685,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         type="button"
                         onClick={() => handleRenameGroup(activeGroup.id, activeGroup.name)}
                         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-                        title="เปลี่ยนชื่อกลุ่ม"
+                        title="Rename group"
                       >
                         ✎ {activeGroup.name}
                       </button>
@@ -690,14 +694,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onClick={() => handleCreateParty(activeGroup.id)}
                         className="rounded-lg border border-dashed border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
                       >
-                        + ปาร์ตี้ใหม่
+                        + New Party
                       </button>
                       <button
                         type="button"
                         onClick={() => handleDeleteGroup(activeGroup.id, activeGroup.name)}
                         className="rounded-lg border border-rose-900/60 px-2.5 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40"
                       >
-                        ลบกลุ่มนี้
+                        Delete This Group
                       </button>
                     </div>
                   ) : (
@@ -707,7 +711,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
                 {activeGroup.parties.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-                    กลุ่มนี้ยังไม่มีปาร์ตี้{effectiveAdmin ? " — กด \"+ ปาร์ตี้ใหม่\" ด้านบน" : ""}
+                    This group has no parties yet{effectiveAdmin ? " — click \"+ New Party\" above" : ""}
                   </div>
                 ) : (
                   <div
@@ -755,16 +759,16 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 has no way to tell WHO is busy/on leave vs. just missing. */}
             <section>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-medium text-zinc-300">Busy / ลา ({board.busy.length})</h2>
+                <h2 className="text-sm font-medium text-zinc-300">Busy / Leave ({board.busy.length})</h2>
                 {effectiveAdmin && (
                   <MemberPicker
                     members={board.unassigned}
                     onSelect={handleAssignBusy}
-                    emptyLabel="ไม่มีคนว่างแล้ว"
+                    emptyLabel="No one is open anymore"
                     align="right"
                     trigger={
                       <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
-                        + เพิ่มคนลา
+                        + Add to Busy/Leave
                       </span>
                     }
                   />
@@ -773,7 +777,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               {screenshotMode ? (
                 <div className="flex flex-wrap gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
                   {board.busy.length === 0 ? (
-                    <span className="px-1 py-1 text-xs text-zinc-600">ไม่มีคน Busy/ลารอบนี้</span>
+                    <span className="px-1 py-1 text-xs text-zinc-600">No one is Busy/Leave this round</span>
                   ) : (
                     board.busy.map((member) => (
                       <MemberChip key={member.id} member={member} draggable={false} compact showClassBadge />
@@ -783,7 +787,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               ) : (
                 <DroppableZone
                   id="busy"
-                  label="Busy / ลา"
+                  label="Busy / Leave"
                   tapTarget={effectiveAdmin && !!selectedMember}
                   onBackgroundClick={
                     effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "busy" }) : undefined
@@ -791,8 +795,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 >
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      ลากรายชื่อมาวางที่นี่ หรือกด &quot;+ เพิ่มคนลา&quot; เพื่อบอกว่าไม่ว่าง/ลารอบนี้ (หรือแตะรายชื่อ
-                      แล้วแตะที่นี่)
+                      Drag a name here, or click &quot;+ Add to Busy/Leave&quot; to mark someone unavailable/on leave
+                      this round (or tap a name, then tap here)
                     </span>
                   )}
                   {board.busy.map((member) => (
@@ -812,7 +816,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                             onChange={(e) => handleClassChange(member.id, e.target.value)}
                             className="rounded border border-zinc-700 bg-zinc-900 px-1 py-0.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
                           >
-                            <option value="">- อาชีพ -</option>
+                            <option value="">- Class -</option>
                             {classOptions.map((c) => (
                               <option key={c} value={c}>
                                 {c}
@@ -822,7 +826,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                           <button
                             type="button"
                             onClick={() => handleBusyRemove(member.id)}
-                            title="เอาออกจากรายชื่อลา"
+                            title="Remove from Busy/Leave list"
                             className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
                           >
                             ✕
@@ -849,14 +853,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
         <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
           <div className="flex items-center gap-3 rounded-full border border-amber-500/40 bg-zinc-900 py-2 pl-3 pr-2 text-sm shadow-xl shadow-black/40">
             <span className="text-zinc-400">
-              กำลังย้าย <span className="font-medium text-amber-300">{selectedMember.displayName}</span> — แตะช่องที่ต้องการ
+              Moving <span className="font-medium text-amber-300">{selectedMember.displayName}</span> — tap the target slot
             </span>
             <button
               type="button"
               onClick={() => setSelectedMember(null)}
               className="shrink-0 rounded-full border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
             >
-              ยกเลิก
+              Cancel
             </button>
           </div>
         </div>

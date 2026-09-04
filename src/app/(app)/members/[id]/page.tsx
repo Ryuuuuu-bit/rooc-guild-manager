@@ -50,17 +50,17 @@ export default async function MemberDetailPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="flex flex-col gap-6 lg:col-span-2">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-            <h2 className="mb-4 font-medium text-zinc-100">ข้อมูลสมาชิก</h2>
+            <h2 className="mb-4 font-medium text-zinc-100">Member Information</h2>
             {session.user.isAdmin ? (
               <MemberEditForm member={member} />
             ) : (
               <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <dt className="text-xs text-zinc-500">ชื่อในเกม</dt>
+                  <dt className="text-xs text-zinc-500">In-game Name</dt>
                   <dd className="text-sm text-zinc-200">{member.inGameName ?? "—"}</dd>
                 </div>
                 <div>
-                  <dt className="text-xs text-zinc-500">อาชีพ</dt>
+                  <dt className="text-xs text-zinc-500">Class</dt>
                   <dd className="text-sm text-zinc-200">
                     <ClassBadge className={member.characterClass} />
                   </dd>
@@ -70,10 +70,10 @@ export default async function MemberDetailPage({
           </section>
 
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50">
-            <h2 className="px-6 pt-6 pb-4 font-medium text-zinc-100">ประวัติกิจกรรม</h2>
+            <h2 className="px-6 pt-6 pb-4 font-medium text-zinc-100">Activity History</h2>
             <ul className="divide-y divide-zinc-800">
               {events.length === 0 && (
-                <li className="px-6 pb-6 text-sm text-zinc-500">ยังไม่มีประวัติ</li>
+                <li className="px-6 pb-6 text-sm text-zinc-500">No activity yet</li>
               )}
               {events.map((event) => (
                 <ActivityListItem
@@ -89,36 +89,36 @@ export default async function MemberDetailPage({
 
         <div className="flex flex-col gap-6">
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-            <h2 className="mb-4 font-medium text-zinc-100">สถานะ Discord</h2>
+            <h2 className="mb-4 font-medium text-zinc-100">Discord Status</h2>
             <dl className="flex flex-col gap-3 text-sm">
               <div>
-                <dt className="text-xs text-zinc-500">ชื่อเล่นใน Discord server (nickname)</dt>
+                <dt className="text-xs text-zinc-500">Discord Server Nickname</dt>
                 <dd className="text-zinc-200">{member.discordNickname ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-xs text-zinc-500">เข้าร่วม Discord เมื่อ</dt>
+                <dt className="text-xs text-zinc-500">Joined Discord</dt>
                 <dd className="text-zinc-200">
                   {member.joinedDiscordAt
                     ? new Date(member.joinedDiscordAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })
-                    : "ไม่ทราบ"}
+                    : "Unknown"}
                 </dd>
               </div>
               {member.leftDiscordAt && (
                 <div>
-                  <dt className="text-xs text-zinc-500">ออกจาก Discord เมื่อ</dt>
+                  <dt className="text-xs text-zinc-500">Left Discord</dt>
                   <dd className="text-zinc-200">
                     {new Date(member.leftDiscordAt).toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}
                   </dd>
                 </div>
               )}
               <div>
-                <dt className="text-xs text-zinc-500">ซิงค์ล่าสุด</dt>
+                <dt className="text-xs text-zinc-500">Last Synced</dt>
                 <dd className="text-zinc-200">
                   {formatDistanceToNow(member.lastSyncedAt, { addSuffix: true })}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-zinc-500">จำนวน role ใน Discord</dt>
+                <dt className="text-xs text-zinc-500">Discord Role Count</dt>
                 <dd className="text-zinc-200">{member.discordRoles.length}</dd>
               </div>
             </dl>
@@ -126,16 +126,16 @@ export default async function MemberDetailPage({
 
           {session.user.isAdmin && (
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 className="mb-4 font-medium text-zinc-100">การจัดการสมาชิก</h2>
+              <h2 className="mb-4 font-medium text-zinc-100">Member Management</h2>
               <MemberStatusActions member={member} />
             </section>
           )}
 
           {session.user.isAdmin && (
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 className="mb-1 font-medium text-zinc-100">บันทึกการลาย้อนหลัง</h2>
+              <h2 className="mb-1 font-medium text-zinc-100">Manual Leave Log</h2>
               <p className="mb-4 text-xs text-zinc-500">
-                สำหรับกรณีสมาชิกแจ้งลาส่วนตัว (เช่นทาง DM) ที่ไม่ได้กด reaction ใน Discord
+                For cases where a member notified their leave privately (e.g. via DM) without reacting in Discord
               </p>
               <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} boards={boards} />
             </section>
@@ -143,8 +143,8 @@ export default async function MemberDetailPage({
 
           {session.user.isAdmin && (
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-              <h2 className="mb-1 font-medium text-zinc-100">บันทึกภายใน</h2>
-              <p className="mb-4 text-xs text-zinc-500">เห็นเฉพาะแอดมิน — เช่น AFK ในกิจกรรม, พูดคุยแจ้งเตือนแล้ว</p>
+              <h2 className="mb-1 font-medium text-zinc-100">Internal Notes</h2>
+              <p className="mb-4 text-xs text-zinc-500">Visible to admins only — e.g. AFK during events, already warned</p>
               <MemberNotes memberId={member.id} notes={notes} />
             </section>
           )}

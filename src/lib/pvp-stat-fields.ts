@@ -26,9 +26,9 @@ export interface PvpStatFieldDef {
 // Grouped to mirror how the guild's own Google Sheet reads left-to-right —
 // members switching over from filling that in should recognize this layout.
 export const PVP_STAT_FIELD_GROUPS: { title: string; fields: PvpStatFieldDef[] }[] = [
-  { title: "พื้นฐาน", fields: [{ key: "cp", label: "CP" }] },
+  { title: "Base", fields: [{ key: "cp", label: "CP" }] },
   {
-    title: "ป้องกัน",
+    title: "Defense",
     fields: [
       { key: "pDef", label: "P.DEF" },
       { key: "mDef", label: "M.DEF" },
@@ -38,7 +38,7 @@ export const PVP_STAT_FIELD_GROUPS: { title: string; fields: PvpStatFieldDef[] }
     ],
   },
   {
-    title: "โจมตี",
+    title: "Attack",
     fields: [
       { key: "atk", label: "ATK" },
       { key: "matk", label: "MATK" },

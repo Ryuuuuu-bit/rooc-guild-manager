@@ -62,10 +62,10 @@ export async function listPartyTemplates(): Promise<PartyTemplateListItem[]> {
 export async function saveBoardAsTemplate(boardId: string, name: string): Promise<ActionResultWithId> {
   const session = await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อ template" };
+  if (!trimmed) return { ok: false, error: "Please enter a template name" };
 
   const board = await getPartyBoardDetail(boardId);
-  if (!board) return { ok: false, error: "ไม่พบกระดาน" };
+  if (!board) return { ok: false, error: "Board not found" };
 
   const data: PartyTemplateData = {
     groups: board.groups.map((g) => ({
@@ -81,7 +81,7 @@ export async function saveBoardAsTemplate(boardId: string, name: string): Promis
   };
 
   if (data.groups.every((g) => g.parties.length === 0)) {
-    return { ok: false, error: "กระดานนี้ยังไม่มีปาร์ตี้ให้บันทึก" };
+    return { ok: false, error: "This board has no parties to save yet" };
   }
 
   const [inserted] = await db
@@ -122,8 +122,8 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
     db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) }),
     db.query.partyTemplates.findFirst({ where: eq(partyTemplates.id, templateId) }),
   ]);
-  if (!board) return { ok: false, error: "ไม่พบกระดาน" };
-  if (!template) return { ok: false, error: "ไม่พบ template" };
+  if (!board) return { ok: false, error: "Board not found" };
+  if (!template) return { ok: false, error: "Template not found" };
 
   const data = template.data as PartyTemplateData;
   const templateMemberIds = new Set(

@@ -168,6 +168,12 @@ export const partyBoards = pgTable("party_boards", {
   // concept layered onto the existing one-board-one-emoji model. Set (and
   // re-settable) from the "โพสต์ ลา ใน Discord" dialog — see postAttendanceMessage.
   emoji: text("emoji"),
+  // Discord channel id the "ประกาศภาพผังปาร์ตี้" button last posted this
+  // board to — remembered per-board so the picker defaults to it next time
+  // instead of making an admin re-pick the same channel every single
+  // announcement. Just a remembered default: the dropdown still lets them
+  // pick a different channel any time.
+  lastImageAnnounceChannelId: text("last_image_announce_channel_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

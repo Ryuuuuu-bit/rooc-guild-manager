@@ -40,11 +40,11 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
               {memberDisplayName(member)}
               <ClassBadge className={member.characterClass} />
             </h1>
-            <p className="text-sm text-zinc-400">ประวัติ Stats PVP · {history.length} ครั้ง</p>
+            <p className="text-sm text-zinc-400">PVP Stats history · {history.length} entries</p>
           </div>
         </div>
         <Link href="/pvp-stats" className="text-sm text-zinc-400 transition hover:text-zinc-100">
-          ← กลับไปตารางรวม
+          ← Back to leaderboard
         </Link>
       </div>
 
@@ -53,9 +53,9 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
         <table className="w-full min-w-[1300px] text-left text-sm">
           <thead>
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3 font-medium">วันที่</th>
+              <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3 font-medium">Date</th>
               <th className="px-4 py-3 font-medium">Role</th>
-              <th className="px-4 py-3 font-medium">สถานะ</th>
+              <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 text-right font-medium">CP</th>
               <th className="px-4 py-3 text-right font-medium">P.DEF</th>
               <th className="px-4 py-3 text-right font-medium">M.DEF</th>
@@ -74,15 +74,15 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                   {f.label}
                 </th>
               ))}
-              <th className="px-4 py-3 font-medium">การ์ดบอส</th>
-              {isAdmin && <th className="px-4 py-3 font-medium">จัดการ</th>}
+              <th className="px-4 py-3 font-medium">Boss Cards</th>
+              {isAdmin && <th className="px-4 py-3 font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {history.length === 0 && (
               <tr>
                 <td colSpan={40} className="px-4 py-10 text-center text-zinc-500">
-                  ยังไม่เคยกรอกสถิติ
+                  No stats submitted yet
                 </td>
               </tr>
             )}
@@ -94,7 +94,7 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                   }`}
                 >
                   {new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
-                  {i === 0 && <span className="ml-2 text-xs text-amber-400">ล่าสุด</span>}
+                  {i === 0 && <span className="ml-2 text-xs text-amber-400">Latest</span>}
                 </td>
                 <td className="px-4 py-3 text-zinc-300">{entry.role ?? "—"}</td>
                 <td className="px-4 py-3">
@@ -144,7 +144,7 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
 
       {/* Card list is the default on anything narrower than 2xl — laptops included. */}
       <div className="flex flex-col gap-3 2xl:hidden">
-        {history.length === 0 && <p className="py-10 text-center text-sm text-zinc-500">ยังไม่เคยกรอกสถิติ</p>}
+        {history.length === 0 && <p className="py-10 text-center text-sm text-zinc-500">No stats submitted yet</p>}
         {history.map((entry, i) => (
           <PvpStatCard
             key={entry.id}
@@ -154,7 +154,7 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-100">
                   {new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
-                  {i === 0 && <span className="ml-2 text-xs text-amber-400">ล่าสุด</span>}
+                  {i === 0 && <span className="ml-2 text-xs text-amber-400">Latest</span>}
                 </p>
               </div>
             }

@@ -11,12 +11,12 @@ import {
   type ReviewStatus,
 } from "@/lib/pvp-stat-review";
 
-/** Small pill shown next to every submission — "รอตรวจ" (muted) until an admin reviews it, then ผ่าน/ไม่ผ่าน in the matching color. Read-only; everyone sees this, only admins get the button below to change it. */
+/** Small pill shown next to every submission — "Pending Review" (muted) until an admin reviews it, then Pass/Fail in the matching color. Read-only; everyone sees this, only admins get the button below to change it. */
 export function PvpReviewBadge({ status }: { status: string | null }) {
   if (!isReviewStatus(status)) {
     return (
       <span className="inline-flex items-center whitespace-nowrap rounded-full bg-zinc-800 px-2.5 py-0.5 text-xs font-medium text-zinc-400 ring-1 ring-inset ring-zinc-700">
-        รอตรวจ
+        Pending Review
       </span>
     );
   }
@@ -50,7 +50,7 @@ export function PvpReviewButton({
     const result = await reviewPvpStat(entryId, status, note.trim() || null);
     setSaving(false);
     if (!result.ok) {
-      setError(result.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Save failed, please try again");
       return;
     }
     setOpen(false);
@@ -64,7 +64,7 @@ export function PvpReviewButton({
         onClick={() => setOpen(true)}
         className="whitespace-nowrap rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-300 transition hover:border-amber-500/70 hover:bg-amber-500/20 hover:text-amber-200"
       >
-        ตรวจ
+        Review
       </button>
       {open && (
         <div
@@ -76,7 +76,7 @@ export function PvpReviewButton({
             className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">ตรวจสถิตินี้</h3>
+              <h3 className="font-medium text-zinc-100">Review These Stats</h3>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -104,12 +104,12 @@ export function PvpReviewButton({
             </div>
 
             <label className="flex flex-col gap-1 text-xs text-zinc-400">
-              หมายเหตุ (ถ้ามี — ต้องปรับอะไรเพิ่มเติม)
+              Note (optional — what needs to be adjusted)
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
-                placeholder="เช่น ใส่ CP มาให้ตรงกับในเกม"
+                placeholder="e.g. Match CP with what's shown in-game"
                 className="resize-none rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
               />
             </label>
@@ -125,7 +125,7 @@ export function PvpReviewButton({
                 }}
                 className="text-xs text-zinc-500 transition hover:text-zinc-300"
               >
-                ล้างค่า
+                Clear
               </button>
               <button
                 type="button"
@@ -133,7 +133,7 @@ export function PvpReviewButton({
                 disabled={saving}
                 className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
               >
-                {saving ? "กำลังบันทึก..." : "บันทึก"}
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>

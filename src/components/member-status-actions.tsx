@@ -37,22 +37,22 @@ export function MemberStatusActions({ member }: { member: Member }) {
         <form
           action={kickAction}
           onSubmit={(e) => {
-            if (!confirm(`เตะ ${member.discordUsername} ออกจากกิลด์ (และออกจาก Discord server จริงด้วย)? การกระทำนี้ย้อนกลับไม่ได้ — ต้องเชิญเข้า Discord server ใหม่เอง`)) {
+            if (!confirm(`Kick ${member.discordUsername} from the guild (and remove them from the Discord server too)? This cannot be undone — they'd need to be re-invited.`)) {
               e.preventDefault();
             }
           }}
           className="flex flex-col gap-2"
         >
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-zinc-400">เหตุผลที่เตะออก (ไม่บังคับ — จะโชว์ใน Discord audit log ด้วย)</span>
+            <span className="text-zinc-400">Reason for kick (optional — also shown in the Discord audit log)</span>
             <input
               name="reason"
               className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-rose-500 focus:outline-none"
-              placeholder="เช่น ไม่ทำกิจกรรมกิลด์เกิน 30 วัน"
+              placeholder="e.g. inactive in guild activities for over 30 days"
             />
           </label>
           <p className="text-xs text-zinc-500">
-            กดปุ่มนี้จะเตะออกจาก Discord server จริงด้วย (ไม่ใช่แค่ทำเครื่องหมายในระบบ)
+            This button will also remove them from the Discord server (not just mark them in the system).
           </p>
           {!kickState.ok && kickState.error && (
             <p className="text-xs text-rose-400">{kickState.error}</p>
@@ -65,7 +65,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
             disabled={kickPending}
             className="self-start rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-60"
           >
-            {kickPending ? "กำลังดำเนินการ..." : "เตะออกจากกิลด์ (Discord ด้วย)"}
+            {kickPending ? "Processing..." : "Kick from Guild (Discord too)"}
           </button>
         </form>
       ) : (
@@ -75,7 +75,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
             disabled={restorePending}
             className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-60"
           >
-            {restorePending ? "กำลังดำเนินการ..." : "เปลี่ยนสถานะกลับเป็น Active"}
+            {restorePending ? "Processing..." : "Restore to Active"}
           </button>
         </form>
       )}
@@ -83,8 +83,8 @@ export function MemberStatusActions({ member }: { member: Member }) {
       <form action={benchAction} className="flex flex-col gap-1 border-t border-zinc-800 pt-4">
         <p className="text-xs text-zinc-500">
           {member.benched
-            ? "สมาชิกคนนี้ยังมี role Rooc อยู่ แต่ถูกพักไม่นับในระบบจัดปาร์ตี้"
-            : "สำหรับคนที่ยังมี role Rooc แต่ไม่ได้เล่นแล้ว — พักไว้เพื่อไม่ให้ขึ้นในระบบจัดปาร์ตี้"}
+            ? "This member still has the Rooc role, but is benched and excluded from the party system."
+            : "For members who still have the Rooc role but are no longer playing — bench them to exclude from the party system."}
         </p>
         <button
           type="submit"
@@ -95,7 +95,7 @@ export function MemberStatusActions({ member }: { member: Member }) {
               : "border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
           }`}
         >
-          {benchPending ? "กำลังดำเนินการ..." : member.benched ? "เลิกพักการเล่น" : "พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้)"}
+          {benchPending ? "Processing..." : member.benched ? "Unbench" : "Bench (exclude from party system)"}
         </button>
       </form>
     </div>

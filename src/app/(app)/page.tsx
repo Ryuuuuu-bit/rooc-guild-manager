@@ -80,19 +80,19 @@ export default async function DashboardPage() {
       />
 
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-50">ภาพรวมกิลด์</h1>
+        <h1 className="text-2xl font-semibold text-zinc-50">Guild Overview</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          ข้อมูลสมาชิกซิงค์อัตโนมัติจาก Discord server ของกิลด์
+          Member data auto-synced from the guild&apos;s Discord server
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <StatCard label="สมาชิกทั้งหมด" value={stats.total} icon={<UsersIcon />} />
-        <StatCard label="สมาชิกที่ยังอยู่" value={stats.active} accent="positive" icon={<CheckIcon />} />
-        <StatCard label="ออกจากกิลด์" value={stats.left} icon={<ExitIcon />} />
-        <StatCard label="ถูกเตะออก" value={stats.kicked} accent="negative" icon={<XIcon />} />
+        <StatCard label="Total Members" value={stats.total} icon={<UsersIcon />} />
+        <StatCard label="Active Members" value={stats.active} accent="positive" icon={<CheckIcon />} />
+        <StatCard label="Left Guild" value={stats.left} icon={<ExitIcon />} />
+        <StatCard label="Kicked" value={stats.kicked} accent="negative" icon={<XIcon />} />
         <StatCard
-          label="เข้า/ออก 7 วันล่าสุด"
+          label="Joins/Leaves — Last 7 Days"
           value={
             <>
               <span className="text-emerald-400">+{stats.joinsLast7Days}</span>
@@ -102,28 +102,28 @@ export default async function DashboardPage() {
           }
           icon={<TrendIcon />}
         />
-        <StatCard label="พักการเล่น" value={stats.benched} accent="warning" icon={<PauseIcon />} />
+        <StatCard label="Benched" value={stats.benched} accent="warning" icon={<PauseIcon />} />
       </div>
 
       {CHECKIN_EVENTS.some((_, i) => attendanceTrends[i].some((p) => p.rate !== null)) && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {CHECKIN_EVENTS.map((e, i) => (
-            <AttendanceTrendChart key={e.key} title={`เทรนด์การเข้าร่วม — ${e.label}`} points={attendanceTrends[i]} />
+            <AttendanceTrendChart key={e.key} title={`Attendance Trend — ${e.label}`} points={attendanceTrends[i]} />
           ))}
         </div>
       )}
 
       <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-5">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="font-medium text-zinc-100">สัดส่วนอาชีพ</h2>
+          <h2 className="font-medium text-zinc-100">Class Distribution</h2>
           {totalClassed > 0 && (
             <span className="text-xs text-zinc-500">
-              รวม <span className="font-medium tabular-nums text-zinc-300">{totalClassed}</span> คน
+              Total <span className="font-medium tabular-nums text-zinc-300">{totalClassed}</span> members
             </span>
           )}
         </div>
         {totalClassed === 0 ? (
-          <p className="text-sm text-zinc-500">ยังไม่มีข้อมูลอาชีพของสมาชิก</p>
+          <p className="text-sm text-zinc-500">No class data yet</p>
         ) : (
           <div className="flex flex-col gap-1">
             {classDistribution.known.map((c) => (
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
             ))}
             {classDistribution.unassignedCount > 0 && (
               <div className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 transition hover:bg-zinc-800/40">
-                <span className="w-28 shrink-0 truncate text-sm text-zinc-500">— ไม่ระบุ</span>
+                <span className="w-28 shrink-0 truncate text-sm text-zinc-500">— Unset</span>
                 <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-800/70">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-zinc-600/50 to-zinc-500"
@@ -162,15 +162,15 @@ export default async function DashboardPage() {
 
       <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50">
         <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
-          <h2 className="font-medium text-zinc-100">กิจกรรมล่าสุด</h2>
+          <h2 className="font-medium text-zinc-100">Recent Activity</h2>
           <Link href="/activity" className="text-xs text-amber-400 hover:text-amber-300">
-            ดูทั้งหมด →
+            View All →
           </Link>
         </div>
         <ul className="divide-y divide-zinc-800">
           {activity.length === 0 && (
             <li className="px-5 py-6 text-center text-sm text-zinc-500">
-              ยังไม่มีกิจกรรม — บอทจะเริ่มบันทึกเมื่อมีคนเข้า/ออกกิลด์
+              No activity yet — the bot will start logging when members join or leave
             </li>
           )}
           {activity.map(({ event, member }) => (

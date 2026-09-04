@@ -23,10 +23,10 @@ function revalidateEverywhere() {
 export async function createLootCategory(name: string): Promise<ActionResult> {
   await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อหมวดหมู่" };
+  if (!trimmed) return { ok: false, error: "Please enter a category name" };
 
   const dup = await db.query.lootCategories.findFirst({ where: eq(lootCategories.name, trimmed) });
-  if (dup) return { ok: false, error: "มีหมวดหมู่ชื่อนี้อยู่แล้ว" };
+  if (dup) return { ok: false, error: "A category with this name already exists" };
 
   const [{ maxOrder } = { maxOrder: -1 }] = await db
     .select({ maxOrder: sql<number>`coalesce(max(${lootCategories.sortOrder}), -1)::int` })
@@ -40,12 +40,12 @@ export async function createLootCategory(name: string): Promise<ActionResult> {
 export async function renameLootCategory(id: string, name: string): Promise<ActionResult> {
   await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อหมวดหมู่" };
+  if (!trimmed) return { ok: false, error: "Please enter a category name" };
 
   const dup = await db.query.lootCategories.findFirst({
     where: and(eq(lootCategories.name, trimmed), ne(lootCategories.id, id)),
   });
-  if (dup) return { ok: false, error: "มีหมวดหมู่ชื่อนี้อยู่แล้ว" };
+  if (dup) return { ok: false, error: "A category with this name already exists" };
 
   await db.update(lootCategories).set({ name: trimmed }).where(eq(lootCategories.id, id));
   revalidateEverywhere();
@@ -65,7 +65,7 @@ export async function moveLootCategory(id: string, direction: "up" | "down"): Pr
 
   const all = await db.select().from(lootCategories).orderBy(asc(lootCategories.sortOrder));
   const idx = all.findIndex((c) => c.id === id);
-  if (idx === -1) return { ok: false, error: "ไม่พบหมวดหมู่นี้" };
+  if (idx === -1) return { ok: false, error: "Category not found" };
 
   const swapIdx = direction === "up" ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
@@ -88,7 +88,7 @@ export async function addToLootQueue(categoryId: string, memberId: string): Prom
   const existing = await db.query.lootQueueEntries.findFirst({
     where: and(eq(lootQueueEntries.categoryId, categoryId), eq(lootQueueEntries.memberId, memberId)),
   });
-  if (existing) return { ok: false, error: "สมาชิกคนนี้อยู่ในคิวหมวดนี้แล้ว" };
+  if (existing) return { ok: false, error: "This member is already in this category's queue" };
 
   const [{ maxPos } = { maxPos: -1 }] = await db
     .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
@@ -123,7 +123,7 @@ export async function moveLootQueueEntry(
     .where(eq(lootQueueEntries.categoryId, categoryId))
     .orderBy(asc(lootQueueEntries.position));
   const idx = all.findIndex((e) => e.memberId === memberId);
-  if (idx === -1) return { ok: false, error: "ไม่พบสมาชิกคนนี้ในคิว" };
+  if (idx === -1) return { ok: false, error: "Member not found in queue" };
 
   const swapIdx = direction === "up" ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
@@ -152,7 +152,7 @@ export async function moveLootQueueEntryToPosition(
   newRank: number
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (!Number.isInteger(newRank) || newRank < 1) return { ok: false, error: "ลำดับต้องเป็นเลขจำนวนเต็มตั้งแต่ 1" };
+  if (!Number.isInteger(newRank) || newRank < 1) return { ok: false, error: "Position must be an integer of 1 or greater" };
 
   return db.transaction(async (tx) => {
     const all = await tx
@@ -161,7 +161,7 @@ export async function moveLootQueueEntryToPosition(
       .where(eq(lootQueueEntries.categoryId, categoryId))
       .orderBy(asc(lootQueueEntries.position));
     const idx = all.findIndex((e) => e.memberId === memberId);
-    if (idx === -1) return { ok: false, error: "ไม่พบสมาชิกคนนี้ในคิว" };
+    if (idx === -1) return { ok: false, error: "Member not found in queue" };
 
     const targetIdx = Math.min(newRank - 1, all.length - 1);
     if (targetIdx === idx) return { ok: true };
@@ -202,7 +202,7 @@ export interface RunRoundResult extends ActionResult {
  */
 export async function runLootRound(categoryId: string, count: number, label?: string): Promise<RunRoundResult> {
   const session = await requireAdmin();
-  if (!Number.isInteger(count) || count <= 0) return { ok: false, error: "จำนวนคนต้องเป็นเลขจำนวนเต็มมากกว่า 0" };
+  if (!Number.isInteger(count) || count <= 0) return { ok: false, error: "Number of people must be an integer greater than 0" };
 
   return db.transaction(async (tx) => {
     const queue = await tx
@@ -210,7 +210,7 @@ export async function runLootRound(categoryId: string, count: number, label?: st
       .from(lootQueueEntries)
       .where(eq(lootQueueEntries.categoryId, categoryId))
       .orderBy(asc(lootQueueEntries.position));
-    if (queue.length === 0) return { ok: false, error: "คิวหมวดนี้ยังไม่มีสมาชิก" };
+    if (queue.length === 0) return { ok: false, error: "This category's queue has no members" };
 
     const servedEntries = queue.slice(0, count).map((r) => r.entry);
     const short = servedEntries.length < count;
@@ -267,7 +267,7 @@ export async function setLootCategoryNumberingBase(
   baseCategoryId: string | null
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (baseCategoryId === categoryId) return { ok: false, error: "หมวดหมู่อ้างอิงตัวเองไม่ได้" };
+  if (baseCategoryId === categoryId) return { ok: false, error: "A category cannot reference itself" };
 
   await db.update(lootCategories).set({ numberingBaseCategoryId: baseCategoryId }).where(eq(lootCategories.id, categoryId));
   revalidateEverywhere();
@@ -286,7 +286,7 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
 
   return db.transaction(async (tx) => {
     const round = await tx.query.lootRounds.findFirst({ where: eq(lootRounds.id, roundId) });
-    if (!round) return { ok: false, error: "ไม่พบรอบนี้ (อาจถูกลบไปแล้ว)" };
+    if (!round) return { ok: false, error: "Round not found (it may have been deleted)" };
 
     const [mostRecent] = await tx
       .select()
@@ -295,7 +295,7 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
       .orderBy(desc(lootRounds.createdAt))
       .limit(1);
     if (mostRecent?.id !== roundId) {
-      return { ok: false, error: "ย้อนกลับได้เฉพาะรอบล่าสุดของหมวดนี้เท่านั้น — มีรอบใหม่กว่ารันไปแล้ว" };
+      return { ok: false, error: "Only the most recent round for this category can be undone — a newer round has already been run" };
     }
 
     for (let i = 0; i < round.memberIds.length; i++) {
@@ -314,12 +314,12 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
 /** Posts an already-composed message (built client-side from the round result — see the numbered-list format the guild already uses in Discord) to a channel via the bot. Kept generic (just content in, message id out) rather than re-deriving the text server-side, so the admin can tweak wording before posting. */
 export async function postLootRoundMessage(channelId: string, content: string): Promise<ActionResult> {
   await requireAdmin();
-  if (!content.trim()) return { ok: false, error: "ข้อความว่าง" };
+  if (!content.trim()) return { ok: false, error: "Message is empty" };
   try {
     await createChannelMessage(channelId, content);
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "โพสต์ไม่สำเร็จ" };
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to post" };
   }
 }
 

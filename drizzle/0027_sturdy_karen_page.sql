@@ -1,0 +1,1 @@
+ALTER TABLE "party_boards" ADD COLUMN "last_image_announce_channel_id" text;

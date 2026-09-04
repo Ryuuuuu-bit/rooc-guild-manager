@@ -38,11 +38,12 @@ export default async function LootQueuePage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-50">คิวประมูลของรางวัล</h1>
+        <h1 className="text-2xl font-semibold text-zinc-50">Loot Auction Queue</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          คิวแยกอิสระต่อหมวดหมู่ (เช่น เศษการ์ด, ขนนกขาว, ขนนกหลากสี, กล่องเศษบอสปลอม, ประมูลกิลด์ Fix 5 คน) —
-          แอดมินจัดลำดับคิวเอง เวลารันรอบให้กรอกจำนวนคนที่ได้ในรอบนั้น ระบบจะดึงคนจากหัวคิวให้อัตโนมัติ
-          แล้วย้ายคนที่ได้ไปต่อท้ายคิวของหมวดนั้น
+          Each category keeps its own independent queue (e.g. Card Fragments, White Feathers, Rainbow Feathers, Fake Boss
+          Loot Boxes, Fixed 5-Person Guild Auction) — admins order the queue manually. When running a round, enter how
+          many people were served that round; the system automatically pulls that many from the front of the queue and
+          moves them to the back of that category&apos;s queue.
         </p>
       </div>
       <LootQueueManager

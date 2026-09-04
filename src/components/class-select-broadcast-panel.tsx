@@ -10,7 +10,7 @@ import {
 import type { DiscordChannel } from "@/lib/discord";
 
 /**
- * Admin tool: posts (or reposts) the guild-wide "เลือกอาชีพ" reaction
+ * Admin tool: posts (or reposts) the guild-wide "Select Class" reaction
  * message in a Discord channel the admin picks from a live dropdown (no
  * hard-coded channel — see `listDiscordChannels`). Members react with the
  * class emoji that matches their in-game job and the bot updates their
@@ -32,7 +32,7 @@ export function ClassSelectBroadcastPanel() {
     const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getClassSelectStatus()]);
     setLoading(false);
     if (!chRes.ok || !chRes.channels) {
-      setError(chRes.error ?? "ดึงรายชื่อ channel ไม่สำเร็จ");
+      setError(chRes.error ?? "Failed to fetch channel list.");
       return;
     }
     setChannels(chRes.channels);
@@ -47,7 +47,7 @@ export function ClassSelectBroadcastPanel() {
     const res = await postClassSelectMessage(channelId);
     setPosting(false);
     if (!res.ok) {
-      setError(res.error ?? "โพสต์ไม่สำเร็จ");
+      setError(res.error ?? "Failed to post.");
       return;
     }
     // ok can still carry a warning (e.g. some emojis failed to seed) —
@@ -64,36 +64,37 @@ export function ClassSelectBroadcastPanel() {
         onClick={handleOpen}
         className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
       >
-        โพสต์เลือกอาชีพใน Discord
+        Post Class Select in Discord
       </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-16">
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-100">โพสต์ข้อความเลือกอาชีพ</h2>
+              <h2 className="text-sm font-semibold text-zinc-100">Post Class Select Message</h2>
               <button type="button" onClick={() => setOpen(false)} className="rounded px-2 py-1 text-xs text-zinc-500 hover:text-zinc-200">
-                ปิด ✕
+                Close ✕
               </button>
             </div>
 
-            {loading && <p className="py-6 text-center text-sm text-zinc-500">กำลังโหลด...</p>}
+            {loading && <p className="py-6 text-center text-sm text-zinc-500">Loading...</p>}
 
             {!loading && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-zinc-500">
-                  บอทจะโพสต์ข้อความให้สมาชิกกดอิโมจิเลือกอาชีพของตัวเอง — ระบบอัปเดต class ให้อัตโนมัติเมื่อมีคนกด
-                  (ต้องให้บอทมีสิทธิ์ &quot;Send Messages&quot;, &quot;Add Reactions&quot; และ &quot;Manage Messages&quot; ใน channel ที่เลือก)
+                  The bot will post a message asking members to react with their own class — the system updates
+                  their class automatically when they react (the bot needs &quot;Send Messages&quot;, &quot;Add Reactions&quot;, and
+                  &quot;Manage Messages&quot; permission in the selected channel).
                 </p>
 
                 {status && (
                   <p className="rounded-lg border border-emerald-900/60 bg-emerald-950/30 p-2 text-xs text-emerald-300">
-                    มีข้อความที่โพสต์อยู่แล้ว{" "}
+                    A message is already posted.{" "}
                     <a href={status.jumpUrl} target="_blank" rel="noreferrer" className="underline">
-                      เปิดดูใน Discord
+                      Open in Discord
                     </a>
-                    {" "}— กด &quot;อัปเดต&quot; จะแก้ไขข้อความเดิม (เช่น เพิ่มอาชีพใหม่) โดยไม่ลบ reaction ของสมาชิกที่กดไว้แล้ว
-                    ถ้าเลือก channel อื่นจะโพสต์เป็นข้อความใหม่แทน
+                    {" "}— clicking &quot;Update&quot; edits the existing message (e.g. to add a new class) without removing
+                    reactions members have already made. Choosing a different channel posts a new message instead.
                   </p>
                 )}
 
@@ -120,7 +121,7 @@ export function ClassSelectBroadcastPanel() {
                     onClick={handlePost}
                     className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {posting ? "กำลังโพสต์..." : status ? "อัปเดตข้อความเดิม" : "โพสต์ข้อความ"}
+                    {posting ? "Posting..." : status ? "Update Existing Message" : "Post Message"}
                   </button>
                 </div>
               </div>

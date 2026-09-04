@@ -35,13 +35,13 @@ export function ActivityListItem({
   const isPendingLeave = event.type === "ATTENDANCE_LEAVE" && !event.confirmedAt;
 
   function handleDelete() {
-    if (!confirm(`ลบรายการนี้ออกจากประวัติ? การกระทำนี้ย้อนกลับไม่ได้\n\n"${eventLabels[event.type] ?? event.type}${event.detail ? " — " + event.detail : ""}"`)) {
+    if (!confirm(`Delete this entry from the log? This cannot be undone.\n\n"${eventLabels[event.type] ?? event.type}${event.detail ? " — " + event.detail : ""}"`)) {
       return;
     }
     startTransition(async () => {
       const res = await deleteMembershipEvent(event.id);
       if (!res.ok) {
-        alert(res.error ?? "ลบไม่สำเร็จ");
+        alert(res.error ?? "Delete failed");
         return;
       }
       setDeleted(true);
@@ -74,9 +74,9 @@ export function ActivityListItem({
           {isPendingLeave && (
             <span
               className="whitespace-nowrap rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
-              title="นับในสถิติหลังกดค้างไว้ครบ 30 นาที"
+              title="Counted in stats after being held for 30 minutes straight"
             >
-              รอยืนยัน
+              Pending
             </span>
           )}
         </p>
@@ -96,7 +96,7 @@ export function ActivityListItem({
           type="button"
           onClick={handleDelete}
           disabled={pending}
-          title="ลบรายการนี้ (เช่น ข้อมูลทดสอบ)"
+          title="Delete this entry (e.g. test data)"
           className="shrink-0 rounded px-1.5 py-1 text-xs text-zinc-600 transition hover:bg-rose-950/40 hover:text-rose-400 disabled:opacity-50"
         >
           ✕

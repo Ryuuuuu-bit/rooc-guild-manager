@@ -44,7 +44,7 @@ async function getPartyIdsForBoard(boardId: string): Promise<string[]> {
 export async function createBoard(name: string): Promise<ActionResultWithId> {
   await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกระดาน" };
+  if (!trimmed) return { ok: false, error: "Please enter a board name" };
 
   const [{ maxOrder } = { maxOrder: -1 }] = await db
     .select({ maxOrder: sql<number>`coalesce(max(${partyBoards.sortOrder}), -1)::int` })
@@ -62,7 +62,7 @@ export async function createBoard(name: string): Promise<ActionResultWithId> {
 export async function renameBoard(boardId: string, name: string): Promise<ActionResult> {
   await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกระดาน" };
+  if (!trimmed) return { ok: false, error: "Please enter a board name" };
 
   await db.update(partyBoards).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
   revalidatePath("/party");
@@ -80,7 +80,7 @@ export async function deleteBoard(boardId: string): Promise<ActionResult> {
 
 export async function createGroup(boardId: string, name: string): Promise<ActionResultWithId> {
   await requireAdmin();
-  const trimmed = name.trim() || "กลุ่มใหม่";
+  const trimmed = name.trim() || "New Group";
 
   const [{ maxOrder } = { maxOrder: -1 }] = await db
     .select({ maxOrder: sql<number>`coalesce(max(${partyGroups.sortOrder}), -1)::int` })
@@ -99,7 +99,7 @@ export async function createGroup(boardId: string, name: string): Promise<Action
 export async function renameGroup(groupId: string, name: string): Promise<ActionResult> {
   await requireAdmin();
   const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "กรุณาใส่ชื่อกลุ่ม" };
+  if (!trimmed) return { ok: false, error: "Please enter a group name" };
 
   await db.update(partyGroups).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyGroups.id, groupId));
   revalidatePath("/party");
@@ -160,7 +160,7 @@ export async function moveMember(
 
   const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!member || member.status !== "ACTIVE") {
-    return { ok: false, error: "ไม่พบสมาชิก หรือสมาชิกไม่ได้อยู่ในกิลด์แล้ว" };
+    return { ok: false, error: "Member not found, or they are no longer in the guild" };
   }
 
   // Checked before clearing below, so we know whether this move is a ลา (→
@@ -247,7 +247,7 @@ export async function setMemberClass(memberId: string, className: string | null)
   const session = await requireAdmin();
 
   const finalClassName = className && (await isValidJobClassName(className)) ? className : null;
-  if (className && !finalClassName) return { ok: false, error: "อาชีพไม่ถูกต้อง" };
+  if (className && !finalClassName) return { ok: false, error: "Invalid class" };
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
 
@@ -310,16 +310,30 @@ export async function resetPartyBoard(boardId: string): Promise<ActionResult> {
  */
 export async function announcePartyBoardImage(boardId: string, channelId: string): Promise<ActionResult> {
   await requireAdmin();
-  if (!channelId) return { ok: false, error: "กรุณาเลือก channel" };
+  if (!channelId) return { ok: false, error: "Please select a channel" };
 
   const board = await getPartyBoardDetail(boardId);
-  if (!board) return { ok: false, error: "ไม่พบกระดาน" };
+  if (!board) return { ok: false, error: "Board not found" };
 
   try {
     const image = renderPartyBoardImage(board);
-    await createChannelMessageWithImage(channelId, `📋 ผังปาร์ตี้ล่าสุด — **${board.name}**`, image, "party-board.png");
+    const dateStr = new Date().toLocaleString("th-TH", {
+      dateStyle: "long",
+      timeStyle: "short",
+      timeZone: "Asia/Bangkok",
+    });
+    await createChannelMessageWithImage(
+      channelId,
+      `📋 ผังปาร์ตี้ล่าสุด — **${board.name}** (${dateStr})`,
+      image,
+      "party-board.png"
+    );
+    // Remembered so the picker defaults to this channel next time instead
+    // of making the admin re-pick the same channel every announcement.
+    await db.update(partyBoards).set({ lastImageAnnounceChannelId: channelId }).where(eq(partyBoards.id, boardId));
+    revalidatePath("/party");
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "โพสต์ไม่สำเร็จ" };
+    return { ok: false, error: err instanceof Error ? err.message : "Failed to post." };
   }
 }

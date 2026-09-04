@@ -42,7 +42,7 @@ export function PvpStatFieldsEditor({
         <label className={labelClass}>
           Role
           <select value={role} onChange={(e) => onRoleChange(e.target.value)} className={inputClass}>
-            <option value="">— ไม่ระบุ —</option>
+            <option value="">— Not specified —</option>
             {PVP_ROLES.map((r) => (
               <option key={r} value={r}>
                 {r}
@@ -88,12 +88,12 @@ export function PvpStatFieldsEditor({
       ))}
 
       <label className={labelClass}>
-        การ์ดบอสที่มี
+        Boss Cards owned
         <input
           type="text"
           value={bossCards}
           onChange={(e) => onBossCardsChange(e.target.value)}
-          placeholder="เช่น Moon/Orclord"
+          placeholder="e.g. Moon/Orclord"
           className={inputClass}
         />
       </label>

@@ -123,7 +123,7 @@ function isStale(entry: PvpStatEntry | null): boolean {
   return !entry || daysSince(entry.createdAt) > STALE_DAYS;
 }
 
-/** Small warning triangle so "overdue" isn't color-only — shows before the date/"ยังไม่กรอก" text. */
+/** Small warning triangle so "overdue" isn't color-only — shows before the date/"Not submitted" text. */
 function StaleIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className="mr-1 inline h-3 w-3 shrink-0 align-[-1px] text-rose-400">
@@ -172,11 +172,11 @@ function ClassFilterDropdown({
             : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
         }`}
       >
-        อาชีพ{selected.size > 0 ? ` · ${selected.size}` : ""}
+        Class{selected.size > 0 ? ` · ${selected.size}` : ""}
       </button>
       {open && (
         <div className="absolute left-0 top-full z-20 mt-1 flex max-h-80 w-56 flex-col gap-0.5 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
-          {classes.length === 0 && <p className="px-2.5 py-2 text-xs text-zinc-500">ยังไม่มีอาชีพในระบบ</p>}
+          {classes.length === 0 && <p className="px-2.5 py-2 text-xs text-zinc-500">No classes yet</p>}
           {classes.map((c) => {
             const active = selected.has(c.name);
             return (
@@ -212,7 +212,7 @@ function ClassFilterDropdown({
               onClick={onClear}
               className="mt-1 rounded-lg border-t border-zinc-800 px-2.5 pt-2 text-left text-xs text-zinc-500 transition hover:text-zinc-300"
             >
-              ล้างตัวกรองอาชีพ
+              Clear class filter
             </button>
           )}
         </div>
@@ -316,10 +316,10 @@ export function PvpStatsTable({
 
   const emptyMessage =
     rows.length === 0
-      ? "ยังไม่มีสมาชิกในระบบ"
+      ? "No members yet"
       : pendingOnly && selectedClasses.size === 0 && !query.trim()
-        ? "ไม่มีรายการรอตรวจแล้วตอนนี้"
-        : "ไม่พบสมาชิกที่ตรงกับตัวกรอง";
+        ? "Nothing pending review right now"
+        : "No members match the filters";
 
   // Tracks whether the table's own horizontal scroll container has more
   // content past its right edge — re-checked on scroll, on window resize,
@@ -359,7 +359,7 @@ export function PvpStatsTable({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="ค้นหาสมาชิก..."
+            placeholder="Search members..."
             className="w-full rounded-xl border border-zinc-800 bg-zinc-900/50 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 transition focus:border-amber-500 focus:outline-none"
           />
         </div>
@@ -376,7 +376,7 @@ export function PvpStatsTable({
                 : "border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
             }`}
           >
-            รอตรวจ · {pendingCount}
+            Pending Review · {pendingCount}
           </button>
         )}
 
@@ -390,7 +390,7 @@ export function PvpStatsTable({
               viewMode === "table" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            ตาราง
+            Table
           </button>
           <button
             type="button"
@@ -399,7 +399,7 @@ export function PvpStatsTable({
               viewMode === "cards" ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            การ์ด · ดูทุกสถิติพร้อมกัน
+            Cards · View all stats at once
           </button>
         </div>
       </div>
@@ -432,13 +432,13 @@ export function PvpStatsTable({
                 <thead>
                   <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
                     <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3">
-                      <SortHeader label="สมาชิก" sortKey="name" active={sort.key === "name"} dir={sort.key === "name" ? sort.dir : defaultDirFor("name")} onSort={handleSort} />
+                      <SortHeader label="Member" sortKey="name" active={sort.key === "name"} dir={sort.key === "name" ? sort.dir : defaultDirFor("name")} onSort={handleSort} />
                     </th>
                     <th className="px-4 py-3">
-                      <SortHeader label="อาชีพ" sortKey="class" active={sort.key === "class"} dir={sort.key === "class" ? sort.dir : defaultDirFor("class")} onSort={handleSort} />
+                      <SortHeader label="Class" sortKey="class" active={sort.key === "class"} dir={sort.key === "class" ? sort.dir : defaultDirFor("class")} onSort={handleSort} />
                     </th>
                     <th className="px-4 py-3 font-medium">Role</th>
-                    <th className="px-4 py-3 font-medium">สถานะ</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
                     <StatHeader fieldKey="cp" label="CP" sort={sort} onSort={handleSort} />
                     {FIXED_STAT_COLUMNS.map((col) => (
                       <StatHeader key={col.key} fieldKey={col.key} label={col.label} sort={sort} onSort={handleSort} />
@@ -446,9 +446,9 @@ export function PvpStatsTable({
                     {activeFieldDefs.map((f) => (
                       <StatHeader key={f.key} fieldKey={`custom:${f.key}`} label={f.label} sort={sort} onSort={handleSort} />
                     ))}
-                    <th className="px-4 py-3 font-medium">การ์ดบอส</th>
-                    <th className="px-4 py-3 font-medium">อัปเดตล่าสุด</th>
-                    {isAdmin && <th className="px-4 py-3 font-medium">แก้ไข</th>}
+                    <th className="px-4 py-3 font-medium">Boss Cards</th>
+                    <th className="px-4 py-3 font-medium">Last Updated</th>
+                    {isAdmin && <th className="px-4 py-3 font-medium">Edit</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-800">
@@ -514,7 +514,7 @@ export function PvpStatsTable({
                       <td className="max-w-[220px] px-4 py-3 break-words text-zinc-400">{entry?.bossCards ?? "—"}</td>
                       <td className={`px-4 py-3 whitespace-nowrap ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
                         {isStale(entry) && <StaleIcon />}
-                        {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "ยังไม่กรอก"}
+                        {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
                       </td>
                       {isAdmin && <td className="px-4 py-3">{entry && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}</td>}
                     </tr>
@@ -602,10 +602,10 @@ export function PvpStatsTable({
                       {isStale(entry) && <StaleIcon />}
                       {entry
                         ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })
-                        : "ยังไม่กรอก"}
+                        : "Not submitted"}
                     </span>
                     <Link href={`/pvp-stats/${member.id}`} className="text-amber-400 transition hover:text-amber-300">
-                      ดูประวัติทั้งหมด →
+                      View full history →
                     </Link>
                   </div>
                 }

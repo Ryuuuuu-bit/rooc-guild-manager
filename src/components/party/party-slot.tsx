@@ -12,7 +12,7 @@ interface PartySlotProps {
   isAdmin: boolean;
   onClassChange: (value: string) => void;
   onClear: () => void;
-  /** Sends the currently-assigned member straight to the Busy/ลา list (skips "unassigned"). */
+  /** Sends the currently-assigned member straight to the Busy/Leave list (skips "unassigned"). */
   onSendBusy?: () => void;
   /** Unassigned members offered in the "pick a member" popover shown on an empty slot. */
   pickableMembers?: PartyBoardMemberRef[];
@@ -93,7 +93,7 @@ export function PartySlot({
                 onChange={(e) => onClassChange(e.target.value)}
                 className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
               >
-                <option value="">- อาชีพ -</option>
+                <option value="">- Class -</option>
                 {classOptions.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -104,16 +104,16 @@ export function PartySlot({
                 <button
                   type="button"
                   onClick={onSendBusy}
-                  title="ย้ายไปรายชื่อลา/ไม่ว่าง"
+                  title="Move to Busy/Leave list"
                   className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-amber-400"
                 >
-                  ลา
+                  Leave
                 </button>
               )}
               <button
                 type="button"
                 onClick={onClear}
-                title="เอาออกจากปาร์ตี้"
+                title="Remove from party"
                 className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-rose-400"
               >
                 ✕
@@ -129,23 +129,23 @@ export function PartySlot({
           onClick={onPlaceSelected}
           className="block w-full rounded px-1 py-1.5 text-center text-[10px] font-medium text-amber-300 transition hover:text-amber-200"
         >
-          วางที่นี่
+          Place Here
         </button>
       ) : isAdmin && onAssign ? (
         <MemberPicker
           members={pickableMembers}
           onSelect={onAssign}
-          emptyLabel="ไม่มีคนว่างแล้ว"
+          emptyLabel="No one is open anymore"
           open={pickerOpen}
           onOpenChange={onPickerOpenChange}
           trigger={
             <span className="block w-full cursor-pointer select-none rounded px-1 py-1.5 text-center text-[10px] text-zinc-600 transition hover:text-amber-300">
-              + เลือกสมาชิก
+              + Select Member
             </span>
           }
         />
       ) : (
-        <span className="w-full select-none text-center text-[10px] text-zinc-700">ว่าง</span>
+        <span className="w-full select-none text-center text-[10px] text-zinc-700">Empty</span>
       )}
     </div>
   );

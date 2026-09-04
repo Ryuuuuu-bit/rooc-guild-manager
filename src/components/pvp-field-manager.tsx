@@ -15,7 +15,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
-  const [groupTitle, setGroupTitle] = useState("อื่นๆ");
+  const [groupTitle, setGroupTitle] = useState("Other");
   const [isPercent, setIsPercent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -34,7 +34,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
 
   async function handleAdd() {
     if (!label.trim()) {
-      setError("กรุณาใส่ชื่อฟิลด์");
+      setError("Please enter a field name");
       return;
     }
     setSaving(true);
@@ -42,7 +42,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
     const result = await createPvpStatField({ label, groupTitle, isPercent });
     setSaving(false);
     if (!result.ok) {
-      setError(result.error ?? "เพิ่มไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Add failed, please try again");
       return;
     }
     setLabel("");
@@ -71,7 +71,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
     const result = await deletePvpStatField(id);
     setDeletingId(null);
     if (!result.ok) {
-      setError(result.error ?? "ลบไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Delete failed, please try again");
       return;
     }
     router.refresh();
@@ -84,7 +84,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
         onClick={() => setOpen(true)}
         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
       >
-        เพิ่ม Stats ใหม่
+        + Add New Stat
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>
@@ -93,13 +93,13 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
             className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">จัดการฟิลด์สถิติ</h3>
+              <h3 className="font-medium text-zinc-100">Manage Stat Fields</h3>
               <button type="button" onClick={() => setOpen(false)} className="rounded px-1.5 py-0.5 text-zinc-500 transition hover:text-zinc-300">
                 ✕
               </button>
             </div>
             <p className="text-xs text-zinc-500">
-              เพิ่มช่องสถิติใหม่ให้ทุกคนกรอกได้ทันที ไม่ต้องแก้โค้ด — ปิดใช้งานฟิลด์เก่าได้โดยไม่ลบข้อมูลที่เคยกรอกไว้ หรือลบถาวรได้ถ้าไม่ต้องการฟิลด์นั้นอีกเลย
+              Add a new stat field that everyone can fill in immediately, no code changes needed — disable an old field without deleting the data already submitted for it, or delete it permanently if you never need it again.
             </p>
 
             {fields.length > 0 && (
@@ -113,7 +113,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
                         <p className="text-[11px] text-zinc-500">
                           {f.groupTitle} {f.isPercent && "· %"}
                         </p>
-                        {confirming && <p className="mt-0.5 text-[11px] text-rose-400">ลบถาวร ย้อนกลับไม่ได้ — กดอีกครั้งเพื่อยืนยัน</p>}
+                        {confirming && <p className="mt-0.5 text-[11px] text-rose-400">Permanent delete, cannot be undone — click again to confirm</p>}
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         {!confirming && (
@@ -127,7 +127,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
                                 : "text-zinc-400 hover:bg-zinc-800 hover:text-emerald-400"
                             }`}
                           >
-                            {f.active ? "ปิดใช้งาน" : "เปิดใช้งาน"}
+                            {f.active ? "Disable" : "Enable"}
                           </button>
                         )}
                         <button
@@ -140,7 +140,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
                               : "text-zinc-500 hover:bg-zinc-800 hover:text-rose-400"
                           }`}
                         >
-                          {deletingId === f.id ? "กำลังลบ..." : confirming ? "ยืนยันลบ" : "ลบถาวร"}
+                          {deletingId === f.id ? "Deleting..." : confirming ? "Confirm Delete" : "Delete Permanently"}
                         </button>
                       </div>
                     </div>
@@ -150,19 +150,19 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
             )}
 
             <div className="flex flex-col gap-3 rounded-xl border border-zinc-800 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">เพิ่มฟิลด์ใหม่</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Add New Field</p>
               <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                ชื่อฟิลด์
+                Field name
                 <input
                   type="text"
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
-                  placeholder="เช่น Crit Rate %"
+                  placeholder="e.g. Crit Rate %"
                   className="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
                 />
               </label>
               <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                กลุ่ม
+                Group
                 <input
                   type="text"
                   list="pvp-field-groups"
@@ -178,7 +178,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
               </label>
               <label className="flex items-center gap-2 text-xs text-zinc-400">
                 <input type="checkbox" checked={isPercent} onChange={(e) => setIsPercent(e.target.checked)} className="accent-amber-600" />
-                เป็นค่าเปอร์เซ็นต์ (ใส่ทศนิยมได้)
+                Percentage value (allows decimals)
               </label>
               {error && <p className="text-sm text-rose-400">{error}</p>}
               <button
@@ -187,7 +187,7 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
                 disabled={saving}
                 className="self-start rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
               >
-                {saving ? "กำลังเพิ่ม..." : "+ เพิ่มฟิลด์"}
+                {saving ? "Adding..." : "+ Add Field"}
               </button>
             </div>
           </div>

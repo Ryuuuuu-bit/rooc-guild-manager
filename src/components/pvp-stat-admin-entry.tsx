@@ -88,7 +88,7 @@ export function AdminAddEntryButton({
 
   async function handleSave() {
     if (!memberId) {
-      setError("กรุณาเลือกสมาชิก");
+      setError("Please select a member");
       return;
     }
     setSaving(true);
@@ -96,7 +96,7 @@ export function AdminAddEntryButton({
     const result = await adminCreatePvpStatFor(memberId, buildInput(role, bossCards, values, customFieldDefs));
     setSaving(false);
     if (!result.ok) {
-      setError(result.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Save failed, please try again");
       return;
     }
     setOpen(false);
@@ -110,7 +110,7 @@ export function AdminAddEntryButton({
         onClick={openModal}
         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
       >
-        แก้ไข Stats สมาชิก
+        Edit Member Stats
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>
@@ -119,14 +119,14 @@ export function AdminAddEntryButton({
             className="flex w-full max-w-2xl flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">เพิ่มสถิติให้สมาชิก</h3>
+              <h3 className="font-medium text-zinc-100">Add Stats for Member</h3>
               <button type="button" onClick={() => setOpen(false)} className="rounded px-1.5 py-0.5 text-zinc-500 transition hover:text-zinc-300">
                 ✕
               </button>
             </div>
 
             <label className="flex flex-col gap-1 text-xs text-zinc-400">
-              สมาชิก
+              Member
               <select
                 value={memberId}
                 onChange={(e) => setMemberId(e.target.value)}
@@ -154,7 +154,7 @@ export function AdminAddEntryButton({
 
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-200">
-                ยกเลิก
+                Cancel
               </button>
               <button
                 type="button"
@@ -162,7 +162,7 @@ export function AdminAddEntryButton({
                 disabled={saving}
                 className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
               >
-                {saving ? "กำลังบันทึก..." : "บันทึก"}
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -196,7 +196,7 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
     const result = await adminEditPvpStatEntry(entry.id, buildInput(role, bossCards, values, customFieldDefs));
     setSaving(false);
     if (!result.ok) {
-      setError(result.error ?? "บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Save failed, please try again");
       return;
     }
     setOpen(false);
@@ -206,7 +206,7 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
   return (
     <>
       <button type="button" onClick={openModal} className="rounded-md px-1.5 py-0.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200">
-        แก้ไข
+        Edit
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>
@@ -215,12 +215,12 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
             className="flex w-full max-w-2xl flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">แก้ไขค่าที่กรอกผิด</h3>
+              <h3 className="font-medium text-zinc-100">Fix Incorrect Values</h3>
               <button type="button" onClick={() => setOpen(false)} className="rounded px-1.5 py-0.5 text-zinc-500 transition hover:text-zinc-300">
                 ✕
               </button>
             </div>
-            <p className="text-xs text-zinc-500">แก้ไขค่าในรายการนี้โดยตรง (ไม่สร้างรายการใหม่) ใช้สำหรับแก้ตัวเลขที่กรอกผิด</p>
+            <p className="text-xs text-zinc-500">Edits this entry&apos;s values directly (does not create a new entry) — use this to fix a typo in the numbers.</p>
 
             <PvpStatFieldsEditor
               role={role}
@@ -236,7 +236,7 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
 
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-200">
-                ยกเลิก
+                Cancel
               </button>
               <button
                 type="button"
@@ -244,7 +244,7 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
                 disabled={saving}
                 className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-amber-500 disabled:opacity-50"
               >
-                {saving ? "กำลังบันทึก..." : "บันทึก"}
+                {saving ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
@@ -267,7 +267,7 @@ export function AdminDeleteEntryButton({ entryId }: { entryId: string }) {
     const result = await deletePvpStatEntry(entryId);
     setDeleting(false);
     if (!result.ok) {
-      setError(result.error ?? "ลบไม่สำเร็จ ลองใหม่อีกครั้ง");
+      setError(result.error ?? "Delete failed, please try again");
       return;
     }
     setOpen(false);
@@ -281,7 +281,7 @@ export function AdminDeleteEntryButton({ entryId }: { entryId: string }) {
         onClick={() => setOpen(true)}
         className="rounded-md px-1.5 py-0.5 text-xs text-rose-500/80 transition hover:bg-rose-500/10 hover:text-rose-400"
       >
-        ลบ
+        Delete
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setOpen(false)}>
@@ -289,12 +289,12 @@ export function AdminDeleteEntryButton({ entryId }: { entryId: string }) {
             onClick={(e) => e.stopPropagation()}
             className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
-            <h3 className="font-medium text-zinc-100">ลบรายการนี้?</h3>
-            <p className="text-sm text-zinc-400">ลบแล้วกู้คืนไม่ได้ — ประวัติของรายการนี้จะหายไปถาวร</p>
+            <h3 className="font-medium text-zinc-100">Delete this entry?</h3>
+            <p className="text-sm text-zinc-400">This cannot be undone — this entry&apos;s history will be permanently lost.</p>
             {error && <p className="text-sm text-rose-400">{error}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-4 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-200">
-                ยกเลิก
+                Cancel
               </button>
               <button
                 type="button"
@@ -302,7 +302,7 @@ export function AdminDeleteEntryButton({ entryId }: { entryId: string }) {
                 disabled={deleting}
                 className="rounded-lg bg-rose-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-rose-500 disabled:opacity-50"
               >
-                {deleting ? "กำลังลบ..." : "ลบ"}
+                {deleting ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

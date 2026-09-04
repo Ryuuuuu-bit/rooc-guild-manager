@@ -240,7 +240,7 @@ export async function getAttendanceBoardBreakdown(filter: Omit<AttendanceRangeFi
   return rows
     .map((r) => ({
       boardId: r.boardId,
-      boardName: r.boardId ? nameById.get(r.boardId) ?? "กระดานที่ถูกลบ" : "ไม่ระบุกระดาน",
+      boardName: r.boardId ? nameById.get(r.boardId) ?? "Deleted board" : "Unspecified board",
       leaveCount: r.leaveCount,
     }))
     .sort((a, b) => b.leaveCount - a.leaveCount);

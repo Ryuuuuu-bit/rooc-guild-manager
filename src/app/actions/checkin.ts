@@ -25,7 +25,7 @@ export async function setCheckinNote(
   note: string
 ): Promise<ActionResult> {
   const session = await requireAdmin();
-  if (!getCheckinEvent(eventKey)) return { ok: false, error: "ไม่พบกิจกรรมนี้" };
+  if (!getCheckinEvent(eventKey)) return { ok: false, error: "Event not found" };
 
   const trimmed = note.trim();
 

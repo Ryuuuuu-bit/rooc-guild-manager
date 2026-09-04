@@ -5,13 +5,13 @@ import { ActivityListItem } from "@/components/activity-list-item";
 import { eventLabels } from "@/lib/ui";
 
 const DAY_OPTIONS = [
-  { value: "7", label: "7 วัน" },
-  { value: "30", label: "30 วัน" },
-  { value: "90", label: "90 วัน" },
-  { value: "all", label: "ทั้งหมด" },
+  { value: "7", label: "7 days" },
+  { value: "30", label: "30 days" },
+  { value: "90", label: "90 days" },
+  { value: "all", label: "All" },
 ];
 
-// Capped even in "ทั้งหมด" mode — this table only grows, so an unbounded
+// Capped even in "All" mode — this table only grows, so an unbounded
 // feed on a guild active for a year+ would eventually get slow to load.
 const MAX_ROWS = 500;
 
@@ -41,9 +41,9 @@ export default async function ActivityPage({
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">ประวัติกิจกรรม</h1>
+          <h1 className="text-2xl font-semibold text-zinc-50">Activity Log</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            บันทึกอัตโนมัติทุกครั้งที่มีคนเข้า/ออกกิลด์, ลากิจกรรม, เปลี่ยนอาชีพ, เปลี่ยนชื่อ Discord หรือแอดมินแก้ไขข้อมูล
+            Automatically logged every time someone joins/leaves the guild, takes leave, changes class, changes their Discord name, or an admin edits their data
           </p>
         </div>
         <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
@@ -76,7 +76,7 @@ export default async function ActivityPage({
           type="text"
           name="q"
           defaultValue={params.q}
-          placeholder="ค้นหาชื่อสมาชิก..."
+          placeholder="Search member name..."
           className="w-56 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
         />
         <select
@@ -84,7 +84,7 @@ export default async function ActivityPage({
           defaultValue={type ?? ""}
           className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
         >
-          <option value="">ทุกประเภทกิจกรรม</option>
+          <option value="">All event types</option>
           {Object.entries(eventLabels).map(([value, label]) => (
             <option key={value} value={value}>
               {label}
@@ -95,14 +95,14 @@ export default async function ActivityPage({
           type="submit"
           className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-amber-500"
         >
-          ค้นหา
+          Search
         </button>
         {(params.q || type) && (
           <Link
             href={`/activity?days=${daysParam}`}
             className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100"
           >
-            ล้างตัวกรอง
+            Clear filters
           </Link>
         )}
       </form>
@@ -111,7 +111,7 @@ export default async function ActivityPage({
         <ul className="divide-y divide-zinc-800">
           {activity.length === 0 && (
             <li className="px-5 py-10 text-center text-sm text-zinc-500">
-              {params.q || type ? "ไม่พบกิจกรรมที่ตรงกับตัวกรอง" : "ไม่มีกิจกรรมในช่วงเวลานี้"}
+              {params.q || type ? "No activity matches the filters" : "No activity in this time range"}
             </li>
           )}
           {activity.map(({ event, member }) => (
@@ -125,7 +125,7 @@ export default async function ActivityPage({
         </ul>
         {activity.length === MAX_ROWS && (
           <p className="border-t border-zinc-800 px-5 py-3 text-center text-xs text-zinc-600">
-            แสดงเฉพาะ {MAX_ROWS} รายการล่าสุดในช่วงที่เลือก — อาจมีรายการเก่ากว่านี้ที่ไม่ได้แสดง
+            Showing only the {MAX_ROWS} most recent entries in the selected range — older entries may not be shown
           </p>
         )}
       </div>

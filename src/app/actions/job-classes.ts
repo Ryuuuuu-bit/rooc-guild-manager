@@ -28,12 +28,12 @@ export async function createJobClass(formData: FormData): Promise<ActionResult> 
   const emoji = (formData.get("emoji") as string | null)?.trim();
   const colorKey = (formData.get("colorKey") as string | null)?.trim() ?? "";
 
-  if (!name) return { ok: false, error: "กรุณาใส่ชื่ออาชีพ" };
-  if (!emoji) return { ok: false, error: "กรุณาใส่อิโมจิ" };
-  if (!isColorKey(colorKey)) return { ok: false, error: "กรุณาเลือกสี" };
+  if (!name) return { ok: false, error: "Please enter a class name" };
+  if (!emoji) return { ok: false, error: "Please enter an emoji" };
+  if (!isColorKey(colorKey)) return { ok: false, error: "Please choose a color" };
 
   const dup = await db.query.jobClasses.findFirst({ where: eq(jobClasses.name, name) });
-  if (dup) return { ok: false, error: "มีอาชีพชื่อนี้อยู่แล้ว" };
+  if (dup) return { ok: false, error: "A class with this name already exists" };
 
   const [{ maxOrder } = { maxOrder: -1 }] = await db
     .select({ maxOrder: sql<number>`coalesce(max(${jobClasses.sortOrder}), -1)::int` })
@@ -52,18 +52,18 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
   const emoji = (formData.get("emoji") as string | null)?.trim();
   const colorKey = (formData.get("colorKey") as string | null)?.trim() ?? "";
 
-  if (!name) return { ok: false, error: "กรุณาใส่ชื่ออาชีพ" };
-  if (!emoji) return { ok: false, error: "กรุณาใส่อิโมจิ" };
-  if (!isColorKey(colorKey)) return { ok: false, error: "กรุณาเลือกสี" };
+  if (!name) return { ok: false, error: "Please enter a class name" };
+  if (!emoji) return { ok: false, error: "Please enter an emoji" };
+  if (!isColorKey(colorKey)) return { ok: false, error: "Please choose a color" };
 
   const existing = await db.query.jobClasses.findFirst({ where: eq(jobClasses.id, id) });
-  if (!existing) return { ok: false, error: "ไม่พบอาชีพนี้" };
+  if (!existing) return { ok: false, error: "Class not found" };
 
   if (name !== existing.name) {
     const dup = await db.query.jobClasses.findFirst({
       where: and(eq(jobClasses.name, name), ne(jobClasses.id, id)),
     });
-    if (dup) return { ok: false, error: "มีอาชีพชื่อนี้อยู่แล้ว" };
+    if (dup) return { ok: false, error: "A class with this name already exists" };
   }
 
   await db.update(jobClasses).set({ name, emoji, colorKey, updatedAt: new Date() }).where(eq(jobClasses.id, id));
@@ -87,7 +87,7 @@ export async function deleteJobClass(id: string): Promise<ActionResult> {
   await requireAdmin();
 
   const existing = await db.query.jobClasses.findFirst({ where: eq(jobClasses.id, id) });
-  if (!existing) return { ok: false, error: "ไม่พบอาชีพนี้" };
+  if (!existing) return { ok: false, error: "Class not found" };
 
   const [{ count } = { count: 0 }] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -96,7 +96,7 @@ export async function deleteJobClass(id: string): Promise<ActionResult> {
   if (count > 0) {
     return {
       ok: false,
-      error: `มีสมาชิก ${count} คนใช้อาชีพนี้อยู่ — เปลี่ยนอาชีพของสมาชิกเหล่านั้นก่อน (หรือเปลี่ยนชื่ออาชีพนี้แทนการลบ) แล้วค่อยลบ`,
+      error: `${count} member(s) currently use this class — change their class first (or rename this class instead of deleting it), then delete`,
     };
   }
 
@@ -111,7 +111,7 @@ export async function moveJobClass(id: string, direction: "up" | "down"): Promis
 
   const all = await db.select().from(jobClasses).orderBy(asc(jobClasses.sortOrder));
   const idx = all.findIndex((c) => c.id === id);
-  if (idx === -1) return { ok: false, error: "ไม่พบอาชีพนี้" };
+  if (idx === -1) return { ok: false, error: "Class not found" };
 
   const swapIdx = direction === "up" ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };

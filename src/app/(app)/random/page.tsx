@@ -15,9 +15,9 @@ export default async function RandomPickerPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-50">สุ่มสมาชิก</h1>
+        <h1 className="text-2xl font-semibold text-zinc-50">Random Member</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          กด &quot;สุ่ม!&quot; เพื่อสุ่มชื่อสมาชิกที่ยังอยู่ในกิลด์ — ใช้เล่นสนุก, สุ่มคนนำทีม, แจกของรางวัล ฯลฯ
+          Click &quot;Randomize!&quot; to pick a random name from the active guild roster — for fun, picking a team lead, giveaways, etc.
         </p>
       </div>
 

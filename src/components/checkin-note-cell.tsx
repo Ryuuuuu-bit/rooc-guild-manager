@@ -5,10 +5,10 @@ import { setCheckinNote } from "@/app/actions/checkin";
 
 /**
  * One member's note cell on the /checkin report table — e.g. a member DMs
- * an admin afterward explaining why they weren't online ("ลาป่วยกะทันหัน
- * ไม่ทันแจ้ง"), and the admin jots it here so it's visible right on their
- * row instead of living only in a DM someone has to remember. Read-only
- * text for non-admins; click-to-edit for admins.
+ * an admin afterward explaining why they weren't online ("got sick suddenly,
+ * couldn't report it in time"), and the admin jots it here so it's visible
+ * right on their row instead of living only in a DM someone has to
+ * remember. Read-only text for non-admins; click-to-edit for admins.
  */
 export function CheckinNoteCell({
   eventKey,
@@ -40,7 +40,7 @@ export function CheckinNoteCell({
     startTransition(async () => {
       const res = await setCheckinNote(eventKey, date, memberId, next);
       if (!res.ok) {
-        alert(res.error ?? "บันทึกโน้ตไม่สำเร็จ ลองใหม่อีกครั้ง");
+        alert(res.error ?? "Failed to save note. Please try again.");
         setSaved(note); // revert optimistic update
       }
     });
@@ -62,7 +62,7 @@ export function CheckinNoteCell({
             setEditing(false);
           }
         }}
-        placeholder="เช่น แจ้งลาป่วยทีหลัง..."
+        placeholder="e.g. reported sick leave afterward..."
         className="w-full min-w-[140px] rounded border border-amber-500 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none"
       />
     );
@@ -76,12 +76,12 @@ export function CheckinNoteCell({
         setEditing(true);
       }}
       disabled={pending}
-      title="แก้ไขโน้ต"
+      title="Edit note"
       className={`w-full max-w-[220px] truncate rounded px-1.5 py-1 text-left text-xs transition hover:bg-zinc-800 disabled:opacity-50 ${
         saved ? "text-zinc-300" : "text-zinc-600 italic"
       }`}
     >
-      {saved || "+ เพิ่มโน้ต"}
+      {saved || "+ Add note"}
     </button>
   );
 }

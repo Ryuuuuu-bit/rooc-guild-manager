@@ -35,7 +35,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
   const [spinning, setSpinning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // "โหมดปกติ" spins the avatar in place (fast, quiet); "โหมดแข่งม้า" is
+  // "Classic mode" spins the avatar in place (fast, quiet); "Horse race mode" is
   // the same fair draw underneath, just visualized as a race — see
   // HorseRaceTrack. race is the in-progress race's winner+field once
   // started; null when idle or back on the reveal card.
@@ -57,7 +57,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
 
   /** Records a winner (from either mode) and resets the busy flag — the
    * one place that actually mutates drawnIds/current, so both modes stay
-   * in sync with "ไม่สุ่มซ้ำคนเดิม" and the draw history below. */
+   * in sync with "No repeats" and the draw history below. */
   function commitWinner(finalPick: PickableMember) {
     setCurrent(finalPick);
     setDrawKey((k) => k + 1);
@@ -136,7 +136,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
             }}
             className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-amber-500"
           />
-          ไม่สุ่มซ้ำคนเดิม
+          No repeats
         </label>
         <label className="flex items-center gap-2 text-zinc-300">
           <input
@@ -145,10 +145,10 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
             onChange={(e) => setExcludeBenched(e.target.checked)}
             className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 accent-amber-500"
           />
-          ไม่รวมคนพักการเล่น
+          Exclude benched members
         </label>
         <span className="ml-auto text-xs text-zinc-500">
-          เหลือให้สุ่ม {availablePool.length} / {pool.length} คน
+          {availablePool.length} / {pool.length} remaining
         </span>
       </div>
 
@@ -162,7 +162,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
               mode === "classic" ? "bg-amber-600 text-white" : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            โหมดปกติ
+            Classic
           </button>
           <button
             type="button"
@@ -172,7 +172,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
               mode === "race" ? "bg-amber-600 text-white" : "text-zinc-400 hover:text-zinc-200"
             }`}
           >
-            🐎 โหมดแข่งม้า
+            🐎 Horse Race
           </button>
         </div>
         {/* Shown in both modes now — classic mode has its own tick/chime
@@ -180,10 +180,10 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
         <button
           type="button"
           onClick={toggleMuted}
-          title={muted ? "เปิดเสียง" : "ปิดเสียง"}
+          title={muted ? "Unmute" : "Mute"}
           className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800"
         >
-          {muted ? "🔇 ปิดเสียงอยู่" : "🔊 เปิดเสียงอยู่"}
+          {muted ? "🔇 Muted" : "🔊 Sound on"}
         </button>
       </div>
 
@@ -212,7 +212,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
                     reading as the whole card "shaking". Content itself is
                     still only revealed once the spin settles. */}
                 <p className="text-sm text-zinc-500">
-                  {!spinning && current.inGameName ? `ในเกม: ${current.inGameName}` : " "}
+                  {!spinning && current.inGameName ? `In-game: ${current.inGameName}` : " "}
                 </p>
               </div>
               {!spinning && (
@@ -229,9 +229,9 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
           )}
 
           {pool.length === 0 ? (
-            <p className="text-sm text-zinc-500">ไม่มีสมาชิกให้สุ่ม (ลองปิด &quot;ไม่รวมคนพักการเล่น&quot; ดู)</p>
+            <p className="text-sm text-zinc-500">No members to pick from (try turning off &quot;Exclude benched members&quot;)</p>
           ) : exhausted ? (
-            <p className="text-sm text-zinc-500">สุ่มครบทุกคนแล้ว! กด &quot;รีเซ็ต&quot; เพื่อเริ่มใหม่</p>
+            <p className="text-sm text-zinc-500">Everyone has been picked! Click &quot;Reset&quot; to start over</p>
           ) : null}
 
           <div className="flex items-center gap-3">
@@ -241,7 +241,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
               disabled={spinning || availablePool.length === 0}
               className="rounded-xl bg-amber-600 px-8 py-3 text-base font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {spinning ? "กำลังสุ่ม..." : mode === "race" ? "เริ่มแข่ง! 🏁" : "สุ่ม!"}
+              {spinning ? "Randomizing..." : mode === "race" ? "Start race! 🏁" : "Randomize!"}
             </button>
             {drawnIds.length > 0 && (
               <button
@@ -249,7 +249,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
                 onClick={handleReset}
                 className="rounded-xl border border-zinc-700 px-4 py-3 text-sm text-zinc-300 transition hover:bg-zinc-800"
               >
-                รีเซ็ต
+                Reset
               </button>
             )}
           </div>
@@ -259,7 +259,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
       {noRepeat && drawnMembers.length > 0 && (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
           <h2 className="mb-2 text-sm font-medium text-zinc-300">
-            ประวัติการสุ่ม ({drawnMembers.length})
+            Pick history ({drawnMembers.length})
           </h2>
           <ul className="flex flex-wrap gap-2">
             {drawnMembers.map((m, i) => (

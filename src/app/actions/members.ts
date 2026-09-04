@@ -29,12 +29,12 @@ export async function updateMemberProfile(
   const notes = (formData.get("notes") as string | null)?.trim() || null;
 
   if (characterClassRaw && !(await isValidJobClassName(characterClassRaw))) {
-    return { ok: false, error: "อาชีพไม่ถูกต้อง" };
+    return { ok: false, error: "Invalid class" };
   }
   const characterClass = characterClassRaw;
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  if (!existing) return { ok: false, error: "ไม่พบสมาชิก" };
+  if (!existing) return { ok: false, error: "Member not found" };
 
   await db
     .update(members)
@@ -89,7 +89,7 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   const session = await requireAdmin();
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  if (!existing) return { ok: false, error: "ไม่พบสมาชิก" };
+  if (!existing) return { ok: false, error: "Member not found" };
 
   await db
     .update(members)
@@ -112,8 +112,8 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   } catch (err) {
     discordWarning =
       err instanceof DiscordApiError && err.status === 403
-        ? "อัปเดตสถานะในระบบแล้ว แต่เตะออกจาก Discord ไม่สำเร็จ — บอทไม่มีสิทธิ์ \"Kick Members\" หรือ role บอทต่ำกว่า role ของสมาชิกคนนี้ กรุณาเตะออกจาก Discord ด้วยตัวเอง"
-        : `อัปเดตสถานะในระบบแล้ว แต่เตะออกจาก Discord ไม่สำเร็จ (${err instanceof Error ? err.message : "unknown error"}) กรุณาเตะออกจาก Discord ด้วยตัวเอง`;
+        ? "Status updated, but failed to kick from Discord — the bot lacks the \"Kick Members\" permission, or its role is below this member's role. Please kick them from Discord yourself."
+        : `Status updated, but failed to kick from Discord (${err instanceof Error ? err.message : "unknown error"}). Please kick them from Discord yourself.`;
   }
 
   await db.insert(membershipEvents).values({
@@ -144,8 +144,8 @@ export async function addMemberNote(memberId: string, body: string): Promise<Upd
   const session = await requireAdmin();
 
   const trimmed = body.trim();
-  if (!trimmed) return { ok: false, error: "กรุณากรอกข้อความ" };
-  if (trimmed.length > 1000) return { ok: false, error: "ข้อความยาวเกินไป (สูงสุด 1000 ตัวอักษร)" };
+  if (!trimmed) return { ok: false, error: "Please enter a message" };
+  if (trimmed.length > 1000) return { ok: false, error: "Message too long (maximum 1000 characters)" };
 
   await db.insert(memberNotes).values({
     memberId,
@@ -198,7 +198,7 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
   const session = await requireAdmin();
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  if (!existing) return { ok: false, error: "ไม่พบสมาชิก" };
+  if (!existing) return { ok: false, error: "Member not found" };
 
   await db.update(members).set({ benched, updatedAt: new Date() }).where(eq(members.id, memberId));
 

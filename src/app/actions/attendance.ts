@@ -35,7 +35,7 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
   const boardId = (formData.get("boardId") as string)?.trim() || null;
 
   if (!dateStr || !DATE_RE.test(dateStr)) {
-    return { ok: false, error: "กรุณาเลือกวันที่ให้ถูกต้อง" };
+    return { ok: false, error: "Please select a valid date" };
   }
 
   // Pin to noon Thailand time for the chosen date, rather than parsing the
@@ -43,15 +43,15 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
   // day once displayed/filtered by day-range.
   const leaveDate = new Date(`${dateStr}T12:00:00+07:00`);
   if (Number.isNaN(leaveDate.getTime())) {
-    return { ok: false, error: "วันที่ไม่ถูกต้อง" };
+    return { ok: false, error: "Invalid date" };
   }
   const today = new Date();
   if (leaveDate.getTime() > today.getTime()) {
-    return { ok: false, error: "ไม่สามารถบันทึกการลาล่วงหน้าได้" };
+    return { ok: false, error: "Cannot log a leave in advance" };
   }
 
   if (reason && reason.length > 300) {
-    return { ok: false, error: "เหตุผลยาวเกินไป (สูงสุด 300 ตัวอักษร)" };
+    return { ok: false, error: "Reason is too long (300 characters max)" };
   }
 
   const detail = reason
