@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { MemberAvatar } from "@/components/member-avatar";
@@ -44,6 +44,41 @@ function buildAnnouncementText(categoryName: string, label: string, served: Loot
   return `**${header}**\n\n${body}`;
 }
 
+/**
+ * Copies text to the clipboard and reports whether it actually worked —
+ * the plain `navigator.clipboard?.writeText(text)` this replaced gave no
+ * feedback either way, so a silent failure (clipboard API missing, no
+ * document focus, permission blocked) looked identical to success: the
+ * admin would think the round text was copied, paste it into Discord's
+ * own compose box, and send an empty message with no indication anything
+ * went wrong. Falls back to the older execCommand approach when the
+ * Clipboard API isn't available at all.
+ */
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to the execCommand fallback below.
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 // --- Discord post modal ----------------------------------------------------
 
 function PostToDiscordModal({ initialText, onClose }: { initialText: string; onClose: () => void }) {
@@ -55,7 +90,12 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
   const [error, setError] = useState<string | null>(null);
   const [posted, setPosted] = useState(false);
 
-  useState(() => {
+  // useEffect, not useState(() => ...) — this modal only ever mounts once
+  // per open (see showPost in RunRoundPanel), so the two behave the same
+  // in practice, but useState's lazy initializer isn't meant for side
+  // effects and gets invoked twice under React's dev-mode Strict Mode,
+  // firing this fetch redundantly.
+  useEffect(() => {
     listDiscordChannels().then((res) => {
       setLoading(false);
       if (!res.ok || !res.channels) {
@@ -65,7 +105,7 @@ function PostToDiscordModal({ initialText, onClose }: { initialText: string; onC
       setChannels(res.channels);
       setChannelId(res.channels[0]?.id ?? "");
     });
-  });
+  }, []);
 
   async function handlePost() {
     if (!channelId) return;
@@ -190,9 +230,16 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RunRoundResult | null>(null);
   const [showPost, setShowPost] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const n = Number(count);
   const preview = n > 0 ? category.queue.slice(0, n) : [];
+
+  async function handleCopy(text: string) {
+    const ok = await copyToClipboard(text);
+    setCopyStatus(ok ? "copied" : "failed");
+    setTimeout(() => setCopyStatus("idle"), 2000);
+  }
 
   function handleRun() {
     if (!n || n <= 0) return;
@@ -219,10 +266,16 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => navigator.clipboard?.writeText(text)}
-            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+            onClick={() => handleCopy(text)}
+            className={`rounded-lg border px-2.5 py-1 text-xs transition ${
+              copyStatus === "copied"
+                ? "border-emerald-700 bg-emerald-950/40 text-emerald-300"
+                : copyStatus === "failed"
+                  ? "border-rose-700 bg-rose-950/40 text-rose-300"
+                  : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            }`}
           >
-            Copy Message
+            {copyStatus === "copied" ? "Copied ✓" : copyStatus === "failed" ? "Copy failed — select & copy manually" : "Copy Message"}
           </button>
           <button
             type="button"
@@ -237,6 +290,7 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
               setResult(null);
               setCount("");
               setLabel("");
+              setCopyStatus("idle");
             }}
             className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
           >
