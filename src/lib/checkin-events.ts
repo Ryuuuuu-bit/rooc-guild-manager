@@ -32,7 +32,7 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     weekdays: [2, 4], // Tue, Thu
     startTime: "19:55:00",
     endTime: "20:20:00",
-    channelIds: ["1488971259113902090", "1488971308225269943"],
+    channelIds: ["1488971259113902090", "1488971308225269943", "1486678906214809721", "1545045768107196488"],
     attendanceBoardName: "GL",
   },
   {

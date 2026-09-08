@@ -120,7 +120,7 @@ export default async function CheckinPage({ searchParams }: { searchParams: Prom
                   <p className="text-sm text-zinc-400">
                     On Leave (<span className="font-medium text-amber-400">{report.onLeaveCount}</span>):{" "}
                     {report.results
-                      .filter((r) => r.onLeave)
+                      .filter((r) => r.onLeave && !r.attended)
                       .map((r) => memberDisplayName(r.member))
                       .join(", ")}
                   </p>

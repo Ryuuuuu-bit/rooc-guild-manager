@@ -304,7 +304,16 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     window: { date, start, end },
     attendedCount: results.filter((r) => r.attended).length,
     totalCount: results.length,
-    onLeaveCount: results.filter((r) => r.onLeave).length,
+    // Excludes anyone who showed up anyway despite having leave on file —
+    // onLeave is meant to explain an ABSENCE (see the per-row badge logic
+    // in /checkin's page, where an attended row always shows "Attended"
+    // regardless of onLeave), not to flag someone who took leave in
+    // advance but still came to listen in voice. Time present is always
+    // counted from real voice activity either way (minutesPresent above
+    // never looks at onLeave), so this only affects this summary count/list
+    // — it was previously counting every onLeave row unconditionally, which
+    // put people who'd actually attended into the "On Leave" list too.
+    onLeaveCount: results.filter((r) => r.onLeave && !r.attended).length,
     results,
   };
 }
