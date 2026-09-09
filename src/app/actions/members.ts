@@ -226,3 +226,69 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
 
   return { ok: true };
 }
+
+/**
+ * Suspends a member from the loot auction queue guild-wide (every category
+ * at once, not just one) for `days` days from now — e.g. for misbehavior
+ * during a round. Enforced in runLootRound (src/app/actions/loot-queue.ts),
+ * which skips a currently-banned member when picking who gets served
+ * instead of removing them from the queue: their position holds exactly
+ * where it is and they simply pick back up once the ban lapses, so no one
+ * has to remember to re-add them. A repeat ban just overwrites the existing
+ * one (extends or shortens it, admin's call) rather than stacking.
+ */
+export async function banMemberFromAuction(memberId: string, days: number, reason: string): Promise<UpdateMemberResult> {
+  const session = await requireAdmin();
+  if (!Number.isFinite(days) || days <= 0) return { ok: false, error: "Number of days must be greater than 0" };
+
+  const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!existing) return { ok: false, error: "Member not found" };
+
+  const until = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const trimmedReason = reason.trim() || null;
+
+  await db
+    .update(members)
+    .set({ auctionBanUntil: until, auctionBanReason: trimmedReason, updatedAt: new Date() })
+    .where(eq(members.id, memberId));
+
+  const daysLabel = days === 1 ? "1 day" : `${days} days`;
+  await db.insert(membershipEvents).values({
+    memberId,
+    type: "AUCTION_BAN",
+    detail: `ห้ามประมูล (ทุกหมวด) ${daysLabel} โดยแอดมิน ${session.user.username}${trimmedReason ? ` — เหตุผล: ${trimmedReason}` : ""} (ถึง ${until.toISOString()})`,
+    actor: session.user.username,
+  });
+
+  revalidatePath(`/members/${memberId}`);
+  revalidatePath("/members");
+  revalidatePath("/loot-queue");
+
+  return { ok: true };
+}
+
+/** Lifts an auction ban early. A ban that's already expired on its own doesn't need this — runLootRound and the queue display both just compare against now() — but this is here for "actually, never mind" before it lapses naturally. */
+export async function unbanMemberFromAuction(memberId: string): Promise<UpdateMemberResult> {
+  const session = await requireAdmin();
+
+  const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!existing) return { ok: false, error: "Member not found" };
+  if (!existing.auctionBanUntil || existing.auctionBanUntil.getTime() <= Date.now()) {
+    return { ok: false, error: "This member isn't currently banned" };
+  }
+
+  await db.update(members).set({ auctionBanUntil: new Date(), updatedAt: new Date() }).where(eq(members.id, memberId));
+
+  await db.insert(membershipEvents).values({
+    memberId,
+    type: "AUCTION_UNBAN",
+    detail: `ยกเลิกห้ามประมูลก่อนกำหนด โดยแอดมิน ${session.user.username}`,
+    actor: session.user.username,
+  });
+
+  revalidatePath(`/members/${memberId}`);
+  revalidatePath("/members");
+  revalidatePath("/loot-queue");
+
+  return { ok: true };
+}

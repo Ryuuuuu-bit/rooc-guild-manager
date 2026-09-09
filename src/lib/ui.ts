@@ -33,6 +33,8 @@ export const eventLabels: Record<string, string> = {
   ATTENDANCE_RETURN: "Leave cancelled / returned",
   CLASS_CHANGE: "Class changed",
   NAME_CHANGE: "Discord name changed",
+  AUCTION_BAN: "Banned from auction",
+  AUCTION_UNBAN: "Auction ban lifted",
 };
 
 /**
@@ -52,6 +54,8 @@ export const eventTypeColors: Record<string, string> = {
   ATTENDANCE_RETURN: "text-amber-400",
   CLASS_CHANGE: "text-amber-400",
   NAME_CHANGE: "text-amber-400",
+  AUCTION_BAN: "text-amber-400",
+  AUCTION_UNBAN: "text-amber-400",
 };
 
 export const eventTypeDotColors: Record<string, string> = {
@@ -65,4 +69,6 @@ export const eventTypeDotColors: Record<string, string> = {
   ATTENDANCE_RETURN: "bg-amber-400",
   CLASS_CHANGE: "bg-amber-400",
   NAME_CHANGE: "bg-amber-400",
+  AUCTION_BAN: "bg-amber-400",
+  AUCTION_UNBAN: "bg-amber-400",
 };

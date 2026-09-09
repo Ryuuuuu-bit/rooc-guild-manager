@@ -3,11 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { lootCategories, lootQueueEntries, lootRounds } from "@/db/schema";
+import { lootCategories, lootQueueEntries, lootRounds, members } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
-import { memberDisplayName } from "@/lib/ui";
 import { createChannelMessage } from "@/lib/discord";
-import { computeNumberingStart, type LootQueueMemberRef } from "@/lib/loot-queue-data";
+import { computeNumberingStart, toRef, type LootQueueMemberRef } from "@/lib/loot-queue-data";
 
 export interface ActionResult {
   ok: boolean;
@@ -190,15 +189,24 @@ export interface RunRoundResult extends ActionResult {
    * from — normally 1, but a category linked via numberingBaseCategoryId
    * continues on from another category's latest round instead. */
   startNumber?: number;
+  /** Members skipped over for this round because they're currently
+   * auction-banned (see members.auctionBanUntil) — untouched at their
+   * current queue position, not served. Surfaced so the admin isn't left
+   * wondering why the round came up short, or why someone near the front
+   * didn't get picked. Empty when no one currently banned was encountered. */
+  skippedBanned?: LootQueueMemberRef[];
 }
 
 /**
- * Serves the next `count` people in one category's queue: records a round
- * (for history + undo), then moves exactly those members to the back —
- * re-stamped to position = current-max+1, +2, ... in their served order —
- * leaving everyone else's position untouched. If the queue has fewer than
- * `count` members, serves everyone available (`short: true` tells the
- * caller so it can say so).
+ * Serves the next `count` NOT-currently-banned people in one category's
+ * queue: records a round (for history + undo), then moves exactly those
+ * members to the back — re-stamped to position = current-max+1, +2, ... in
+ * their served order — leaving everyone else's position untouched,
+ * including anyone skipped for being banned (see skippedBanned above —
+ * they simply hold their spot and are picked up again once the ban lapses).
+ * If the queue runs out of eligible (non-banned) members before reaching
+ * `count`, serves everyone available (`short: true` tells the caller so it
+ * can say so).
  */
 export async function runLootRound(categoryId: string, count: number, label?: string): Promise<RunRoundResult> {
   const session = await requireAdmin();
@@ -206,13 +214,35 @@ export async function runLootRound(categoryId: string, count: number, label?: st
 
   return db.transaction(async (tx) => {
     const queue = await tx
-      .select({ entry: lootQueueEntries, member: lootQueueEntries.memberId })
+      .select({ entry: lootQueueEntries, auctionBanUntil: members.auctionBanUntil })
       .from(lootQueueEntries)
+      .innerJoin(members, eq(members.id, lootQueueEntries.memberId))
       .where(eq(lootQueueEntries.categoryId, categoryId))
       .orderBy(asc(lootQueueEntries.position));
     if (queue.length === 0) return { ok: false, error: "This category's queue has no members" };
 
-    const servedEntries = queue.slice(0, count).map((r) => r.entry);
+    const now = Date.now();
+    const isBanned = (row: (typeof queue)[number]) => Boolean(row.auctionBanUntil && row.auctionBanUntil.getTime() > now);
+
+    // Walk the queue in order, taking non-banned members until `count` is
+    // reached; a banned member encountered along the way is noted as
+    // skipped, but one sitting further back than where `count` was already
+    // satisfied was never in contention this round and isn't reported —
+    // only queue.filter(isBanned) over the WHOLE queue would wrongly imply
+    // every banned member, however far back, was passed over just now.
+    const servedEntries: (typeof queue)[number]["entry"][] = [];
+    const skippedEntries: (typeof queue)[number]["entry"][] = [];
+    for (const row of queue) {
+      if (servedEntries.length >= count) break;
+      if (isBanned(row)) {
+        skippedEntries.push(row.entry);
+      } else {
+        servedEntries.push(row.entry);
+      }
+    }
+    if (servedEntries.length === 0) {
+      return { ok: false, error: "Everyone currently at the front of this queue is auction-banned right now" };
+    }
     const short = servedEntries.length < count;
 
     // Computed BEFORE inserting this round's history row below, so it
@@ -250,10 +280,26 @@ export async function runLootRound(categoryId: string, count: number, label?: st
     const served: LootQueueMemberRef[] = servedEntries
       .map((e) => byId.get(e.memberId))
       .filter((m): m is NonNullable<typeof m> => Boolean(m))
-      .map((m) => ({ id: m.id, displayName: memberDisplayName(m), discordAvatar: m.discordAvatar }));
+      .map(toRef);
+
+    let skippedBanned: LootQueueMemberRef[] | undefined;
+    if (skippedEntries.length > 0) {
+      const skippedMembers = await tx.query.members.findMany({
+        where: (m, { inArray }) =>
+          inArray(
+            m.id,
+            skippedEntries.map((e) => e.memberId)
+          ),
+      });
+      const skippedById = new Map(skippedMembers.map((m) => [m.id, m]));
+      skippedBanned = skippedEntries
+        .map((e) => skippedById.get(e.memberId))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m))
+        .map(toRef);
+    }
 
     revalidateEverywhere();
-    return { ok: true, served, short, startNumber };
+    return { ok: true, served, short, startNumber, skippedBanned };
   });
 }
 

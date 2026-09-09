@@ -35,6 +35,10 @@ export const eventTypeEnum = pgEnum("event_type", [
   "ATTENDANCE_RETURN",
   "CLASS_CHANGE",
   "NAME_CHANGE",
+  // A guild-wide (all loot categories at once) temporary suspension from
+  // the loot auction queue — see members.auctionBanUntil below.
+  "AUCTION_BAN",
+  "AUCTION_UNBAN",
 ]);
 
 export const members = pgTable(
@@ -82,6 +86,17 @@ export const members = pgTable(
     // never submitted) has moved past this timestamp, i.e. they actually
     // submitted something new since the last nudge.
     lastPvpStatsReminderAt: timestamp("last_pvp_stats_reminder_at", { withTimezone: true }),
+
+    // Guild-wide (every loot category at once — not per-category) temporary
+    // suspension from the loot auction queue, e.g. for misbehavior during a
+    // round. Null = not banned; a future timestamp = banned until then,
+    // auto-expiring on its own (no cron needed — runLootRound and the queue
+    // display both just compare against now()). A past timestamp is treated
+    // as "no longer banned" but is left in place rather than nulled out, so
+    // the member's most recent ban date/reason stays visible after it lapses
+    // instead of disappearing the moment it expires.
+    auctionBanUntil: timestamp("auction_ban_until", { withTimezone: true }),
+    auctionBanReason: text("auction_ban_reason"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

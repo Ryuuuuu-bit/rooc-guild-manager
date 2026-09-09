@@ -262,6 +262,12 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
         <p className="text-sm text-emerald-300">
           This round: {result.served.length} people{result.short ? " (queue did not have enough for the requested amount, so everyone available was served)" : ""}
         </p>
+        {result.skippedBanned && result.skippedBanned.length > 0 && (
+          <p className="text-xs text-amber-300">
+            Skipped {result.skippedBanned.length} auction-banned member{result.skippedBanned.length === 1 ? "" : "s"} at their
+            current queue position: {result.skippedBanned.map((m) => m.displayName).join(", ")}
+          </p>
+        )}
         <p className="whitespace-pre-wrap break-words text-xs text-zinc-300">{text}</p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -528,6 +534,14 @@ function QueueList({
             )}
             <MemberAvatar src={m.discordAvatar} alt={m.displayName} width={28} height={28} className="h-7 w-7 shrink-0 rounded-full ring-1 ring-zinc-700" />
             <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{m.displayName}</span>
+            {m.auctionBanUntil && m.auctionBanUntil.getTime() > Date.now() && (
+              <span
+                title={`Skipped in rounds until ${m.auctionBanUntil.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" })} — holds their queue position`}
+                className="shrink-0 rounded-full bg-rose-400/15 px-2 py-0.5 text-[10px] font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30"
+              >
+                Banned
+              </span>
+            )}
             {isAdmin && (
               <button
                 type="button"

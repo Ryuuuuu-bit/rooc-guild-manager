@@ -8,6 +8,11 @@ export interface LootQueueMemberRef {
   id: string;
   displayName: string;
   discordAvatar: string | null;
+  /** Set when this member is currently serving a loot-auction ban (see
+   * members.auctionBanUntil) — a PAST timestamp here means a ban exists on
+   * record but has already lapsed, so callers should compare against `now`
+   * themselves rather than treat any non-null value as "banned right now". */
+  auctionBanUntil: Date | null;
 }
 
 export interface LootCategoryView {
@@ -21,8 +26,8 @@ export interface LootCategoryView {
   numberingBaseCategoryId: string | null;
 }
 
-function toRef(m: Member): LootQueueMemberRef {
-  return { id: m.id, displayName: memberDisplayName(m), discordAvatar: m.discordAvatar };
+export function toRef(m: Member): LootQueueMemberRef {
+  return { id: m.id, displayName: memberDisplayName(m), discordAvatar: m.discordAvatar, auctionBanUntil: m.auctionBanUntil };
 }
 
 /** Every loot category with its current queue, in order. Categories sorted

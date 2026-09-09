@@ -33,6 +33,7 @@ export default async function LootQueuePage({
     id: m.id,
     displayName: memberDisplayName(m),
     discordAvatar: m.discordAvatar,
+    auctionBanUntil: m.auctionBanUntil,
   }));
 
   return (
