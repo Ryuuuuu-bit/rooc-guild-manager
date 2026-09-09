@@ -1,18 +1,24 @@
 import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { lootCategories, lootQueueEntries, lootRounds, members } from "@/db/schema";
-import { memberDisplayName } from "@/lib/ui";
+import { memberDisplayName, isCurrentlyAuctionBanned } from "@/lib/ui";
 import type { Member } from "@/db/schema";
 
 export interface LootQueueMemberRef {
   id: string;
   displayName: string;
   discordAvatar: string | null;
-  /** Set when this member is currently serving a loot-auction ban (see
-   * members.auctionBanUntil) — a PAST timestamp here means a ban exists on
-   * record but has already lapsed, so callers should compare against `now`
-   * themselves rather than treat any non-null value as "banned right now". */
+  /** Kept for display (exact expiry in tooltips) — a PAST timestamp here
+   * means a ban exists on record but has already lapsed. Don't compare this
+   * against `Date.now()` in a client component's render: calling Date.now()
+   * during render is impure (React flags it, and it risks a hydration
+   * mismatch). Use `isAuctionBanned` below instead, which is computed once
+   * server-side per request. */
   auctionBanUntil: Date | null;
+  /** Whether this member is banned from the auction queue *right now* —
+   * computed server-side (see toRef) so client components never need to
+   * call Date.now() themselves during render. */
+  isAuctionBanned: boolean;
 }
 
 export interface LootCategoryView {
@@ -27,7 +33,13 @@ export interface LootCategoryView {
 }
 
 export function toRef(m: Member): LootQueueMemberRef {
-  return { id: m.id, displayName: memberDisplayName(m), discordAvatar: m.discordAvatar, auctionBanUntil: m.auctionBanUntil };
+  return {
+    id: m.id,
+    displayName: memberDisplayName(m),
+    discordAvatar: m.discordAvatar,
+    auctionBanUntil: m.auctionBanUntil,
+    isAuctionBanned: isCurrentlyAuctionBanned(m),
+  };
 }
 
 /** Every loot category with its current queue, in order. Categories sorted

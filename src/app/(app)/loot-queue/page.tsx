@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/authz";
 import { listMembers } from "@/lib/data";
 import { listLootCategories, listLootRounds } from "@/lib/loot-queue-data";
 import { listOnlineMemberIds } from "@/lib/checkin-data";
-import { memberDisplayName } from "@/lib/ui";
+import { memberDisplayName, isCurrentlyAuctionBanned } from "@/lib/ui";
 import { LootQueueManager } from "@/components/loot-queue-manager";
 
 export default async function LootQueuePage({
@@ -34,6 +34,7 @@ export default async function LootQueuePage({
     displayName: memberDisplayName(m),
     discordAvatar: m.discordAvatar,
     auctionBanUntil: m.auctionBanUntil,
+    isAuctionBanned: isCurrentlyAuctionBanned(m),
   }));
 
   return (

@@ -3,7 +3,7 @@ import { getMemberById } from "@/lib/data";
 import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
-import { memberDisplayName } from "@/lib/ui";
+import { memberDisplayName, isCurrentlyAuctionBanned } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
 import { MemberNotes } from "@/components/member-notes";
@@ -127,7 +127,7 @@ export default async function MemberDetailPage({
           {session.user.isAdmin && (
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-4 font-medium text-zinc-100">Member Management</h2>
-              <MemberStatusActions member={member} />
+              <MemberStatusActions member={member} isBanned={isCurrentlyAuctionBanned(member)} />
             </section>
           )}
 

@@ -534,7 +534,7 @@ function QueueList({
             )}
             <MemberAvatar src={m.discordAvatar} alt={m.displayName} width={28} height={28} className="h-7 w-7 shrink-0 rounded-full ring-1 ring-zinc-700" />
             <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">{m.displayName}</span>
-            {m.auctionBanUntil && m.auctionBanUntil.getTime() > Date.now() && (
+            {m.isAuctionBanned && m.auctionBanUntil && (
               <span
                 title={`Skipped in rounds until ${m.auctionBanUntil.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Bangkok" })} — holds their queue position`}
                 className="shrink-0 rounded-full bg-rose-400/15 px-2 py-0.5 text-[10px] font-medium text-rose-300 ring-1 ring-inset ring-rose-400/30"

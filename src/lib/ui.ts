@@ -10,6 +10,20 @@ export function memberDisplayName(
   return member.discordNickname || member.discordGlobalName || member.discordUsername;
 }
 
+/**
+ * Whether a member is banned from the loot auction queue *right now* — a
+ * PAST `auctionBanUntil` means a ban exists on record but already lapsed.
+ *
+ * Kept as a small plain function (not inlined) so callers in Server
+ * Component bodies don't call `Date.now()` directly in their JSX — React's
+ * purity lint flags a bare `Date.now()` call inside a component/page
+ * function as impure, even for a per-request Server Component. Call this
+ * once, store the boolean, and pass that down instead.
+ */
+export function isCurrentlyAuctionBanned(member: Pick<Member, "auctionBanUntil">): boolean {
+  return Boolean(member.auctionBanUntil && member.auctionBanUntil.getTime() > Date.now());
+}
+
 export const statusLabels: Record<Member["status"], string> = {
   ACTIVE: "Active",
   LEFT: "Left",

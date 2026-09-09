@@ -20,7 +20,7 @@ const BAN_PRESETS = [
   { label: "1 month", days: 30 },
 ];
 
-export function MemberStatusActions({ member }: { member: Member }) {
+export function MemberStatusActions({ member, isBanned }: { member: Member; isBanned: boolean }) {
   const boundKick = markMemberKicked.bind(null, member.id);
   const [kickState, kickAction, kickPending] = useActionState(
     async (_prev: UpdateMemberResult, formData: FormData) =>
@@ -44,7 +44,12 @@ export function MemberStatusActions({ member }: { member: Member }) {
   // auctionBanUntil means a ban exists on record but already lapsed (kept
   // around so the member's most recent ban stays visible, see the column's
   // comment in schema.ts), which should render as "not banned" here.
-  const isBanned = Boolean(member.auctionBanUntil && member.auctionBanUntil.getTime() > Date.now());
+  //
+  // This is passed in as a prop (computed server-side by the page) rather
+  // than derived from `Date.now()` here, because this is a Client Component
+  // — calling Date.now() during render is impure (React flags it) and risks
+  // a hydration mismatch between the server-rendered and client-hydrated
+  // value.
   const [banDays, setBanDays] = useState(7);
 
   const [banState, banAction, banPending] = useActionState(
