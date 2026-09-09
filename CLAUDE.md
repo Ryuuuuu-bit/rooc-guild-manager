@@ -8,6 +8,19 @@
 - **When pulling Railway logs**, prefer a narrow `startDate`/`endDate` or a `filter` expression over a full unbounded pull — large log dumps exceed the tool's output limit, get written to disk, and need a second read pass anyway (use `jq`/`grep` on the saved file instead of reading the whole thing back into context).
 - **Deliver code changes via the device-bridge file-write + the user's own `push.bat`**, not `git format-patch`/`git am` round-trips — the sandbox's git remote here is read-only, so direct pushes and patch files both fail; the device-bridge write is the working path.
 
+# Write the smallest correct solution (lean coding)
+
+Before adding new code — a new component, helper, abstraction, or dependency — work down this ladder and stop at the first step that solves the real problem (same idea as the "Ponytail" ruleset for AI coding agents):
+
+1. **Does this need to exist at all?** Is the requirement real, or a speculative "might need it later"?
+2. **Does this codebase already have it?** Grep for an existing helper/component before writing a new one — see e.g. `isCurrentlyAuctionBanned` in `src/lib/ui.ts`, `toRef` in `src/lib/loot-queue-data.ts`.
+3. **Does the standard library or the platform (Next.js, React, Postgres) already provide it?** A plain HTML `<input type="date">` beats a custom date-picker component; a Postgres constraint beats an app-level check where one will do.
+4. **Does an already-installed dependency solve it?** Don't add a new package for something Drizzle/date-fns/Tailwind/discord.js already covers.
+5. **Can it be one line, or a small function, instead of a new file/component/abstraction?**
+6. **Only then, write the minimum new code that solves the actual problem** — not the generalized version of it.
+
+This is about the *solution*, not the *investigation* — read the relevant existing code and this file's "Known ops quirks"/"bugs already fixed" notes thoroughly first, same as always. It also doesn't apply to things that are non-negotiable regardless of size: auth checks (`requireUser`/`requireAdmin`), input validation, error handling that prevents data loss, and anything the user explicitly asked for — keep those even if they add lines. When genuinely unsure whether a piece of code is now unused (e.g. after a feature is replaced, like `src/app/actions/sheet-sync.ts`), leave a short comment saying so and why, rather than deleting something that might still be load-bearing.
+
 # Known ops quirks (save yourself re-discovering these)
 
 - **Railway's GitHub App auto-deploy is not installed on this repo.** A push does not trigger a build on its own — after pushing, call `connect-service-source` for both the `web` and `bot` Railway services to force an immediate build from the latest commit. This stays necessary until the user reinstalls the GitHub App (GitHub Settings → Applications → Installed GitHub Apps → Railway → grant `Ryuuuuu-bit/rooc-guild-manager` access → re-enable auto-deploy in Railway).
