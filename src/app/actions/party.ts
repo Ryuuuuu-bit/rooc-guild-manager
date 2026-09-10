@@ -150,6 +150,15 @@ export async function deleteParty(partyId: string): Promise<ActionResult> {
  * currently sit on THIS board first (a member can hold an independent spot
  * on each board, but only one place within a given board). A member's class
  * is a profile-level attribute (see setMemberClass), not part of this move.
+ *
+ * The whole read-then-write sequence runs as one transaction so a failure
+ * partway through can't leave the member half-moved (cleared from their old
+ * spot but never placed in the new one). This also narrows — though, absent
+ * a DB-level constraint spanning partySlots/partyBusyEntries together, can't
+ * fully close — the window for two concurrent moveMember calls targeting the
+ * same member+board (e.g. two admins editing the same board at once) to both
+ * read a stale "not busy yet" state and both end up inserting, leaving the
+ * member placed in two locations at once.
  */
 export async function moveMember(
   boardId: string,
@@ -163,75 +172,86 @@ export async function moveMember(
     return { ok: false, error: "Member not found, or they are no longer in the guild" };
   }
 
-  // Checked before clearing below, so we know whether this move is a ลา (→
-  // busy, wasn't already), a return (busy → elsewhere), or neither — used
-  // to log ATTENDANCE_LEAVE/ATTENDANCE_RETURN only on an actual transition.
-  const wasBusy = await db.query.partyBusyEntries.findFirst({
-    where: and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)),
-  });
-
   const partyIds = await getPartyIdsForBoard(boardId);
 
-  if (partyIds.length) {
-    await db
-      .update(partySlots)
-      .set({ memberId: null, updatedAt: new Date() })
-      .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
-  }
-  await db
-    .delete(partyBusyEntries)
-    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
-
-  if (destination.type === "busy" && !wasBusy) {
-    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-    await db.insert(membershipEvents).values({
-      memberId,
-      type: "ATTENDANCE_LEAVE",
-      detail: `ลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
-      actor: session.user.username,
-      // Without this, an admin-added ลา has no board attached to its
-      // audit-log row — it still shows up in the board's own busy list
-      // (partyBusyEntries always has boardId), but /attendance's per-board
-      // breakdown dumps it in "ไม่ระบุกระดาน" and /checkin's "who's on
-      // leave" lookup can't find it at all (both read membershipEvents.
-      // boardId, not partyBusyEntries). Found via two real members an
-      // admin had marked ลา manually not showing up in either place.
-      boardId,
+  await db.transaction(async (tx) => {
+    // Checked before clearing below, so we know whether this move is a ลา (→
+    // busy, wasn't already), a return (busy → elsewhere), or neither — used
+    // to log ATTENDANCE_LEAVE/ATTENDANCE_RETURN only on an actual transition.
+    const wasBusy = await tx.query.partyBusyEntries.findFirst({
+      where: and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)),
     });
-  } else if (destination.type !== "busy" && wasBusy) {
-    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-    await db.insert(membershipEvents).values({
-      memberId,
-      type: "ATTENDANCE_RETURN",
-      detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
-      actor: session.user.username,
-      boardId,
-    });
-  }
 
-  if (destination.type === "slot") {
-    await db
-      .insert(partySlots)
-      .values({
-        partyId: destination.partyId,
-        slotIndex: destination.slotIndex,
+    if (partyIds.length) {
+      await tx
+        .update(partySlots)
+        .set({ memberId: null, updatedAt: new Date() })
+        .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
+    }
+    await tx
+      .delete(partyBusyEntries)
+      .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
+
+    if (destination.type === "busy" && !wasBusy) {
+      const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+      await tx.insert(membershipEvents).values({
         memberId,
-      })
-      .onConflictDoUpdate({
-        target: [partySlots.partyId, partySlots.slotIndex],
-        set: { memberId, updatedAt: new Date() },
+        type: "ATTENDANCE_LEAVE",
+        detail: `ลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
+        actor: session.user.username,
+        // Without this, an admin-added ลา has no board attached to its
+        // audit-log row — it still shows up in the board's own busy list
+        // (partyBusyEntries always has boardId), but /attendance's per-board
+        // breakdown dumps it in "ไม่ระบุกระดาน" and /checkin's "who's on
+        // leave" lookup can't find it at all (both read membershipEvents.
+        // boardId, not partyBusyEntries). Found via two real members an
+        // admin had marked ลา manually not showing up in either place.
+        boardId,
+        // Admin-vouched, deliberate action — same category as
+        // addManualLeave (attendance.ts) and applyTodaysScheduledLeaves
+        // (leave-schedule.ts), both of which confirm immediately rather
+        // than sitting through the 30-minute anti-fat-finger window meant
+        // only for live member reactions (there's no reaction here to
+        // accidentally undo). Previously missing here — an admin dragging
+        // someone onto Busy/ลา right before an event stayed invisible to
+        // /checkin and /attendance's live stats for up to 30 minutes.
+        confirmedAt: new Date(),
       });
-  } else if (destination.type === "busy") {
-    const [{ maxOrder } = { maxOrder: 0 }] = await db
-      .select({ maxOrder: sql<number>`coalesce(max(${partyBusyEntries.sortOrder}), 0)::int` })
-      .from(partyBusyEntries)
-      .where(eq(partyBusyEntries.boardId, boardId));
-    await db.insert(partyBusyEntries).values({
-      boardId,
-      memberId,
-      sortOrder: maxOrder + 1,
-    });
-  }
+    } else if (destination.type !== "busy" && wasBusy) {
+      const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+      await tx.insert(membershipEvents).values({
+        memberId,
+        type: "ATTENDANCE_RETURN",
+        detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
+        actor: session.user.username,
+        boardId,
+      });
+    }
+
+    if (destination.type === "slot") {
+      await tx
+        .insert(partySlots)
+        .values({
+          partyId: destination.partyId,
+          slotIndex: destination.slotIndex,
+          memberId,
+        })
+        .onConflictDoUpdate({
+          target: [partySlots.partyId, partySlots.slotIndex],
+          set: { memberId, updatedAt: new Date() },
+        });
+    } else if (destination.type === "busy") {
+      const [{ maxOrder } = { maxOrder: 0 }] = await tx
+        .select({ maxOrder: sql<number>`coalesce(max(${partyBusyEntries.sortOrder}), 0)::int` })
+        .from(partyBusyEntries)
+        .where(eq(partyBusyEntries.boardId, boardId));
+      await tx.insert(partyBusyEntries).values({
+        boardId,
+        memberId,
+        sortOrder: maxOrder + 1,
+      });
+    }
+  });
 
   revalidatePath("/party");
   return { ok: true };

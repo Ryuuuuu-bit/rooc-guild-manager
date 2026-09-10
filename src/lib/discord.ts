@@ -153,7 +153,7 @@ export async function editChannelMessage(channelId: string, messageId: string, c
   });
 }
 
-/** A single button on a message's action row — the minimal shape createChannelMessage's `components` param needs (Discord's raw REST message-component JSON, not a discord.js builder — the web app posts via plain REST, see the file header note above). Style 1 = Primary (blurple). */
+/** A single button on a message's action row — the minimal shape createChannelMessage's `buttons` option needs (Discord's raw REST message-component JSON, not a discord.js builder — the web app posts via plain REST, see the file header note above). Style 1 = Primary (blurple). */
 export interface MessageButtonSpec {
   customId: string;
   label: string;
@@ -161,8 +161,25 @@ export interface MessageButtonSpec {
   style?: 1 | 2 | 3 | 4;
 }
 
-/** Posts a plain-text message to a channel via the bot, returning the created message's id. `buttons`, if given, become a single action row underneath — e.g. the "ห้องลา" leave panel's "แจ้งลาล่วงหน้า" button (see postLeavePanelMessage) — clicks are handled entirely by the bot worker's own gateway InteractionCreate listener (bot/interactions.ts), same as a slash command. */
-export async function createChannelMessage(channelId: string, content: string, buttons?: MessageButtonSpec[]): Promise<string> {
+/** A single rich embed — Discord renders this as a distinct bordered/colored card, clearly separated from any button row below it (unlike plain `content`, which visually runs straight into the buttons underneath it with no gap). Used for the panel-style messages (see postLeavePanelMessage/postClassSelectMessage) rather than plain content, purely for that cleaner look. */
+export interface MessageEmbedSpec {
+  title?: string;
+  description: string;
+  color?: number;
+}
+
+export interface CreateChannelMessageOptions {
+  buttons?: MessageButtonSpec[];
+  embed?: MessageEmbedSpec;
+}
+
+/** Posts a message to a channel via the bot, returning the created message's id. `content` may be "" when `embed` carries all the text (Discord accepts an empty content as long as embeds/components make the message non-empty). `buttons`, if given, become a single action row underneath — clicks are handled entirely by the bot worker's own gateway InteractionCreate listener (bot/interactions.ts), same as a slash command. */
+export async function createChannelMessage(
+  channelId: string,
+  content: string,
+  options?: CreateChannelMessageOptions
+): Promise<string> {
+  const { buttons, embed } = options ?? {};
   const components = buttons?.length
     ? [
         {
@@ -177,10 +194,11 @@ export async function createChannelMessage(channelId: string, content: string, b
         },
       ]
     : undefined;
+  const embeds = embed ? [{ title: embed.title, description: embed.description, color: embed.color ?? 0xf59e0b }] : undefined;
 
   const message = await discordBotFetch(`/channels/${channelId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content, ...(components ? { components } : {}) }),
+    body: JSON.stringify({ ...(content ? { content } : {}), ...(embeds ? { embeds } : {}), ...(components ? { components } : {}) }),
   });
   return message.id as string;
 }

@@ -56,6 +56,26 @@ function formatNameList(members: PartyBoardMemberRef[]): string {
   return members.map((m) => m.displayName).join(", ");
 }
 
+/**
+ * Sets a select-option's emoji defensively — discord.js's
+ * StringSelectMenuOptionBuilder.setEmoji throws (ValidationError) on an
+ * empty string or any malformed value (verified against the installed
+ * discord.js build), and since every class option is built inside one
+ * `.map()` for the whole dropdown (see handleClassSelectButton below), one
+ * bad `job_classes.emoji` value — a legacy row, a bad admin edit that slipped
+ * past validation, a direct DB edit — would otherwise throw while building
+ * the array and break class selection for EVERY member, not just whoever
+ * has that class. Falls back to the option with no emoji instead.
+ */
+function withSafeEmoji(option: StringSelectMenuOptionBuilder, emoji: string): StringSelectMenuOptionBuilder {
+  if (!emoji) return option;
+  try {
+    return option.setEmoji(emoji);
+  } catch {
+    return option;
+  }
+}
+
 async function handlePartyAutocomplete(interaction: AutocompleteInteraction) {
   const focused = interaction.options.getFocused().trim().toLowerCase();
   const boards = await listPartyBoards();
@@ -125,8 +145,10 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
  * a multi-select dropdown of upcoming event dates they haven't already
  * scheduled a leave for (see listUpcomingLeaveOptions), plus, if they have
  * any pending requests, a second dropdown to cancel them. Shared by
- * handleLeaveCommand (/leave) and handleLeavePanelButton (the "ห้องลา" panel
- * button) — same picker, two different entry points into it.
+ * handleLeaveCommand (/leave), handleLeavePanelButton (the "ห้องลา" panel
+ * button), and handleLeaveAddSelect/handleLeaveCancelSelect (to redraw a
+ * fresh picker in place after an action) — every entry/re-entry point uses
+ * the same builder so the member never has to type anything at any step.
  */
 async function renderLeavePicker(discordUserId: string): Promise<{ content: string; rows: ActionRowBuilder<StringSelectMenuBuilder>[] }> {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, discordUserId) });
@@ -176,9 +198,16 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
       .setMinValues(1)
       .setMaxValues(Math.min(mine.length, 25))
       .addOptions(
-        mine
-          .slice(0, 25)
-          .map((m) => new StringSelectMenuOptionBuilder().setLabel(formatThaiDateLabel(m.date)).setValue(m.id))
+        mine.slice(0, 25).map((m) =>
+          new StringSelectMenuOptionBuilder()
+            // Includes the event label, same as the add-select — a member
+            // can have two boards' leave scheduled for the same calendar
+            // date (scheduledLeaves is unique per board+member+date, not
+            // per member+date alone), so a date-only label here could show
+            // two visually identical options with no way to tell them apart.
+            .setLabel(m.eventLabel ? `${formatThaiDateLabel(m.date)} — ${m.eventLabel}` : formatThaiDateLabel(m.date))
+            .setValue(m.id)
+        )
       );
     rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(cancelSelect));
     lines.push(`คุณแจ้งลาไว้ล่วงหน้า ${mine.length} วัน — เลือกด้านล่างเพื่อยกเลิก`);
@@ -206,7 +235,12 @@ async function handleLeavePanelButton(interaction: ButtonInteraction) {
   await interaction.editReply({ content, components: rows });
 }
 
-/** Member picked one or more dates on the add-select — schedules each, then replaces the picker with a confirmation summary. */
+/**
+ * Member picked one or more dates on the add-select — schedules each, then
+ * refreshes the SAME message back into a live picker (not a dead-end
+ * confirmation) so add/cancel/add-again all stay reachable by clicking,
+ * with no need to ever type /leave again mid-flow.
+ */
 async function handleLeaveAddSelect(interaction: StringSelectMenuInteraction) {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
   if (!member) {
@@ -222,13 +256,11 @@ async function handleLeaveAddSelect(interaction: StringSelectMenuInteraction) {
   }
 
   const labels = dates.map((d) => formatThaiDateLabel(d)).join(", ");
-  await interaction.update({
-    content: `✅ แจ้งลาล่วงหน้าแล้ว: ${labels}\nพิมพ์ /leave อีกครั้งเพื่อดูหรือยกเลิก`,
-    components: [],
-  });
+  const { content, rows } = await renderLeavePicker(interaction.user.id);
+  await interaction.update({ content: `✅ แจ้งลาล่วงหน้าแล้ว: ${labels}\n\n${content}`, components: rows });
 }
 
-/** Member picked one or more entries on the cancel-select — cancels each, then replaces the picker with a confirmation summary. */
+/** Member picked one or more entries on the cancel-select — cancels each, then refreshes the same message back into a live picker (see handleLeaveAddSelect). */
 async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction) {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
   if (!member) {
@@ -236,14 +268,13 @@ async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction)
     return;
   }
 
+  let cancelled = 0;
   for (const id of interaction.values) {
-    await cancelScheduledLeave(member.id, id);
+    if (await cancelScheduledLeave(member.id, id)) cancelled++;
   }
 
-  await interaction.update({
-    content: `✅ ยกเลิกการแจ้งลาล่วงหน้าแล้ว ${interaction.values.length} รายการ`,
-    components: [],
-  });
+  const { content, rows } = await renderLeavePicker(interaction.user.id);
+  await interaction.update({ content: `✅ ยกเลิกการแจ้งลาล่วงหน้าแล้ว ${cancelled} รายการ\n\n${content}`, components: rows });
 }
 
 /**
@@ -277,11 +308,13 @@ async function handleClassSelectButton(interaction: ButtonInteraction) {
     .setMaxValues(1)
     .addOptions(
       classes.slice(0, 25).map((c) =>
-        new StringSelectMenuOptionBuilder()
-          .setLabel(c.name)
-          .setValue(c.name)
-          .setEmoji(c.emoji)
-          .setDefault(c.name === member.characterClass)
+        withSafeEmoji(
+          new StringSelectMenuOptionBuilder()
+            .setLabel(c.name)
+            .setValue(c.name)
+            .setDefault(c.name === member.characterClass),
+          c.emoji
+        )
       )
     );
 
@@ -294,8 +327,12 @@ async function handleClassSelectButton(interaction: ButtonInteraction) {
 /** Member picked their class on the dropdown — updates members.characterClass, logs it, and confirms. */
 async function handleClassSelectChoose(interaction: StringSelectMenuInteraction) {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
-  if (!member) {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
+  // Same ACTIVE check handleClassSelectButton makes before ever opening this
+  // dropdown — re-checked here too, since Discord keeps an ephemeral menu
+  // clickable for several minutes and an admin could deactivate the member
+  // in between (e.g. mark them KICKED/benched) while it's still open.
+  if (!member || member.status !== "ACTIVE") {
+    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ หรือบัญชีนี้ไม่ได้ใช้งานอยู่แล้ว", components: [] });
     return;
   }
 

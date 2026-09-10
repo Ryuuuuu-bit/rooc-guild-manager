@@ -49,6 +49,8 @@ export const eventLabels: Record<string, string> = {
   NAME_CHANGE: "Discord name changed",
   AUCTION_BAN: "Banned from auction",
   AUCTION_UNBAN: "Auction ban lifted",
+  LEAVE_SCHEDULED: "Requested advance leave",
+  LEAVE_SCHEDULE_CANCELLED: "Cancelled advance leave request",
 };
 
 /**
@@ -70,6 +72,8 @@ export const eventTypeColors: Record<string, string> = {
   NAME_CHANGE: "text-amber-400",
   AUCTION_BAN: "text-amber-400",
   AUCTION_UNBAN: "text-amber-400",
+  LEAVE_SCHEDULED: "text-amber-400",
+  LEAVE_SCHEDULE_CANCELLED: "text-amber-400",
 };
 
 export const eventTypeDotColors: Record<string, string> = {
@@ -85,4 +89,6 @@ export const eventTypeDotColors: Record<string, string> = {
   NAME_CHANGE: "bg-amber-400",
   AUCTION_BAN: "bg-amber-400",
   AUCTION_UNBAN: "bg-amber-400",
+  LEAVE_SCHEDULED: "bg-amber-400",
+  LEAVE_SCHEDULE_CANCELLED: "bg-amber-400",
 };

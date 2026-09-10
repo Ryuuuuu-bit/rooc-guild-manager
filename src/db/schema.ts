@@ -39,6 +39,14 @@ export const eventTypeEnum = pgEnum("event_type", [
   // the loot auction queue — see members.auctionBanUntil below.
   "AUCTION_BAN",
   "AUCTION_UNBAN",
+  // Logged the moment a member REQUESTS an advance leave via /leave or the
+  // "ห้องลา" panel (see scheduleLeave/cancelScheduledLeave in
+  // bot/leave-schedule.ts) — distinct from ATTENDANCE_LEAVE, which only
+  // fires once that request actually takes effect on its date. Without
+  // these, a request for a leave weeks out was invisible anywhere in the
+  // activity feed until the day itself.
+  "LEAVE_SCHEDULED",
+  "LEAVE_SCHEDULE_CANCELLED",
 ]);
 
 export const members = pgTable(

@@ -153,7 +153,34 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
   }
 
   const wasInactive = existing.status !== "ACTIVE";
+  // A KICKED member is never silently resurrected by a sync pass — an admin
+  // set that status deliberately (see markMemberKicked in
+  // src/app/actions/members.ts), often specifically BECAUSE the bot's actual
+  // Discord kick failed and the person is still physically in the server.
+  // Undoing that is a separate, explicit admin action (restoreMemberStatus).
+  const wasKicked = existing.status === "KICKED";
   await maybeLogNameChange(existing, normalized);
+
+  if (wasKicked) {
+    // Profile fields still refresh normally — only status/leftDiscordAt (and
+    // the JOIN/loot-queue re-add that would follow a real reactivation) stay
+    // untouched.
+    await db
+      .update(members)
+      .set({
+        discordUsername: normalized.username,
+        discordGlobalName: normalized.globalName,
+        discordNickname: normalized.nickname,
+        discordAvatar: normalized.avatarUrl,
+        discordRoles: normalized.roles,
+        inGameName: normalized.nickname || existing.inGameName,
+        lastSyncedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(members.id, existing.id));
+    return;
+  }
+
   await db
     .update(members)
     .set({
@@ -285,7 +312,27 @@ export async function runFullSync(guild: Guild) {
     }
 
     const wasInactive = existing.status !== "ACTIVE";
+    // Same KICKED guard as upsertMemberFromGateway above — see its comment.
+    const wasKicked = existing.status === "KICKED";
     await maybeLogNameChange(existing, normalized);
+
+    if (wasKicked) {
+      await db
+        .update(members)
+        .set({
+          discordUsername: normalized.username,
+          discordGlobalName: normalized.globalName,
+          discordNickname: normalized.nickname,
+          discordAvatar: normalized.avatarUrl,
+          discordRoles: normalized.roles,
+          inGameName: normalized.nickname || existing.inGameName,
+          lastSyncedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(members.id, existing.id));
+      continue;
+    }
+
     await db
       .update(members)
       .set({

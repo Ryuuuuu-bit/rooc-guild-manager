@@ -106,13 +106,17 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
     await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
   }
 
-  const content =
-    "🎮 **เลือกอาชีพของคุณ** — กดปุ่มด้านล่างเพื่อเลือกอาชีพในเกม (เปลี่ยนใหม่ได้ทุกเมื่อ ระบบจะอัปเดตให้อัตโนมัติ)\n\n" +
-    "📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วย — คลิกขวาที่ชื่อตัวเองใน Discord server นี้ > Edit Server Profile";
-
   let messageId: string;
   try {
-    messageId = await createChannelMessage(channelId, content, [{ customId: "class_select_open", label: "เลือกอาชีพ", emoji: "🎮" }]);
+    messageId = await createChannelMessage(channelId, "", {
+      embed: {
+        title: "🎮 เลือกอาชีพของคุณ",
+        description:
+          "กดปุ่มด้านล่างเพื่อเลือกอาชีพในเกม (เปลี่ยนใหม่ได้ทุกเมื่อ ระบบจะอัปเดตให้อัตโนมัติ)\n\n" +
+          "📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วย — คลิกขวาที่ชื่อตัวเองใน Discord server นี้ > Edit Server Profile",
+      },
+      buttons: [{ customId: "class_select_open", label: "เลือกอาชีพ", emoji: "🎮" }],
+    });
   } catch (err) {
     return {
       ok: false,
@@ -219,14 +223,17 @@ export async function postLeavePanelMessage(channelId: string): Promise<ActionRe
     await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
   }
 
-  const content =
-    "🗓️ **แจ้งลาล่วงหน้า** — กดปุ่มด้านล่างเพื่อเลือกวันกิจกรรมที่จะถึงที่คุณจะลา (เลือกได้หลายวันในครั้งเดียว) ระบบจะลาให้อัตโนมัติเมื่อถึงวันนั้น ไม่ต้องพิมพ์คำสั่งเอง";
-
   let messageId: string;
   try {
-    messageId = await createChannelMessage(channelId, content, [
-      { customId: "leave_panel_open", label: "แจ้งลาล่วงหน้า", emoji: "🗓️" },
-    ]);
+    messageId = await createChannelMessage(channelId, "", {
+      embed: {
+        title: "🗓️ แจ้งลาล่วงหน้า",
+        description:
+          "กดปุ่มด้านล่างเพื่อเลือกวันกิจกรรมที่จะถึงที่คุณจะลา (เลือกได้หลายวันในครั้งเดียว)\n\n" +
+          "ระบบจะลาให้อัตโนมัติเมื่อถึงวันนั้น ไม่ต้องพิมพ์คำสั่งเอง",
+      },
+      buttons: [{ customId: "leave_panel_open", label: "แจ้งลาล่วงหน้า", emoji: "🗓️" }],
+    });
   } catch (err) {
     return {
       ok: false,

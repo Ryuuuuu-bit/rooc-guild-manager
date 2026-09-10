@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   members,
@@ -31,6 +31,7 @@ export interface PartyTemplateListItem {
 /** Saved templates, newest first, with just enough of a summary (party/slot
  * counts) to tell them apart at a glance without opening each one. */
 export async function listPartyTemplates(): Promise<PartyTemplateListItem[]> {
+  await requireAdmin();
   const rows = await db.select().from(partyTemplates).orderBy(desc(partyTemplates.createdAt));
   return rows.map((row) => {
     const data = row.data as PartyTemplateData;
@@ -112,8 +113,12 @@ export async function deletePartyTemplate(templateId: string): Promise<ActionRes
  * layout would be a real footgun for whoever's arranging parties. Their
  * busy entry itself is left untouched either way. A memberId the template
  * names who no longer resolves to an active, non-benched member (left the
- * guild, got benched, etc.) is likewise skipped. Runs as one transaction so
- * a failure partway through can't leave the board half-rebuilt.
+ * guild, got benched, etc. — or the member row is gone entirely) is
+ * likewise skipped — and, same as the busy case, reported back by name so
+ * the admin isn't left wondering why a slot came back empty (previously
+ * this second category was dropped silently with no warning at all). Runs
+ * as one transaction so a failure partway through can't leave the board
+ * half-rebuilt.
  */
 export async function applyPartyTemplate(boardId: string, templateId: string): Promise<ActionResult> {
   await requireAdmin();
@@ -130,15 +135,19 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
     data.groups.flatMap((g) => g.parties.flatMap((p) => p.slots.filter((m): m is string => m !== null)))
   );
 
-  const eligibleMembers = templateMemberIds.size
-    ? await db.query.members.findMany({
-        where: and(eq(members.status, "ACTIVE"), eq(members.benched, false)),
-      })
+  // Fetch every member the template references regardless of their current
+  // eligibility — needed so a departed/benched member can still be named in
+  // the warning below instead of just silently vanishing from the count.
+  const referencedMembers = templateMemberIds.size
+    ? await db.query.members.findMany({ where: inArray(members.id, [...templateMemberIds]) })
     : [];
-  const eligibleIds = new Set(eligibleMembers.filter((m) => templateMemberIds.has(m.id)).map((m) => m.id));
-  const eligibleById = new Map(eligibleMembers.map((m) => [m.id, m]));
+  const eligibleIds = new Set(
+    referencedMembers.filter((m) => m.status === "ACTIVE" && !m.benched).map((m) => m.id)
+  );
+  const memberById = new Map(referencedMembers.map((m) => [m.id, m]));
 
   const skippedForLeave = new Set<string>();
+  const skippedForDeparted = new Set<string>();
 
   await db.transaction(async (tx) => {
     // Members currently marked Busy/ลา on THIS board — checked so the slot
@@ -170,7 +179,11 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
 
         for (let slotIndex = 0; slotIndex < party.slots.length; slotIndex++) {
           const memberId = party.slots[slotIndex];
-          if (!memberId || !eligibleIds.has(memberId) || placedMemberIds.has(memberId)) continue;
+          if (!memberId || placedMemberIds.has(memberId)) continue;
+          if (!eligibleIds.has(memberId)) {
+            skippedForDeparted.add(memberId);
+            continue;
+          }
           if (busyMemberIds.has(memberId)) {
             skippedForLeave.add(memberId);
             continue;
@@ -183,16 +196,24 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
   });
 
   revalidatePath("/party");
-  if (skippedForLeave.size > 0) {
-    const names = [...skippedForLeave]
-      .map((id) => eligibleById.get(id))
+
+  const namesOf = (ids: Set<string>) =>
+    [...ids]
+      .map((id) => memberById.get(id))
       .filter((m): m is NonNullable<typeof m> => m !== undefined)
       .map((m) => memberDisplayName(m))
       .join(", ");
-    return {
-      ok: true,
-      error: `โหลด template สำเร็จ — เว้นว่าง ${skippedForLeave.size} ช่องเพราะคนละลาอยู่ตอนนี้: ${names}`,
-    };
+
+  const warnings: string[] = [];
+  if (skippedForLeave.size > 0) {
+    warnings.push(`เว้นว่าง ${skippedForLeave.size} ช่องเพราะคนละลาอยู่ตอนนี้: ${namesOf(skippedForLeave)}`);
+  }
+  if (skippedForDeparted.size > 0) {
+    const names = namesOf(skippedForDeparted) || `${skippedForDeparted.size} คน (ไม่พบข้อมูลแล้ว)`;
+    warnings.push(`เว้นว่าง ${skippedForDeparted.size} ช่องเพราะคนออกจากกิลด์/ถูกเตะ/พักการเล่นไปแล้ว: ${names}`);
+  }
+  if (warnings.length > 0) {
+    return { ok: true, error: `โหลด template สำเร็จ — ${warnings.join(" | ")}` };
   }
   return { ok: true };
 }

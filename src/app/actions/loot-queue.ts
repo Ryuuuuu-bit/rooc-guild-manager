@@ -80,7 +80,17 @@ export async function moveLootCategory(id: string, direction: "up" | "down"): Pr
 
 // --- Queue membership ---------------------------------------------------
 
-/** Adds a member to the BACK of one category's queue. No-op error if already queued there. */
+/**
+ * Adds a member to the BACK of one category's queue. No-op error if already
+ * queued there. The findFirst check below is a fast pre-check only, not
+ * atomic with the insert that follows it — a near-simultaneous double-click
+ * or two admins acting at once can both pass it before either insert
+ * commits. The `loot_queue_entries_category_member_idx` unique index (see
+ * schema.ts) is the real guard that stops a duplicate row ever landing in
+ * the DB; the try/catch below just turns that race's failure mode from a
+ * raw constraint-violation error into the same friendly message the normal
+ * pre-check path already returns.
+ */
 export async function addToLootQueue(categoryId: string, memberId: string): Promise<ActionResult> {
   await requireAdmin();
 
@@ -94,7 +104,13 @@ export async function addToLootQueue(categoryId: string, memberId: string): Prom
     .from(lootQueueEntries)
     .where(eq(lootQueueEntries.categoryId, categoryId));
 
-  await db.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
+  try {
+    await db.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
+  } catch (err) {
+    const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
+    if (isDuplicate) return { ok: false, error: "This member is already in this category's queue" };
+    throw err;
+  }
   revalidateEverywhere();
   return { ok: true };
 }

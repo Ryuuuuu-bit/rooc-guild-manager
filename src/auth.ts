@@ -141,6 +141,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               joinedDiscordAt: new Date(),
               lastSyncedAt: new Date(),
             });
+          } else if (existing.status === "KICKED") {
+            // Do NOT resurrect a KICKED member's status here — an admin set
+            // that deliberately (see markMemberKicked), often specifically
+            // BECAUSE the actual Discord kick failed (missing permission/role
+            // hierarchy) and the person is still physically in the server.
+            // Refreshing their profile fields is still fine/harmless; only
+            // status/leftDiscordAt stay untouched. Reversing a kick is a
+            // separate, explicit admin action (restoreMemberStatus).
+            await db
+              .update(members)
+              .set({
+                discordUsername: discordProfile.username,
+                discordGlobalName: discordProfile.global_name,
+                discordNickname: guildMember.nick,
+                discordAvatar: avatarUrl,
+                discordRoles: guildMember.roles,
+                lastSyncedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(members.id, existing.id));
           } else {
             await db
               .update(members)

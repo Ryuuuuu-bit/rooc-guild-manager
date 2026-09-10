@@ -51,7 +51,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
   async function handleApply(t: PartyTemplateListItem) {
     if (
       !confirm(
-        `Apply template "${t.name}" to board "${boardName}"?\n\nThis board's current party layout will be completely replaced. Anyone currently marked Busy/ลา on this board is skipped — their template slot comes back empty rather than pulling them off the leave list.`
+        `Apply template "${t.name}" to board "${boardName}"?\n\nThis board's current party layout will be completely replaced. Anyone currently marked Busy/ลา on this board, or who has since left/been kicked/been benched, is skipped — their template slot comes back empty and you'll see exactly who after applying.`
       )
     )
       return;
