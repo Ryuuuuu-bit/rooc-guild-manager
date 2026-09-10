@@ -10,7 +10,6 @@ import {
   addMessageReaction,
   createChannelMessage,
   deleteChannelMessage,
-  editChannelMessage,
   listGuildTextChannels,
   type DiscordChannel,
 } from "@/lib/discord";
@@ -20,10 +19,6 @@ import { ATTENDANCE_EMOJI } from "@/lib/class-emoji";
 export interface ActionResult {
   ok: boolean;
   error?: string;
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Text channels the admin can pick from when posting a reaction message — populates a <select>, no hard-coded channel. */
@@ -88,79 +83,45 @@ export async function getBoardEmoji(boardId: string): Promise<string> {
 
 /**
  * Posts (or reposts, replacing the old one) the guild-wide "เลือกอาชีพ"
- * message: one line per class with its emoji, seeded with the bot's own
- * reactions so members just click theirs. The bot worker listens for
- * reactions on this message (`bot/reactions.ts`) and updates
- * `members.characterClass` directly — no admin review step, since it's the
- * member's own class self-report, same trust level as editing their own
- * profile.
+ * panel: a single pinned message with a "เลือกอาชีพ" button — members click
+ * it, then pick their class from an ephemeral dropdown (see
+ * handleClassSelectButton/handleClassSelectChoose in bot/interactions.ts),
+ * no emoji-reacting required. Unconditional delete-then-recreate on repost,
+ * same as postAttendanceMessage/postLeavePanelMessage — there's no
+ * per-member reaction state to preserve in place anymore now that this
+ * isn't reaction-driven.
  */
 export async function postClassSelectMessage(channelId: string): Promise<ActionResult> {
   await requireAdmin();
   if (!channelId) return { ok: false, error: "Please select a channel" };
 
   const jobClassesList = await listJobClasses();
-  const lines = jobClassesList.map((c) => `${c.emoji} — ${c.name}`).join("\n");
-  const content = `**เลือกอาชีพของคุณ** — กดอิโมจิที่ตรงกับอาชีพในเกม (กดใหม่ได้ถ้าเปลี่ยนอาชีพ ระบบจะอัปเดตให้อัตโนมัติ)\n\n${lines}\n\n📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วย — คลิกขวาที่ชื่อตัวเองใน Discord server นี้ > Edit Server Profile`;
+  if (jobClassesList.length === 0) {
+    return { ok: false, error: "No job classes configured yet — add some in /classes first" };
+  }
 
   const previous = await getCurrentMessage("CLASS_SELECT", null);
-  let messageId: string | null = null;
-
-  // Prefer editing the existing message in place (e.g. re-posting just to
-  // add a newly-introduced class) — this keeps every member's existing
-  // reaction intact, so only people picking the *new* class need to react;
-  // nobody else is forced to re-click. Only falls back to delete+recreate
-  // when there's no previous message, it's in a different channel, or the
-  // edit itself fails (e.g. someone deleted the message manually).
-  if (previous && previous.channelId === channelId) {
-    try {
-      await editChannelMessage(previous.channelId, previous.messageId, content);
-      messageId = previous.messageId;
-    } catch {
-      // Fall through to delete+recreate below.
-    }
+  if (previous) {
+    await deleteChannelMessage(previous.channelId, previous.messageId);
+    await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
   }
 
-  if (!messageId) {
-    if (previous) {
-      await deleteChannelMessage(previous.channelId, previous.messageId);
-      await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
-    }
-    try {
-      messageId = await createChannelMessage(channelId, content);
-    } catch (err) {
-      return {
-        ok: false,
-        error: `Failed to post message — check whether the bot has "Send Messages" permission in this channel (${err instanceof Error ? err.message : "unknown error"})`,
-      };
-    }
-    // Track the message the moment it exists — even if seeding reactions
-    // below partially fails, the message stays trackable so a repost
-    // cleanly replaces/edits it instead of leaving an orphaned, untracked
-    // message behind in the channel.
-    await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
-  }
+  const content =
+    "🎮 **เลือกอาชีพของคุณ** — กดปุ่มด้านล่างเพื่อเลือกอาชีพในเกม (เปลี่ยนใหม่ได้ทุกเมื่อ ระบบจะอัปเดตให้อัตโนมัติ)\n\n" +
+    "📝 **ถ้าเปลี่ยนชื่อในเกม** อย่าลืมเปลี่ยนชื่อเล่นใน Discord (nickname) ให้ตรงกับชื่อในเกมด้วย — คลิกขวาที่ชื่อตัวเองใน Discord server นี้ > Edit Server Profile";
 
-  // Discord's reaction-add endpoint has a tight per-message rate limit —
-  // seed reactions one at a time with a small gap between each rather than
-  // firing them back-to-back, on top of discordBotFetch's own 429 retry.
-  const failedEmojis: string[] = [];
-  for (const c of jobClassesList) {
-    try {
-      await addMessageReaction(channelId, messageId, c.emoji);
-    } catch {
-      failedEmojis.push(c.emoji);
-    }
-    await sleep(300);
-  }
-
-  revalidatePath("/members");
-  if (failedEmojis.length > 0) {
+  let messageId: string;
+  try {
+    messageId = await createChannelMessage(channelId, content, [{ customId: "class_select_open", label: "เลือกอาชีพ", emoji: "🎮" }]);
+  } catch (err) {
     return {
-      ok: true,
-      error: `Message posted successfully, but some emoji reactions failed to seed (missing: ${failedEmojis.join(" ")}) — try clicking "Post Again" to fix it`,
+      ok: false,
+      error: `Failed to post message — check whether the bot has "Send Messages" permission in this channel (${err instanceof Error ? err.message : "unknown error"})`,
     };
   }
+
+  await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
+  revalidatePath("/members");
   return { ok: true };
 }
 

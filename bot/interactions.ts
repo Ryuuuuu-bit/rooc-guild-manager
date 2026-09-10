@@ -15,8 +15,9 @@ import {
 } from "discord.js";
 import { eq } from "drizzle-orm";
 import { db } from "../src/db";
-import { members } from "../src/db/schema";
+import { members, membershipEvents } from "../src/db/schema";
 import { getPartyBoardDetail, listPartyBoards, type PartyBoardMemberRef } from "./party-data";
+import { listJobClasses } from "./job-classes";
 import {
   cancelScheduledLeave,
   formatThaiDateLabel,
@@ -31,6 +32,10 @@ const LEAVE_CANCEL_SELECT_ID = "leave_cancel_select";
 // postLeavePanelMessage in src/app/actions/bot-messages.ts, which posts it
 // via plain REST from the web app — the string here just has to match).
 const LEAVE_PANEL_BUTTON_ID = "leave_panel_open";
+// Custom IDs for the "เลือกอาชีพ" panel's button + its dropdown (see
+// postClassSelectMessage in src/app/actions/bot-messages.ts for the button).
+const CLASS_SELECT_BUTTON_ID = "class_select_open";
+const CLASS_SELECT_CHOOSE_ID = "class_select_choose";
 
 // Matches the web app's amber accent (see Tailwind's amber-500) so the
 // Components V2 card reads as the same product, not a generic bot embed.
@@ -241,7 +246,72 @@ async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction)
   });
 }
 
-/** Routes every interaction the bot receives — /party, /leave, the /leave picker's two select menus, and the "ห้องลา" panel button. Extend this switch as more slash commands are added. */
+/**
+ * Click on the "เลือกอาชีพ" panel's button (see postClassSelectMessage) —
+ * shows an ephemeral single-select dropdown of the admin-managed job class
+ * list, each option's own emoji shown next to it, with the member's current
+ * class pre-selected so the dropdown opens already showing where they are.
+ * No typing, no emoji-reacting — replaces the old click-an-emoji flow.
+ */
+async function handleClassSelectButton(interaction: ButtonInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
+  if (!member || member.status !== "ACTIVE") {
+    await interaction.editReply({
+      content: "ไม่พบข้อมูลสมาชิกของคุณในระบบ — ลองใหม่อีกครั้งหลังบอทซิงค์ข้อมูล หรือติดต่อแอดมิน",
+    });
+    return;
+  }
+
+  const classes = await listJobClasses();
+  if (classes.length === 0) {
+    await interaction.editReply({ content: "ยังไม่มีรายการอาชีพให้เลือก — ติดต่อแอดมิน" });
+    return;
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(CLASS_SELECT_CHOOSE_ID)
+    .setPlaceholder("เลือกอาชีพของคุณ")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      classes.slice(0, 25).map((c) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(c.name)
+          .setValue(c.name)
+          .setEmoji(c.emoji)
+          .setDefault(c.name === member.characterClass)
+      )
+    );
+
+  await interaction.editReply({
+    content: "**เลือกอาชีพของคุณ**",
+    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
+  });
+}
+
+/** Member picked their class on the dropdown — updates members.characterClass, logs it, and confirms. */
+async function handleClassSelectChoose(interaction: StringSelectMenuInteraction) {
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
+  if (!member) {
+    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
+    return;
+  }
+
+  const className = interaction.values[0];
+  await db.update(members).set({ characterClass: className, updatedAt: new Date() }).where(eq(members.id, member.id));
+  await db.insert(membershipEvents).values({
+    memberId: member.id,
+    type: "CLASS_CHANGE",
+    detail: `เปลี่ยนอาชีพเป็น ${className} ผ่านเมนูเลือกอาชีพ`,
+    actor: "bot:interactions",
+  });
+
+  await interaction.update({ content: `✅ เลือกอาชีพ: ${className}`, components: [] });
+}
+
+/** Routes every interaction the bot receives — /party, /leave, the /leave picker's two select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
 export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === "party") {
     try {
@@ -313,6 +383,31 @@ export async function handleInteractionCreate(interaction: Interaction) {
       } else {
         await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
       }
+    }
+    return;
+  }
+
+  if (interaction.isButton() && interaction.customId === CLASS_SELECT_BUTTON_ID) {
+    try {
+      await handleClassSelectButton(interaction);
+    } catch (err) {
+      console.error("[bot] class-select button failed", err);
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content }).catch(() => {});
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === CLASS_SELECT_CHOOSE_ID) {
+    try {
+      await handleClassSelectChoose(interaction);
+    } catch (err) {
+      console.error("[bot] class-select choose failed", err);
+      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
     }
   }
 }

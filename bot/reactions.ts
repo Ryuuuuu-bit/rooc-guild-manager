@@ -221,6 +221,11 @@ export async function handleReactionAdd(
   }
 
   if (row.kind === "CLASS_SELECT") {
+    // Legacy fallback: the CLASS_SELECT message no longer seeds emoji
+    // reactions itself (see postClassSelectMessage) — the primary flow is
+    // now its "เลือกอาชีพ" button + dropdown (handleClassSelectButton/
+    // handleClassSelectChoose in bot/interactions.ts). This still runs
+    // harmlessly if a member manually reacts with a matching emoji anyway.
     const emojiToClass = await getEmojiToClassMap();
     const className = emojiToClass[emojiName];
     if (!className) {

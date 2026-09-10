@@ -51,7 +51,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
   async function handleApply(t: PartyTemplateListItem) {
     if (
       !confirm(
-        `Apply template "${t.name}" to board "${boardName}"?\n\nThis board's current party layout will be completely replaced (the Busy/Leave list is unaffected for anyone the template does not place).`
+        `Apply template "${t.name}" to board "${boardName}"?\n\nThis board's current party layout will be completely replaced. Anyone currently marked Busy/ลา on this board is skipped — their template slot comes back empty rather than pulling them off the leave list.`
       )
     )
       return;
@@ -61,6 +61,10 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
     if (result.ok) {
       setOpen(false);
       onApplied();
+      // ok can still carry a warning (e.g. some slots were left empty
+      // because that member is currently on leave) — surface it rather than
+      // silently discarding it, same pattern as the class-select panel.
+      if (result.error) alert(result.error);
     } else {
       alert(result.error ?? "Failed to load template. Please try again.");
     }

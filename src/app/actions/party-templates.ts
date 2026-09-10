@@ -5,7 +5,6 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
   members,
-  membershipEvents,
   partyBoards,
   partyBusyEntries,
   partyGroupParties,
@@ -16,6 +15,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { getPartyBoardDetail } from "@/lib/party-data";
+import { memberDisplayName } from "@/lib/ui";
 import type { ActionResult, ActionResultWithId } from "@/app/actions/party";
 
 export interface PartyTemplateListItem {
@@ -104,19 +104,19 @@ export async function deletePartyTemplate(templateId: string): Promise<ActionRes
  * Replaces a board's entire group/party/slot structure with a saved
  * template's — the board's own groups are deleted first (cascades to their
  * parties and slots via the FKs in schema.ts) and rebuilt from the
- * template, in order. A member the template placed in a slot is pulled out
- * of that board's busy/ลา list if they were sitting there (mirrors
- * moveMember's own "busy → placed" rule, including logging
- * ATTENDANCE_RETURN, so /attendance's history stays accurate rather than
- * silently leaving a stale ลา on record for someone the template just
- * placed into an active slot). A memberId the template names who no longer
- * resolves to an active, non-benched member (left the guild, got benched,
- * etc.) is skipped — that slot comes back empty rather than failing the
- * whole apply. Runs as one transaction so a failure partway through can't
- * leave the board half-rebuilt.
+ * template, in order. A member currently marked Busy/ลา on THIS board is
+ * deliberately left out of their template slot (which comes back empty)
+ * instead of being pulled back in — a saved template has no idea today's ลา
+ * list even exists (it might be a completely different day/event from
+ * whenever it was saved), so silently un-ลาing someone by loading an old
+ * layout would be a real footgun for whoever's arranging parties. Their
+ * busy entry itself is left untouched either way. A memberId the template
+ * names who no longer resolves to an active, non-benched member (left the
+ * guild, got benched, etc.) is likewise skipped. Runs as one transaction so
+ * a failure partway through can't leave the board half-rebuilt.
  */
 export async function applyPartyTemplate(boardId: string, templateId: string): Promise<ActionResult> {
-  const session = await requireAdmin();
+  await requireAdmin();
 
   const [board, template] = await Promise.all([
     db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) }),
@@ -136,28 +136,19 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
       })
     : [];
   const eligibleIds = new Set(eligibleMembers.filter((m) => templateMemberIds.has(m.id)).map((m) => m.id));
+  const eligibleById = new Map(eligibleMembers.map((m) => [m.id, m]));
+
+  const skippedForLeave = new Set<string>();
 
   await db.transaction(async (tx) => {
-    // Pull anyone the template is about to place out of THIS board's busy
-    // list first — same "busy -> placed" transition moveMember logs, kept
-    // consistent so /attendance and /checkin's ลา lookup don't go stale.
-    const busyToClear = await tx
+    // Members currently marked Busy/ลา on THIS board — checked so the slot
+    // loop below can leave their template slot empty instead of placing
+    // them (see the doc comment above for why).
+    const busyRows = await tx
       .select({ memberId: partyBusyEntries.memberId })
       .from(partyBusyEntries)
       .where(eq(partyBusyEntries.boardId, boardId));
-    const toClear = busyToClear.filter((b) => eligibleIds.has(b.memberId));
-    for (const { memberId } of toClear) {
-      await tx
-        .delete(partyBusyEntries)
-        .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
-      await tx.insert(membershipEvents).values({
-        memberId,
-        type: "ATTENDANCE_RETURN",
-        detail: `ยกเลิกลาในกระดาน "${board.name}" โดยแอดมิน ${session.user.username} (โหลด template)`,
-        actor: session.user.username,
-        boardId,
-      });
-    }
+    const busyMemberIds = new Set(busyRows.map((b) => b.memberId));
 
     // Wipe the board's current structure — cascades to parties and slots.
     await tx.delete(partyGroups).where(eq(partyGroups.boardId, boardId));
@@ -180,6 +171,10 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
         for (let slotIndex = 0; slotIndex < party.slots.length; slotIndex++) {
           const memberId = party.slots[slotIndex];
           if (!memberId || !eligibleIds.has(memberId) || placedMemberIds.has(memberId)) continue;
+          if (busyMemberIds.has(memberId)) {
+            skippedForLeave.add(memberId);
+            continue;
+          }
           placedMemberIds.add(memberId);
           await tx.insert(partySlots).values({ partyId: insertedParty.id, slotIndex, memberId });
         }
@@ -188,5 +183,16 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
   });
 
   revalidatePath("/party");
+  if (skippedForLeave.size > 0) {
+    const names = [...skippedForLeave]
+      .map((id) => eligibleById.get(id))
+      .filter((m): m is NonNullable<typeof m> => m !== undefined)
+      .map((m) => memberDisplayName(m))
+      .join(", ");
+    return {
+      ok: true,
+      error: `โหลด template สำเร็จ — เว้นว่าง ${skippedForLeave.size} ช่องเพราะคนละลาอยู่ตอนนี้: ${names}`,
+    };
+  }
   return { ok: true };
 }
