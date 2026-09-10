@@ -153,11 +153,34 @@ export async function editChannelMessage(channelId: string, messageId: string, c
   });
 }
 
-/** Posts a plain-text message to a channel via the bot, returning the created message's id. */
-export async function createChannelMessage(channelId: string, content: string): Promise<string> {
+/** A single button on a message's action row — the minimal shape createChannelMessage's `components` param needs (Discord's raw REST message-component JSON, not a discord.js builder — the web app posts via plain REST, see the file header note above). Style 1 = Primary (blurple). */
+export interface MessageButtonSpec {
+  customId: string;
+  label: string;
+  emoji?: string;
+  style?: 1 | 2 | 3 | 4;
+}
+
+/** Posts a plain-text message to a channel via the bot, returning the created message's id. `buttons`, if given, become a single action row underneath — e.g. the "ห้องลา" leave panel's "แจ้งลาล่วงหน้า" button (see postLeavePanelMessage) — clicks are handled entirely by the bot worker's own gateway InteractionCreate listener (bot/interactions.ts), same as a slash command. */
+export async function createChannelMessage(channelId: string, content: string, buttons?: MessageButtonSpec[]): Promise<string> {
+  const components = buttons?.length
+    ? [
+        {
+          type: 1, // Action Row
+          components: buttons.map((b) => ({
+            type: 2, // Button
+            style: b.style ?? 1,
+            custom_id: b.customId,
+            label: b.label,
+            ...(b.emoji ? { emoji: { name: b.emoji } } : {}),
+          })),
+        },
+      ]
+    : undefined;
+
   const message = await discordBotFetch(`/channels/${channelId}/messages`, {
     method: "POST",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...(components ? { components } : {}) }),
   });
   return message.id as string;
 }

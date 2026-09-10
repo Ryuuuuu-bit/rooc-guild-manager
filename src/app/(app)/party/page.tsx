@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/authz";
 import { getPartyBoardDetail, listPartyBoards } from "@/lib/party-data";
 import { PartyBoardView } from "@/components/party/party-board";
 import { ClassSelectBroadcastPanel } from "@/components/class-select-broadcast-panel";
+import { LeavePanelBroadcastPanel } from "@/components/leave-panel-broadcast-panel";
 
 export default async function PartyPage({
   searchParams,
@@ -33,7 +34,12 @@ export default async function PartyPage({
          * rather than inside a per-board panel — kept here rather than on
          * /members since setting up classes is part of the same event-prep
          * flow as posting each board's Leave message below. */}
-        {session.user.isAdmin && <ClassSelectBroadcastPanel />}
+        {session.user.isAdmin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <ClassSelectBroadcastPanel />
+            <LeavePanelBroadcastPanel />
+          </div>
+        )}
       </div>
       <PartyBoardView
         key={selectedBoardId ?? "empty"}

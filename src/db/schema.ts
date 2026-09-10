@@ -307,17 +307,20 @@ export const memberNotes = pgTable(
   (table) => [index("member_notes_member_id_idx").on(table.memberId)]
 );
 
-// Tracks Discord messages the bot has posted that carry meaning via emoji
-// reactions — the "เลือกอาชีพ" (class self-select) message (global, one at a
-// time, boardId null) and each board's "ลา" (attendance/opt-out) message
-// (boardId set). Reposting either kind replaces the previous row (and
-// best-effort deletes the old Discord message) so there's only ever one
-// live message per kind/board that the bot listens to reactions on.
+// Tracks Discord messages the bot has posted that carry meaning via a member
+// interacting with them — the "เลือกอาชีพ" (class self-select) message
+// (global, one at a time, boardId null), each board's "ลา" (attendance/
+// opt-out) message (boardId set), both reaction-based, and the guild-wide
+// "ห้องลา" LEAVE_PANEL button message (global, boardId null — same tracking
+// shape as CLASS_SELECT, just a click instead of a reaction). Reposting any
+// kind replaces the previous row (and best-effort deletes the old Discord
+// message) so there's only ever one live message per kind/board that the
+// bot listens to.
 export const botReactionMessages = pgTable(
   "bot_reaction_messages",
   {
     id: text("id").primaryKey().$defaultFn(() => createId()),
-    kind: text("kind").notNull(), // "CLASS_SELECT" | "ATTENDANCE"
+    kind: text("kind").notNull(), // "CLASS_SELECT" | "ATTENDANCE" | "LEAVE_PANEL"
     boardId: text("board_id").references(() => partyBoards.id, { onDelete: "cascade" }),
     channelId: text("channel_id").notNull(),
     messageId: text("message_id").notNull(),

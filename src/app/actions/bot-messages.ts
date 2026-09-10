@@ -45,7 +45,7 @@ export interface BotMessageStatus {
   jumpUrl: string;
 }
 
-async function getCurrentMessage(kind: "CLASS_SELECT" | "ATTENDANCE", boardId: string | null) {
+async function getCurrentMessage(kind: "CLASS_SELECT" | "ATTENDANCE" | "LEAVE_PANEL", boardId: string | null) {
   return db.query.botReactionMessages.findFirst({
     where: and(
       eq(botReactionMessages.kind, kind),
@@ -72,6 +72,11 @@ export async function getClassSelectStatus(): Promise<BotMessageStatus | null> {
 export async function getAttendanceStatus(boardId: string): Promise<BotMessageStatus | null> {
   await requireAdmin();
   return toStatus(await getCurrentMessage("ATTENDANCE", boardId));
+}
+
+export async function getLeavePanelStatus(): Promise<BotMessageStatus | null> {
+  await requireAdmin();
+  return toStatus(await getCurrentMessage("LEAVE_PANEL", null));
 }
 
 /** The emoji currently configured for this board's "ลา" message — falls back to the app-wide default if the board hasn't customized it. */
@@ -229,5 +234,46 @@ export async function postAttendanceMessage(boardId: string, channelId: string, 
       error: `Message posted successfully, but the emoji reaction failed — check whether the emoji you entered is valid, then try clicking "Post Again" to fix it`,
     };
   }
+  return { ok: true };
+}
+
+/**
+ * Posts (or reposts) the guild-wide "ห้องลา" panel: a single pinned message
+ * with a "🗓️ แจ้งลาล่วงหน้า" button, so members can open the /leave picker
+ * (see handleLeavePanelButton in bot/interactions.ts, which shares its
+ * picker-building logic with the /leave slash command itself) by clicking
+ * in one fixed channel instead of typing a command every time — no reaction
+ * seeding needed here, unlike CLASS_SELECT/ATTENDANCE, since a button isn't
+ * a reaction. Unconditional delete-then-recreate on repost, same as
+ * postAttendanceMessage (there's no per-member state on this message worth
+ * preserving in place, unlike CLASS_SELECT's reactions).
+ */
+export async function postLeavePanelMessage(channelId: string): Promise<ActionResult> {
+  await requireAdmin();
+  if (!channelId) return { ok: false, error: "Please select a channel" };
+
+  const previous = await getCurrentMessage("LEAVE_PANEL", null);
+  if (previous) {
+    await deleteChannelMessage(previous.channelId, previous.messageId);
+    await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
+  }
+
+  const content =
+    "🗓️ **แจ้งลาล่วงหน้า** — กดปุ่มด้านล่างเพื่อเลือกวันกิจกรรมที่จะถึงที่คุณจะลา (เลือกได้หลายวันในครั้งเดียว) ระบบจะลาให้อัตโนมัติเมื่อถึงวันนั้น ไม่ต้องพิมพ์คำสั่งเอง";
+
+  let messageId: string;
+  try {
+    messageId = await createChannelMessage(channelId, content, [
+      { customId: "leave_panel_open", label: "แจ้งลาล่วงหน้า", emoji: "🗓️" },
+    ]);
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Failed to post message — check whether the bot has "Send Messages" permission in this channel (${err instanceof Error ? err.message : "unknown error"})`,
+    };
+  }
+
+  await db.insert(botReactionMessages).values({ kind: "LEAVE_PANEL", boardId: null, channelId, messageId });
+  revalidatePath("/party");
   return { ok: true };
 }

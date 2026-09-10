@@ -8,6 +8,7 @@ import {
   StringSelectMenuOptionBuilder,
   TextDisplayBuilder,
   type AutocompleteInteraction,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
   type Interaction,
   type StringSelectMenuInteraction,
@@ -26,6 +27,10 @@ import {
 
 const LEAVE_ADD_SELECT_ID = "leave_add_select";
 const LEAVE_CANCEL_SELECT_ID = "leave_cancel_select";
+// Custom ID of the button on the "ห้องลา" panel message (see
+// postLeavePanelMessage in src/app/actions/bot-messages.ts, which posts it
+// via plain REST from the web app — the string here just has to match).
+const LEAVE_PANEL_BUTTON_ID = "leave_panel_open";
 
 // Matches the web app's amber accent (see Tailwind's amber-500) so the
 // Components V2 card reads as the same product, not a generic bot embed.
@@ -111,26 +116,26 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
 }
 
 /**
- * /leave — shows the requesting member an ephemeral picker: a multi-select
- * dropdown of upcoming event dates they haven't already scheduled a leave
- * for (see listUpcomingLeaveOptions), plus, if they have any pending
- * requests, a second dropdown to cancel them. Pure click — no typing.
+ * Builds the ephemeral leave picker's content + components for one member:
+ * a multi-select dropdown of upcoming event dates they haven't already
+ * scheduled a leave for (see listUpcomingLeaveOptions), plus, if they have
+ * any pending requests, a second dropdown to cancel them. Shared by
+ * handleLeaveCommand (/leave) and handleLeavePanelButton (the "ห้องลา" panel
+ * button) — same picker, two different entry points into it.
  */
-async function handleLeaveCommand(interaction: ChatInputCommandInteraction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
+async function renderLeavePicker(discordUserId: string): Promise<{ content: string; rows: ActionRowBuilder<StringSelectMenuBuilder>[] }> {
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, discordUserId) });
   if (!member || member.status !== "ACTIVE") {
-    await interaction.editReply({
+    return {
       content: "ไม่พบข้อมูลสมาชิกของคุณในระบบ — ลองใหม่อีกครั้งหลังบอทซิงค์ข้อมูล หรือติดต่อแอดมิน",
-    });
-    return;
+      rows: [],
+    };
   }
   if (member.benched) {
-    await interaction.editReply({
+    return {
       content: "บัญชีของคุณถูกตั้งเป็น Benched อยู่ — ไม่ได้อยู่ในผังปาร์ตี้ จึงไม่ต้องแจ้งลาล่วงหน้า",
-    });
-    return;
+      rows: [],
+    };
   }
 
   const [allOptions, mine] = await Promise.all([listUpcomingLeaveOptions(), listMemberScheduledLeaves(member.id)]);
@@ -174,7 +179,26 @@ async function handleLeaveCommand(interaction: ChatInputCommandInteraction) {
     lines.push(`คุณแจ้งลาไว้ล่วงหน้า ${mine.length} วัน — เลือกด้านล่างเพื่อยกเลิก`);
   }
 
-  await interaction.editReply({ content: lines.join("\n"), components: rows });
+  return { content: lines.join("\n"), rows };
+}
+
+/** /leave — types the command, gets the ephemeral picker (see renderLeavePicker). */
+async function handleLeaveCommand(interaction: ChatInputCommandInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const { content, rows } = await renderLeavePicker(interaction.user.id);
+  await interaction.editReply({ content, components: rows });
+}
+
+/**
+ * Click on the "ห้องลา" panel's button (see postLeavePanelMessage) — same
+ * picker as /leave, just reached without typing anything: the panel message
+ * itself is public/pinned in one fixed channel, but this reply (and
+ * everything the member does after it) is ephemeral, same as the command.
+ */
+async function handleLeavePanelButton(interaction: ButtonInteraction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const { content, rows } = await renderLeavePicker(interaction.user.id);
+  await interaction.editReply({ content, components: rows });
 }
 
 /** Member picked one or more dates on the add-select — schedules each, then replaces the picker with a confirmation summary. */
@@ -217,7 +241,7 @@ async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction)
   });
 }
 
-/** Routes every interaction the bot receives — /party, /leave, and the /leave picker's two select menus. Extend this switch as more slash commands are added. */
+/** Routes every interaction the bot receives — /party, /leave, the /leave picker's two select menus, and the "ห้องลา" panel button. Extend this switch as more slash commands are added. */
 export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === "party") {
     try {
@@ -274,6 +298,21 @@ export async function handleInteractionCreate(interaction: Interaction) {
     } catch (err) {
       console.error("[bot] /leave cancel-select failed", err);
       await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.isButton() && interaction.customId === LEAVE_PANEL_BUTTON_ID) {
+    try {
+      await handleLeavePanelButton(interaction);
+    } catch (err) {
+      console.error("[bot] leave-panel button failed", err);
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content }).catch(() => {});
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => {});
+      }
     }
   }
 }
