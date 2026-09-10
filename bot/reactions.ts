@@ -175,8 +175,8 @@ async function dmMemberLeaveStatus(discordId: string, boardName: string, leaveCo
   }
 }
 
-/** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). */
-async function clearMemberSlotOnBoard(memberId: string, boardId: string) {
+/** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). Exported for reuse by bot/leave-schedule.ts's applyTodaysScheduledLeaves — same "remove from any slot when marked ลา" behavior, just triggered by a scheduled date arriving instead of a live reaction. */
+export async function clearMemberSlotOnBoard(memberId: string, boardId: string) {
   const rows = await db
     .select({ slotId: partySlots.id })
     .from(partySlots)

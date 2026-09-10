@@ -3,6 +3,7 @@ import { db } from "../src/db";
 import { botReactionMessages, membershipEvents, partyBoards, partyBusyEntries } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
 import { addMessageReaction, removeAllReactionsForEmoji } from "../src/lib/discord";
+import { applyTodaysScheduledLeaves } from "./leave-schedule";
 
 /**
  * "YYYY-MM-DD" for the given instant in Thailand's local time (UTC+7),
@@ -36,7 +37,7 @@ export function thaiDateString(d: Date = new Date()): string {
  * actually on the list, once per board per night, in exchange for /checkin
  * and /attendance no longer permanently misattributing a stale leave.
  */
-export async function resetDailyBusyLists(): Promise<{ boardsReset: number }> {
+export async function resetDailyBusyLists(): Promise<{ boardsReset: number; scheduledLeavesApplied: number }> {
   const boards = await db.select({ id: partyBoards.id, name: partyBoards.name, emoji: partyBoards.emoji }).from(partyBoards);
   let boardsReset = 0;
 
@@ -92,5 +93,11 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number }> {
     }
   }
 
-  return { boardsReset };
+  // Run AFTER the clear loop above, not before — applying a leave scheduled
+  // for today does its own delete-then-insert on partyBusyEntries (see
+  // applyTodaysScheduledLeaves), so if this ran first the clear loop would
+  // immediately wipe out what it just inserted.
+  const { applied: scheduledLeavesApplied } = await applyTodaysScheduledLeaves();
+
+  return { boardsReset, scheduledLeavesApplied };
 }

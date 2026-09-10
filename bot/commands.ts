@@ -19,5 +19,16 @@ const partyCommand = new SlashCommandBuilder()
       .setRequired(true)
   );
 
+/**
+ * /leave — pick one or more upcoming event dates to schedule an advance
+ * leave for, click-only (a select menu shown in the reply, see
+ * handleLeaveCommand in interactions.ts), instead of waiting until the day
+ * to react "ลา" live on a party board. No options on the command itself —
+ * the dropdown of available dates is built dynamically per member.
+ */
+const leaveCommand = new SlashCommandBuilder()
+  .setName("leave")
+  .setDescription("แจ้งลาล่วงหน้าสำหรับวันกิจกรรมที่จะถึง (เลือกได้หลายวัน)");
+
 /** Registered as guild commands on startup (see bot/index.ts) — instant availability, no global-command propagation delay. */
-export const commands = [partyCommand.toJSON()];
+export const commands = [partyCommand.toJSON(), leaveCommand.toJSON()];

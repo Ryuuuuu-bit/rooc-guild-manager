@@ -100,9 +100,11 @@ client.once(Events.ClientReady, async (readyClient) => {
     const today = thaiDateString();
     if (today === lastResetThaiDate) return;
     try {
-      const { boardsReset } = await resetDailyBusyLists();
+      const { boardsReset, scheduledLeavesApplied } = await resetDailyBusyLists();
       lastResetThaiDate = today; // only advance on success — a failure retries every minute until it works
-      console.log(`[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน`);
+      console.log(
+        `[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน, แจ้งลาล่วงหน้าที่ถึงกำหนด ${scheduledLeavesApplied} รายการ`
+      );
     } catch (err) {
       console.error("[bot] เที่ยงคืน reset ล้มเหลว จะลองใหม่นาทีถัดไป", err);
     }

@@ -567,6 +567,42 @@ export const lootRounds = pgTable(
   (table) => [index("loot_rounds_category_idx").on(table.categoryId)]
 );
 
+// Advance leave requests — a member picks one or more upcoming event dates
+// from a dropdown (see src/lib/checkin-events.ts for the event list) via the
+// /leave Discord command, instead of waiting until the day to react "ลา"
+// live on a party board. `applyTodaysScheduledLeaves()` (bot/leave-schedule.ts,
+// called from bot/midnight-reset.ts's nightly reset) turns a row into a real,
+// immediately-confirmed partyBusyEntries + ATTENDANCE_LEAVE pair once its
+// `date` arrives, then DELETES this row — its job is done, and the audit
+// trail lives on in membershipEvents like every other leave, not here. So
+// unlike most tables in this app, this one is deliberately NOT an append-only
+// history — it only ever holds still-pending, not-yet-arrived requests.
+export const scheduledLeaves = pgTable(
+  "scheduled_leaves",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    boardId: text("board_id")
+      .notNull()
+      .references(() => partyBoards.id, { onDelete: "cascade" }),
+    // "YYYY-MM-DD", Thai calendar — matches an upcoming occurrence computed
+    // from CHECKIN_EVENTS, same date format as checkinNotes.date.
+    date: text("date").notNull(),
+    // CheckinEventConfig.key (e.g. "gl"/"woe") this was scheduled against —
+    // display-only (e.g. listing a member's own upcoming leaves), not a FK
+    // since it's a config key from checkin-events.ts, not a DB row.
+    eventKey: text("event_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("scheduled_leaves_board_member_date_idx").on(table.boardId, table.memberId, table.date),
+    index("scheduled_leaves_date_idx").on(table.date),
+    index("scheduled_leaves_member_id_idx").on(table.memberId),
+  ]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -616,3 +652,5 @@ export type NewPvpStatEntry = typeof pvpStatEntries.$inferInsert;
 export type PvpStatFieldDefRow = typeof pvpStatFieldDefs.$inferSelect;
 export type NewPvpStatFieldDefRow = typeof pvpStatFieldDefs.$inferInsert;
 export type NewLootRound = typeof lootRounds.$inferInsert;
+export type ScheduledLeave = typeof scheduledLeaves.$inferSelect;
+export type NewScheduledLeave = typeof scheduledLeaves.$inferInsert;
