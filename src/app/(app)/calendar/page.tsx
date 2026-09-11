@@ -54,8 +54,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <div>
         <h1 className="text-2xl font-semibold text-zinc-50">Calendar</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Every GL/WOE round for the month, with who&apos;s on leave for each one — click a day to see the full list
-          instead of checking Check-in/Leave Stats one round at a time.
+          Every GL/WOE round for the month, with who actually didn&apos;t attend (real check-in voice data, same as
+          /checkin) — click a day to see the full list instead of checking one round at a time.
         </p>
       </div>
 
@@ -135,8 +135,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                         }`}
                       >
                         {ev.eventKey.toUpperCase()}
-                        {ev.onLeave.length > 0 && (
-                          <span className={ev.confirmed ? "text-amber-300" : "text-zinc-400"}>· {ev.onLeave.length}</span>
+                        {ev.notAttended.length > 0 && (
+                          <span className={ev.confirmed ? "text-rose-300" : "text-zinc-400"}>· {ev.notAttended.length}</span>
                         )}
                       </span>
                     ))}
@@ -181,23 +181,30 @@ function CalendarEventDetail({ event }: { event: CalendarDayEvent }) {
         >
           {event.label}
         </span>
-        {event.onLeave.length > 0 && (
+        {event.confirmed ? (
+          <span className="inline-flex items-center rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
+            Attended {event.attendedCount}/{event.totalCount}
+          </span>
+        ) : (
+          <span className="text-xs text-zinc-500">Upcoming — not attended yet</span>
+        )}
+        {event.notAttended.length > 0 && (
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
               event.confirmed
-                ? "bg-amber-400/15 text-amber-300 ring-1 ring-inset ring-amber-400/30"
+                ? "bg-rose-400/15 text-rose-300 ring-1 ring-inset ring-rose-400/30"
                 : "bg-zinc-700/40 text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
             }`}
           >
-            {event.confirmed ? "On Leave" : "Leave Requested"} ({event.onLeave.length})
+            {event.confirmed ? "Not Attended" : "Leave Requested"} ({event.notAttended.length})
           </span>
         )}
       </div>
-      {event.onLeave.length === 0 ? (
-        <p className="text-sm text-zinc-500">No one on leave for this round.</p>
+      {event.notAttended.length === 0 ? (
+        <p className="text-sm text-zinc-500">{event.confirmed ? "Everyone attended." : "No one has requested leave for this round yet."}</p>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {event.onLeave.map((m) => (
+          {event.notAttended.map((m) => (
             <Link
               key={m.id}
               href={`/members/${m.id}`}

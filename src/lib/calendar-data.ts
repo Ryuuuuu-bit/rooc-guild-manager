@@ -1,14 +1,8 @@
 import { and, gte, inArray, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { members, scheduledLeaves } from "@/db/schema";
-import {
-  CHECKIN_EVENTS,
-  type CheckinEventConfig,
-  getLeaveMemberIds,
-  thaiDateString,
-  weekdayOf,
-  windowFor,
-} from "@/lib/checkin-data";
+import { CHECKIN_EVENTS, type CheckinEventConfig, getCheckinReport, thaiDateString, weekdayOf } from "@/lib/checkin-data";
+import { memberDisplayName } from "@/lib/ui";
 
 export interface CalendarLeaveMember {
   id: string;
@@ -20,16 +14,25 @@ export interface CalendarDayEvent {
   eventKey: string;
   label: string;
   /**
-   * true once this occurrence has actually happened (up to `now`) and its
-   * leave list is read from the confirmed attendance log on the matching
-   * party board (see getLeaveMemberIds) — false while it's still a future
-   * date and the leave list is only an advance request nobody has applied
-   * yet (see scheduledLeaves in schema.ts). Lets the UI mark future leave
-   * as "requested" rather than implying it's already locked in — a member
-   * can still cancel an advance request any time before its date arrives.
+   * true once this occurrence has actually happened (up to `now`) — the
+   * counts/list below then come from the real check-in voice report (see
+   * getCheckinReport, the same function /checkin uses), not just leave
+   * reactions. False while it's still a future date, where there's no
+   * attendance to report yet — the list is instead whoever has an advance
+   * leave request on file for it (scheduledLeaves), which can still change
+   * before the date arrives.
    */
   confirmed: boolean;
-  onLeave: CalendarLeaveMember[];
+  attendedCount: number | null; // null when `confirmed` is false (hasn't happened yet)
+  totalCount: number | null; // null when `confirmed` is false
+  /**
+   * Confirmed: everyone who did NOT attend — on-leave and unexplained
+   * absences collapsed into one list, since this is a monthly overview, not
+   * a detailed report (see /checkin for the attended/on-leave/absent
+   * breakdown). Not confirmed: everyone who's requested leave for this date
+   * so far.
+   */
+  notAttended: CalendarLeaveMember[];
 }
 
 export interface CalendarDay {
@@ -61,14 +64,16 @@ function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate(); // day 0 of next month = last day of this one
 }
 
+function toLeaveMember(m: { id: string; discordUsername: string; discordGlobalName: string | null; discordNickname: string | null; discordAvatar: string | null }): CalendarLeaveMember {
+  return { id: m.id, name: memberDisplayName(m), discordAvatar: m.discordAvatar };
+}
+
 /**
- * Every check-in event occurrence in the given month, each with who's on
- * leave for it — confirmed (from the party board's leave log) for dates
- * that have already happened, requested-but-not-yet-applied (from
- * scheduledLeaves) for dates still ahead. Reuses the exact same
- * event/window/leave-lookup logic as /checkin's per-round report
- * (checkin-data.ts), just swept across a whole month instead of one date
- * at a time — see getLeaveMemberIds and windowFor there.
+ * Every check-in event occurrence in the given month, each with real
+ * attendance for it — who actually didn't show up (getCheckinReport, same
+ * real voice check-in data /checkin uses) for dates that have already
+ * happened, or who's requested leave in advance (scheduledLeaves) for
+ * dates still ahead, since there's nothing to report attendance-wise yet.
  */
 export async function getCalendarMonth(year: number, month: number): Promise<CalendarMonth> {
   const now = new Date();
@@ -103,22 +108,7 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
     set.add(r.memberId);
     scheduledByKey.set(key, set);
   }
-
-  const neededMemberIds = new Set<string>(scheduledRows.map((r) => r.memberId));
-  const confirmedIdsByOccurrence = new Map<string, Set<string>>(); // `${date}:${eventKey}` -> memberIds
-
-  for (const { date, events } of occurrences) {
-    for (const event of events) {
-      if (date > today) continue; // handled from scheduledByKey below instead
-      const { end } = windowFor(event, date);
-      const asOf = end.getTime() < now.getTime() ? end : now;
-      const ids = await getLeaveMemberIds(event, asOf);
-      confirmedIdsByOccurrence.set(`${date}:${event.key}`, ids);
-      for (const id of ids) neededMemberIds.add(id);
-    }
-  }
-
-  const memberRows = neededMemberIds.size
+  const scheduledMemberRows = scheduledRows.length
     ? await db
         .select({
           id: members.id,
@@ -128,16 +118,20 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
           discordAvatar: members.discordAvatar,
         })
         .from(members)
-        .where(inArray(members.id, [...neededMemberIds]))
+        .where(inArray(members.id, [...new Set(scheduledRows.map((r) => r.memberId))]))
     : [];
-  const memberById = new Map(memberRows.map((m) => [m.id, m]));
-  function toLeaveMember(id: string): CalendarLeaveMember {
-    const m = memberById.get(id);
-    const name = m ? m.discordNickname || m.discordGlobalName || m.discordUsername : "Unknown";
-    return { id, name, discordAvatar: m?.discordAvatar ?? null };
-  }
-  function sortedNames(ids: Iterable<string>): CalendarLeaveMember[] {
-    return [...ids].map(toLeaveMember).sort((a, b) => a.name.localeCompare(b.name));
+  const scheduledMemberById = new Map(scheduledMemberRows.map((m) => [m.id, m]));
+
+  // Real check-in report (real voice attendance + leave, same as /checkin)
+  // per past/today occurrence — one call per (event, date), reusing the
+  // exact roster/attendance/leave rules already trusted there instead of
+  // re-deriving them.
+  const reportByOccurrence = new Map<string, Awaited<ReturnType<typeof getCheckinReport>>>();
+  for (const { date, events } of occurrences) {
+    if (date > today) continue; // handled from scheduledByKey below instead
+    for (const event of events) {
+      reportByOccurrence.set(`${date}:${event.key}`, await getCheckinReport(event.key, date));
+    }
   }
 
   const days: CalendarDay[] = allDates.map(({ date, weekday, events }) => ({
@@ -148,8 +142,26 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
     events: events.map((event) => {
       const key = `${date}:${event.key}`;
       const isPast = date <= today;
-      const ids = isPast ? (confirmedIdsByOccurrence.get(key) ?? new Set<string>()) : (scheduledByKey.get(key) ?? new Set<string>());
-      return { eventKey: event.key, label: event.label, confirmed: isPast, onLeave: sortedNames(ids) };
+      if (isPast) {
+        const report = reportByOccurrence.get(key);
+        const notAttended = (report?.results ?? []).filter((r) => !r.attended).map((r) => toLeaveMember(r.member));
+        notAttended.sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          eventKey: event.key,
+          label: event.label,
+          confirmed: true,
+          attendedCount: report?.attendedCount ?? null,
+          totalCount: report?.totalCount ?? null,
+          notAttended,
+        };
+      }
+      const ids = scheduledByKey.get(key) ?? new Set<string>();
+      const notAttended = [...ids]
+        .map((id) => scheduledMemberById.get(id))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m))
+        .map(toLeaveMember)
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { eventKey: event.key, label: event.label, confirmed: false, attendedCount: null, totalCount: null, notAttended };
     }),
   }));
 
