@@ -54,8 +54,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <div>
         <h1 className="text-2xl font-semibold text-zinc-50">Calendar</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Every GL/WOE round for the month, with who actually didn&apos;t attend (real check-in voice data, same as
-          /checkin) — click a day to see the full list instead of checking one round at a time.
+          Today&apos;s GL/WOE leave, and who&apos;s requested leave for what&apos;s coming up — click a day to see the
+          full list. Past rounds aren&apos;t shown here (see /attendance or /checkin for history).
         </p>
       </div>
 
@@ -111,7 +111,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                   href={`/calendar?y=${year}&m=${month}&d=${day.date}`}
                   className={`flex min-h-[92px] flex-col gap-1 p-1.5 text-left transition hover:bg-zinc-800/60 ${
                     isSelected ? "bg-amber-950/20 ring-1 ring-inset ring-amber-600" : "bg-zinc-900"
-                  }`}
+                  } ${day.isPast ? "opacity-40" : ""}`}
                 >
                   <span
                     className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${
@@ -135,8 +135,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                         }`}
                       >
                         {ev.eventKey.toUpperCase()}
-                        {ev.notAttended.length > 0 && (
-                          <span className={ev.confirmed ? "text-rose-300" : "text-zinc-400"}>· {ev.notAttended.length}</span>
+                        {ev.onLeave.length > 0 && (
+                          <span className={ev.status === "confirmed" ? "text-amber-300" : "text-zinc-400"}>· {ev.onLeave.length}</span>
                         )}
                       </span>
                     ))}
@@ -181,30 +181,27 @@ function CalendarEventDetail({ event }: { event: CalendarDayEvent }) {
         >
           {event.label}
         </span>
-        {event.confirmed ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs font-medium text-emerald-300 ring-1 ring-inset ring-emerald-400/30">
-            Attended {event.attendedCount}/{event.totalCount}
-          </span>
-        ) : (
-          <span className="text-xs text-zinc-500">Upcoming — not attended yet</span>
-        )}
-        {event.notAttended.length > 0 && (
+        {event.onLeave.length > 0 && (
           <span
             className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-              event.confirmed
-                ? "bg-rose-400/15 text-rose-300 ring-1 ring-inset ring-rose-400/30"
+              event.status === "confirmed"
+                ? "bg-amber-400/15 text-amber-300 ring-1 ring-inset ring-amber-400/30"
                 : "bg-zinc-700/40 text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
             }`}
           >
-            {event.confirmed ? "Not Attended" : "Leave Requested"} ({event.notAttended.length})
+            {event.status === "confirmed" ? "On Leave" : "Leave Requested"} ({event.onLeave.length})
           </span>
         )}
       </div>
-      {event.notAttended.length === 0 ? (
-        <p className="text-sm text-zinc-500">{event.confirmed ? "Everyone attended." : "No one has requested leave for this round yet."}</p>
+      {event.status === "unavailable" ? (
+        <p className="text-sm text-zinc-500">Past round — see /attendance or /checkin for its leave history.</p>
+      ) : event.onLeave.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          {event.status === "confirmed" ? "No one on leave for this round." : "No one has requested leave for this round yet."}
+        </p>
       ) : (
         <div className="flex flex-wrap gap-2">
-          {event.notAttended.map((m) => (
+          {event.onLeave.map((m) => (
             <Link
               key={m.id}
               href={`/members/${m.id}`}
