@@ -7,11 +7,6 @@ import { usePathname } from "next/navigation";
 interface NavLink {
   href: string;
   label: string;
-  /** Hidden from the nav entirely for non-admins — the page itself also
-   * gates on requireAdmin(), but showing the link anyway would just lead a
-   * non-admin to a redirect, which reads as a broken link rather than "you
-   * don't have access". */
-  adminOnly?: boolean;
 }
 
 interface NavGroup {
@@ -48,7 +43,6 @@ const groups: NavGroup[] = [
       { href: "/attendance", label: "Leave Stats" },
       { href: "/checkin", label: "Check-in [Voice]" },
       { href: "/pvp-stats", label: "PVP Stats" },
-      { href: "/inactive", label: "Inactive Members", adminOnly: true },
     ],
   },
 ];
@@ -63,11 +57,10 @@ function isActive(pathname: string, href: string): boolean {
 }
 
 /** One top-bar dropdown for a category of pages — desktop only. Its own open/close state so the two category menus don't interfere with each other. */
-function NavDropdown({ group, pathname, isAdmin }: { group: NavGroup; pathname: string; isAdmin: boolean }) {
+function NavDropdown({ group, pathname }: { group: NavGroup; pathname: string }) {
   const [open, setOpen] = useState(false);
   const detailsRef = useRef<HTMLDetailsElement>(null);
-  const links = group.links.filter((l) => !l.adminOnly || isAdmin);
-  const active = links.some((l) => isActive(pathname, l.href));
+  const active = group.links.some((l) => isActive(pathname, l.href));
 
   // Native <details> keeps its own "open" DOM state, which this layout never
   // resets on navigation (it isn't remounted between pages) — without this,
@@ -105,7 +98,7 @@ function NavDropdown({ group, pathname, isAdmin }: { group: NavGroup; pathname: 
         </svg>
       </summary>
       <div className="absolute left-0 top-full z-20 mt-1 flex w-48 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
-        {links.map((link) => (
+        {group.links.map((link) => (
           <Link
             key={link.href}
             href={link.href}
@@ -132,7 +125,7 @@ export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
         </Link>
       ))}
       {groups.map((group) => (
-        <NavDropdown key={group.label} group={group} pathname={pathname} isAdmin={isAdmin} />
+        <NavDropdown key={group.label} group={group} pathname={pathname} />
       ))}
       {isAdmin && (
         <Link href="/classes" className={isActive(pathname, "/classes") ? activeLinkClass : linkClass}>
@@ -148,10 +141,9 @@ export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const secondaryGroups: NavGroup[] = [
-    ...groups.map((g) => ({ ...g, links: g.links.filter((l) => !l.adminOnly || isAdmin) })),
-    ...(isAdmin ? [{ label: "System", links: [{ href: "/classes", label: "Manage Classes" }] }] : []),
-  ].filter((g) => g.links.length > 0);
+  const secondaryGroups: NavGroup[] = isAdmin
+    ? [...groups, { label: "System", links: [{ href: "/classes", label: "Manage Classes" }] }]
+    : groups;
   const secondaryActive = secondaryGroups.some((g) => g.links.some((l) => isActive(pathname, l.href)));
 
   useEffect(() => {

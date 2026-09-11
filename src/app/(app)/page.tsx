@@ -6,7 +6,6 @@ import { ActivityListItem } from "@/components/activity-list-item";
 import { AttendanceTrendChart } from "@/components/attendance-trend-chart";
 import { GRADIENT_CLASS, type ColorKey } from "@/lib/job-class-colors";
 import { CHECKIN_EVENTS, getAttendanceTrend } from "@/lib/checkin-data";
-import { DEFAULT_INACTIVE_DAYS, getInactiveMembers } from "@/lib/inactivity-data";
 
 // Small, deliberately plain icon glyphs (simple strokes/arcs, not traced from
 // an external icon set) — just enough to give each stat tile's accent chip a
@@ -55,25 +54,14 @@ function PauseIcon() {
     </svg>
   );
 }
-// A crescent moon — "gone quiet" reads more naturally as dormant/asleep than
-// any literal mute/off glyph would.
-function QuietIcon() {
-  return (
-    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-      <path d="M17.293 13.293A8 8 0 0 1 6.707 2.707a8.001 8.001 0 1 0 10.586 10.586z" />
-    </svg>
-  );
-}
 
 export default async function DashboardPage() {
   const session = await requireUser();
-  const [stats, activity, classDistribution, attendanceTrends, inactiveCount] = await Promise.all([
+  const [stats, activity, classDistribution, attendanceTrends] = await Promise.all([
     getDashboardStats(),
     getRecentActivity(8),
     getClassDistribution(),
     Promise.all(CHECKIN_EVENTS.map((e) => getAttendanceTrend(e.key))),
-    // Admin-only tile below — skip the query entirely for everyone else.
-    session.user.isAdmin ? getInactiveMembers(DEFAULT_INACTIVE_DAYS).then((rows) => rows.length) : Promise.resolve(null),
   ]);
   const totalClassed = classDistribution.known.reduce((sum, c) => sum + c.count, 0) + classDistribution.unassignedCount;
   const maxClassCount = Math.max(1, ...classDistribution.known.map((c) => c.count), classDistribution.unassignedCount);
@@ -115,17 +103,6 @@ export default async function DashboardPage() {
           icon={<TrendIcon />}
         />
         <StatCard label="Benched" value={stats.benched} accent="warning" icon={<PauseIcon />} />
-        {inactiveCount !== null && (
-          <Link href="/inactive" className="block">
-            <StatCard
-              label="Quiet 14+ Days"
-              value={inactiveCount}
-              accent={inactiveCount > 0 ? "negative" : "default"}
-              icon={<QuietIcon />}
-              hint="Active members, no check-in or PVP stats"
-            />
-          </Link>
-        )}
       </div>
 
       {CHECKIN_EVENTS.some((_, i) => attendanceTrends[i].some((p) => p.rate !== null)) && (
