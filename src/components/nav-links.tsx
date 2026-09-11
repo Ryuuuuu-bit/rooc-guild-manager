@@ -38,6 +38,7 @@ const groups: NavGroup[] = [
   {
     label: "Logs & Stats",
     links: [
+      { href: "/calendar", label: "Calendar" },
       { href: "/activity", label: "Activity Log" },
       { href: "/attendance", label: "Leave Stats" },
       { href: "/checkin", label: "Check-in [Voice]" },

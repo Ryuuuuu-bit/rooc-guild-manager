@@ -7,26 +7,26 @@ import { CHECKIN_EVENTS, getCheckinEvent, type CheckinEventConfig } from "@/lib/
 export { CHECKIN_EVENTS, getCheckinEvent };
 export type { CheckinEventConfig };
 
-/** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai calendar date) — same direct-offset parse used for startOfThaiDay/endOfThaiDay on /attendance. */
-function windowFor(event: CheckinEventConfig, dateStr: string): { start: Date; end: Date } {
+/** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai calendar date) — same direct-offset parse used for startOfThaiDay/endOfThaiDay on /attendance. Exported for calendar-data.ts, which needs the same per-date window math generalized across a whole month. */
+export function windowFor(event: CheckinEventConfig, dateStr: string): { start: Date; end: Date } {
   return {
     start: new Date(`${dateStr}T${event.startTime}+07:00`),
     end: new Date(`${dateStr}T${event.endTime}+07:00`),
   };
 }
 
-/** "YYYY-MM-DD" for the given instant in Thailand's local time (UTC+7) — same trick as bot/midnight-reset.ts's thaiDateString, reimplemented here since bot/ and src/ don't share code across the two deploy targets. */
-function thaiDateString(d: Date): string {
+/** "YYYY-MM-DD" for the given instant in Thailand's local time (UTC+7) — same trick as bot/midnight-reset.ts's thaiDateString, reimplemented here since bot/ and src/ don't share code across the two deploy targets. Exported for reuse within src/lib (calendar-data.ts). */
+export function thaiDateString(d: Date): string {
   const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
   return thai.toISOString().slice(0, 10);
 }
 
-/** JS weekday (0=Sun..6=Sat) of a "YYYY-MM-DD" Thai calendar date — noon pin keeps this clear of any midnight-boundary edge case. */
-function weekdayOf(dateStr: string): number {
+/** JS weekday (0=Sun..6=Sat) of a "YYYY-MM-DD" Thai calendar date — noon pin keeps this clear of any midnight-boundary edge case. Exported for calendar-data.ts. */
+export function weekdayOf(dateStr: string): number {
   return new Date(`${dateStr}T12:00:00+07:00`).getUTCDay();
 }
 
-function addDays(dateStr: string, days: number): string {
+export function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T12:00:00+07:00`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
@@ -166,7 +166,7 @@ export interface CheckinReport {
  * the board itself doesn't exist (e.g. renamed/deleted) — leave just won't
  * be shown rather than erroring the whole report.
  */
-async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): Promise<Set<string>> {
+export async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): Promise<Set<string>> {
   if (!event.attendanceBoardName) return new Set();
 
   const board = await db.query.partyBoards.findFirst({
