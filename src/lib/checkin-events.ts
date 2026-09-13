@@ -50,6 +50,26 @@ export function getCheckinEvent(key: string): CheckinEventConfig | undefined {
   return CHECKIN_EVENTS.find((e) => e.key === key);
 }
 
+/** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai
+ * calendar date). Plain data + date math only (no DB/discord.js/Next.js
+ * imports) so both bot/attendance-confirm.ts and the web app's
+ * src/lib/checkin-data.ts (which re-exports this rather than keeping its own
+ * copy) can share one implementation. */
+export function windowFor(event: CheckinEventConfig, dateStr: string): { start: Date; end: Date } {
+  return {
+    start: new Date(`${dateStr}T${event.startTime}+07:00`),
+    end: new Date(`${dateStr}T${event.endTime}+07:00`),
+  };
+}
+
+/** Look up an event by the party board name its "ลา" reaction tracks (see
+ * CheckinEventConfig.attendanceBoardName) — used wherever code has a boardId
+ * (party boards) rather than an eventKey and needs the matching event's
+ * schedule, e.g. to know when that board's leave officially locks in. */
+export function getCheckinEventByBoardName(boardName: string): CheckinEventConfig | undefined {
+  return CHECKIN_EVENTS.find((e) => e.attendanceBoardName === boardName);
+}
+
 /** Every channel ID watched by any check-in event — what the bot subscribes to. */
 export function allWatchedChannelIds(): string[] {
   return CHECKIN_EVENTS.flatMap((e) => e.channelIds);

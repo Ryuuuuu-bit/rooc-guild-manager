@@ -21,13 +21,16 @@ import { listJobClasses } from "./job-classes";
 import {
   cancelScheduledLeave,
   formatThaiDateLabel,
+  listMemberActiveLeaves,
   listMemberScheduledLeaves,
   listUpcomingLeaveOptions,
   scheduleLeave,
 } from "./leave-schedule";
+import { cancelCurrentLeave } from "./reactions";
 
 const LEAVE_ADD_SELECT_ID = "leave_add_select";
 const LEAVE_CANCEL_SELECT_ID = "leave_cancel_select";
+const LEAVE_RETURN_SELECT_ID = "leave_return_select";
 // Custom ID of the button on the "ห้องลา" panel message (see
 // postLeavePanelMessage in src/app/actions/bot-messages.ts, which posts it
 // via plain REST from the web app — the string here just has to match).
@@ -143,12 +146,15 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
 /**
  * Builds the ephemeral leave picker's content + components for one member:
  * a multi-select dropdown of upcoming event dates they haven't already
- * scheduled a leave for (see listUpcomingLeaveOptions), plus, if they have
- * any pending requests, a second dropdown to cancel them. Shared by
+ * scheduled a leave for (see listUpcomingLeaveOptions), a second dropdown to
+ * cancel any not-yet-due requests, and a third to cancel any leave that's
+ * ACTIVE right now (whether it came from a live reaction or an advance
+ * request that already auto-applied — see listMemberActiveLeaves). Shared by
  * handleLeaveCommand (/leave), handleLeavePanelButton (the "ห้องลา" panel
- * button), and handleLeaveAddSelect/handleLeaveCancelSelect (to redraw a
- * fresh picker in place after an action) — every entry/re-entry point uses
- * the same builder so the member never has to type anything at any step.
+ * button), and handleLeaveAddSelect/handleLeaveCancelSelect/
+ * handleLeaveReturnSelect (to redraw a fresh picker in place after an
+ * action) — every entry/re-entry point uses the same builder so the member
+ * never has to type anything at any step.
  */
 async function renderLeavePicker(discordUserId: string): Promise<{ content: string; rows: ActionRowBuilder<StringSelectMenuBuilder>[] }> {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, discordUserId) });
@@ -165,12 +171,32 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
     };
   }
 
-  const [allOptions, mine] = await Promise.all([listUpcomingLeaveOptions(), listMemberScheduledLeaves(member.id)]);
+  const [allOptions, mine, active] = await Promise.all([
+    listUpcomingLeaveOptions(),
+    listMemberScheduledLeaves(member.id),
+    listMemberActiveLeaves(member.id),
+  ]);
   const mineKeys = new Set(mine.map((m) => `${m.boardId}|${m.date}`));
   const addable = allOptions.filter((o) => !mineKeys.has(`${o.boardId}|${o.date}`)).slice(0, 25);
 
   const rows: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
   const lines: string[] = ["**แจ้งลาล่วงหน้า**"];
+
+  if (active.length > 0) {
+    const returnSelect = new StringSelectMenuBuilder()
+      .setCustomId(LEAVE_RETURN_SELECT_ID)
+      .setPlaceholder("ยกเลิกลาที่มีผลอยู่ตอนนี้")
+      .setMinValues(1)
+      .setMaxValues(Math.min(active.length, 25))
+      .addOptions(
+        active.slice(0, 25).map((a) => new StringSelectMenuOptionBuilder().setLabel(a.boardName).setValue(a.boardId))
+      );
+    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(returnSelect));
+    lines.push(
+      `คุณกำลังลาอยู่ตอนนี้ในกระดาน: ${active.map((a) => a.boardName).join(", ")} — เลือกด้านล่างเพื่อยกเลิกทันที ` +
+        `(ถ้ากิจกรรมยังไม่จบ ยกเลิกได้ฟรี ไม่นับเป็นการลา)`
+    );
+  }
 
   if (addable.length > 0) {
     const addSelect = new StringSelectMenuBuilder()
@@ -278,6 +304,38 @@ async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction)
 }
 
 /**
+ * Member picked one or more boards on the "ยกเลิกลาที่มีผลอยู่ตอนนี้"
+ * select — cancels each via cancelCurrentLeave (shared with the live-reaction
+ * un-react flow, see reactions.ts), then refreshes the same message back
+ * into a live picker (see handleLeaveAddSelect). Reports the two outcomes
+ * separately so the member knows whether it actually counted or not — the
+ * event may have already ended for one board and not another.
+ */
+async function handleLeaveReturnSelect(interaction: StringSelectMenuInteraction) {
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
+  if (!member) {
+    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
+    return;
+  }
+
+  let discarded = 0;
+  let returned = 0;
+  for (const boardId of interaction.values) {
+    const outcome = await cancelCurrentLeave(member.id, boardId, " ผ่าน /leave (ยกเลิกลาที่มีผลอยู่)");
+    if (outcome === "discarded") discarded++;
+    if (outcome === "returned") returned++;
+  }
+
+  const parts: string[] = [];
+  if (discarded > 0) parts.push(`ยกเลิกแล้ว ${discarded} รายการ (ไม่นับเป็นการลา)`);
+  if (returned > 0) parts.push(`กลับเข้าร่วมแล้ว ${returned} รายการ (กิจกรรมจบไปแล้ว จึงยังนับเป็นการลาในสถิติ)`);
+  const summary = parts.length > 0 ? parts.join(" · ") : "ไม่มีรายการที่ยกเลิกได้แล้ว";
+
+  const { content, rows } = await renderLeavePicker(interaction.user.id);
+  await interaction.update({ content: `✅ ${summary}\n\n${content}`, components: rows });
+}
+
+/**
  * Click on the "เลือกอาชีพ" panel's button (see postClassSelectMessage) —
  * shows an ephemeral single-select dropdown of the admin-managed job class
  * list, each option's own emoji shown next to it, with the member's current
@@ -348,7 +406,7 @@ async function handleClassSelectChoose(interaction: StringSelectMenuInteraction)
   await interaction.update({ content: `✅ เลือกอาชีพ: ${className}`, components: [] });
 }
 
-/** Routes every interaction the bot receives — /party, /leave, the /leave picker's two select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
+/** Routes every interaction the bot receives — /party, /leave, the /leave picker's three select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
 export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === "party") {
     try {
@@ -404,6 +462,16 @@ export async function handleInteractionCreate(interaction: Interaction) {
       await handleLeaveCancelSelect(interaction);
     } catch (err) {
       console.error("[bot] /leave cancel-select failed", err);
+      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+    }
+    return;
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === LEAVE_RETURN_SELECT_ID) {
+    try {
+      await handleLeaveReturnSelect(interaction);
+    } catch (err) {
+      console.error("[bot] /leave return-select failed", err);
       await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
     }
     return;

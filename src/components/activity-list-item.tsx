@@ -28,10 +28,12 @@ export function ActivityListItem({
   const [pending, startTransition] = useTransition();
   const dotColor = eventTypeDotColors[event.type] ?? "bg-zinc-500";
   const labelColor = eventTypeColors[event.type] ?? "text-zinc-400";
-  // A "ลา" reaction only counts toward /attendance stats once it's survived
-  // 30 minutes uninterrupted — see confirmDueLeaves in
-  // bot/attendance-confirm.ts. Surface that here so it's obvious a fresh
-  // click hasn't been dropped, just not counted yet.
+  // A "ลา" (from a live reaction or an advance /leave request) only counts
+  // toward /attendance stats once the matching event's window actually ends
+  // — see confirmDueLeaves in bot/attendance-confirm.ts. Surface that here so
+  // it's obvious a fresh entry hasn't been dropped, just not locked in yet
+  // (and can still be freely cancelled with no trace, see cancelCurrentLeave
+  // in bot/reactions.ts).
   const isPendingLeave = event.type === "ATTENDANCE_LEAVE" && !event.confirmedAt;
 
   function handleDelete() {
@@ -74,7 +76,7 @@ export function ActivityListItem({
           {isPendingLeave && (
             <span
               className="whitespace-nowrap rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400"
-              title="Counted in stats after being held for 30 minutes straight"
+              title="Counted in stats once this event's round ends — cancellable free until then"
             >
               Pending
             </span>

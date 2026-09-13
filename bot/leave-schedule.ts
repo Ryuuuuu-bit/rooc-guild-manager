@@ -90,6 +90,28 @@ export async function listUpcomingLeaveOptions(): Promise<LeaveOption[]> {
   return options.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+export interface MemberActiveLeave {
+  boardId: string;
+  boardName: string;
+}
+
+/**
+ * Boards this member is CURRENTLY marked Busy/ลา on, right now — regardless
+ * of how they got there (a live "ลา" reaction, or an advance /leave request
+ * that already auto-applied). What /leave's picker offers under "cancel my
+ * leave now", distinct from listMemberScheduledLeaves' list of not-yet-due
+ * future requests just above.
+ */
+export async function listMemberActiveLeaves(memberId: string): Promise<MemberActiveLeave[]> {
+  const rows = await db
+    .select({ boardId: partyBusyEntries.boardId, boardName: partyBoards.name })
+    .from(partyBusyEntries)
+    .innerJoin(partyBoards, eq(partyBusyEntries.boardId, partyBoards.id))
+    .where(eq(partyBusyEntries.memberId, memberId))
+    .orderBy(asc(partyBoards.name));
+  return rows;
+}
+
 export interface MemberScheduledLeave {
   id: string;
   boardId: string;
@@ -174,16 +196,23 @@ export async function cancelScheduledLeave(memberId: string, id: string): Promis
 
 /**
  * Turns every DUE scheduledLeaves row (dated today OR EARLIER — see below)
- * into a real, immediately-confirmed leave — called from
+ * into a real leave (marked Busy on the board right away) — called from
  * resetDailyBusyLists() right after it clears the day's busy lists
  * (bot/midnight-reset.ts), so a scheduled leave shows up on the
- * freshly-reset board instead of being wiped out by that same reset.
- * Bypasses the 30-minute pending-confirm window live reactions go through
- * (see attendance-confirm.ts) since this is a deliberate advance request, not
- * a possibly-accidental click — there's nothing to protect against by
- * holding it pending. Consumed rows are deleted right after applying either
- * way (even if the member is no longer eligible) — see scheduledLeaves in
- * schema.ts for why this table isn't meant to accumulate history.
+ * freshly-reset board instead of being wiped out by that same reset. Left
+ * PENDING (confirmedAt: null) just like a live "ลา" reaction — it locks in
+ * (counts toward /attendance and the monthly quota) only once the matching
+ * event's window actually ends, via attendance-confirm.ts's sweep, and until
+ * then the member can freely undo it themselves (see cancelCurrentLeave in
+ * reactions.ts, reachable through /leave's self-service cancel option) with
+ * no trace left behind. This used to insert already-confirmed, reasoning
+ * that an advance request is deliberate rather than a possibly-accidental
+ * click — but that also meant there was no way left for a member to change
+ * their mind afterward, since the scheduledLeaves-cancel flow only ever
+ * touches not-yet-applied requests. Consumed rows are deleted right after
+ * applying either way (even if the member is no longer eligible) — see
+ * scheduledLeaves in schema.ts for why this table isn't meant to accumulate
+ * history.
  *
  * Queries `date <= today`, not `date === today` — resetDailyBusyLists only
  * runs once per Thai calendar day, gated by an in-memory "have I already run
@@ -220,13 +249,12 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
       // moments before resetDailyBusyLists' busy-clear loop deletes that
       // reaction's partyBusyEntries row (and logs a spurious RETURN for it —
       // harmless, see that function's comment) just ahead of this insert.
-      // Left unhandled, that stale pending row would sit forever with
-      // confirmedAt still null, then get wrongly promoted (and DM admins a
-      // second time) whenever attendance-confirm.ts's sweep next finds
-      // partyBusyEntries true again — which it now is, from the insert
-      // above. Reusing/confirming that existing row instead of inserting a
-      // fresh one avoids ending up with two confirmed ATTENDANCE_LEAVE rows
-      // for one real leave.
+      // Left unhandled, that would leave TWO still-pending ATTENDANCE_LEAVE
+      // rows for the same member+board once attendance-confirm.ts's sweep
+      // finds partyBusyEntries true again (from the insert above) and
+      // confirms both. Skipping the insert when one's already sitting there
+      // pending avoids that double-count — the existing row already
+      // represents this exact leave, nothing else to do with it.
       const pendingFromLiveReaction = await db.query.membershipEvents.findFirst({
         where: and(
           eq(membershipEvents.memberId, row.memberId),
@@ -237,19 +265,14 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
         orderBy: desc(membershipEvents.createdAt),
       });
 
-      if (pendingFromLiveReaction) {
-        await db
-          .update(membershipEvents)
-          .set({ confirmedAt: new Date() })
-          .where(eq(membershipEvents.id, pendingFromLiveReaction.id));
-      } else {
+      if (!pendingFromLiveReaction) {
         await db.insert(membershipEvents).values({
           memberId: row.memberId,
           type: "ATTENDANCE_LEAVE",
           detail: `ลาในกระดาน "${board?.name ?? row.boardId}" (แจ้งลาล่วงหน้าผ่าน /leave)`,
           actor: "bot:leave-schedule",
           boardId: row.boardId,
-          confirmedAt: new Date(),
+          confirmedAt: null,
         });
       }
       applied++;

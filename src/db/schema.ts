@@ -142,16 +142,23 @@ export const membershipEvents = pgTable(
     actor: text("actor"), // "bot:sync" or the admin's Discord username who made a manual change
 
     // Only set for ATTENDANCE_LEAVE events tied to a specific party board —
-    // lets the 30-minute confirm sweep (bot/attendance-confirm.ts) check
-    // whether the member is still marked busy on that board before the
-    // leave counts toward /attendance stats.
+    // lets the confirm sweep (bot/attendance-confirm.ts) check whether the
+    // member is still marked busy on that board before the leave counts
+    // toward /attendance stats.
     boardId: text("board_id").references(() => partyBoards.id, { onDelete: "cascade" }),
-    // Null = pending confirmation (reacted "ลา" less than 30 minutes ago).
-    // Only confirmed ATTENDANCE_LEAVE rows count in getAttendanceStats() —
-    // this is what keeps a member's curious test-click from skewing the
-    // numbers, since un-reacting before confirmation discards the event
-    // entirely instead of logging a return (see handleReactionRemove in
-    // bot/reactions.ts). Every other event type just leaves this null.
+    // Null = pending confirmation — the leave is in effect (shows on the
+    // party board, excludes them from /checkin's no-show list — see
+    // getLeaveMemberIds in src/lib/checkin-data.ts, which doesn't gate on
+    // this) but hasn't locked in for stats purposes yet. Locks in once the
+    // matching event's own window (see checkin-events.ts) actually ends —
+    // whether this leave came from a live "ลา" reaction or an advance
+    // /leave request that already auto-applied, both go through the same
+    // wait. Only confirmed ATTENDANCE_LEAVE rows count in
+    // getAttendanceStats() — this is what keeps a member free to change
+    // their mind any time before the event happens: cancelling before then
+    // (see cancelCurrentLeave in bot/reactions.ts) discards the event
+    // entirely instead of logging a return. Every other event type just
+    // leaves this null.
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
 
     createdAt: timestamp("created_at", { withTimezone: true })

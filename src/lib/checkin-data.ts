@@ -1,19 +1,11 @@
-import { and, asc, gte, lte, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, gte, lte, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { checkinNotes, members, membershipEvents, partyBoards, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
-import { CHECKIN_EVENTS, getCheckinEvent, type CheckinEventConfig } from "@/lib/checkin-events";
+import { CHECKIN_EVENTS, getCheckinEvent, windowFor, type CheckinEventConfig } from "@/lib/checkin-events";
 
-export { CHECKIN_EVENTS, getCheckinEvent };
+export { CHECKIN_EVENTS, getCheckinEvent, windowFor };
 export type { CheckinEventConfig };
-
-/** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai calendar date) — same direct-offset parse used for startOfThaiDay/endOfThaiDay on /attendance. Exported for calendar-data.ts, which needs the same per-date window math generalized across a whole month. */
-export function windowFor(event: CheckinEventConfig, dateStr: string): { start: Date; end: Date } {
-  return {
-    start: new Date(`${dateStr}T${event.startTime}+07:00`),
-    end: new Date(`${dateStr}T${event.endTime}+07:00`),
-  };
-}
 
 /** "YYYY-MM-DD" for the given instant in Thailand's local time (UTC+7) — same trick as bot/midnight-reset.ts's thaiDateString, reimplemented here since bot/ and src/ don't share code across the two deploy targets. Exported for reuse within src/lib (calendar-data.ts). */
 export function thaiDateString(d: Date): string {
@@ -149,18 +141,23 @@ export interface CheckinReport {
 }
 
 /**
- * Member IDs with a CONFIRMED "ลา" reaction in effect, on the party board
- * matching this check-in event (see attendanceBoardName in
- * checkin-events.ts), as of `asOf` — i.e. their most recent ATTENDANCE_LEAVE
- * (confirmed) / ATTENDANCE_RETURN event on that board, at or before `asOf`,
- * was a LEAVE rather than a RETURN. Mirrors listOnlineMemberIds's
- * last-write-wins reduction over an ascending-time event log, and only
- * counts confirmed leaves for the same reason getAttendanceStats does — a
- * quick test-click that gets un-reacted inside 30 minutes never became a
- * real leave (see confirmDueLeaves/handleReactionRemove in bot/). RETURN
- * events carry no confirmedAt gating of their own (every board is a single
- * always-current sheet, so a return only ever follows an already-confirmed
- * leave — see handleReactionRemove).
+ * Member IDs currently marked "ลา" on the party board matching this
+ * check-in event (see attendanceBoardName in checkin-events.ts), as of
+ * `asOf` — i.e. their most recent ATTENDANCE_LEAVE/ATTENDANCE_RETURN event on
+ * that board, at or before `asOf`, was a LEAVE rather than a RETURN. Mirrors
+ * listOnlineMemberIds's last-write-wins reduction over an ascending-time
+ * event log.
+ *
+ * Deliberately NOT gated on confirmedAt (unlike getAttendanceStats in
+ * data.ts, which only counts confirmed leaves toward the monthly quota/stats
+ * — a separate concern from this function's job) — this is "who's currently
+ * excused right now", which should reflect a leave the moment it's marked,
+ * same as partyBusyEntries does for the live party board, not wait for it to
+ * lock in at the event's end (see confirmDueLeaves in
+ * bot/attendance-confirm.ts). A leave that gets cancelled before then is
+ * deleted outright rather than left unconfirmed (see cancelCurrentLeave in
+ * bot/reactions.ts), so it simply stops appearing here too — no separate
+ * confirmedAt check needed to keep a discarded test-click out of this set.
  *
  * Returns an empty set if this event has no matching board configured, or
  * the board itself doesn't exist (e.g. renamed/deleted) — leave just won't
@@ -184,10 +181,7 @@ export async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): 
       and(
         eq(membershipEvents.boardId, board.id),
         lte(membershipEvents.createdAt, asOf),
-        or(
-          and(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)),
-          eq(membershipEvents.type, "ATTENDANCE_RETURN")
-        )
+        or(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), eq(membershipEvents.type, "ATTENDANCE_RETURN"))
       )
     )
     .orderBy(asc(membershipEvents.memberId), asc(membershipEvents.createdAt));

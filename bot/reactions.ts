@@ -14,7 +14,30 @@ import {
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
 import { sendDirectMessage } from "../src/lib/discord";
 import { getEmojiToClassMap } from "./job-classes";
-import { CONFIRM_AFTER_MS } from "./attendance-confirm";
+import { getCheckinEventByBoardName, windowFor } from "../src/lib/checkin-events";
+
+/** "YYYY-MM-DD" for now in Thailand's local time — local copy, see
+ * bot/leave-schedule.ts's own copy for why every file keeps its own. */
+function thaiDateString(d: Date = new Date()): string {
+  const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return thai.toISOString().slice(0, 10);
+}
+
+/**
+ * When a "ลา" on this board actually locks in, as human-readable Thai text —
+ * matches confirmDueLeaves' own event-end gating in attendance-confirm.ts
+ * (a leave only counts once the matching event's window for TODAY actually
+ * ends), so this message never promises a timing the backend doesn't
+ * enforce. Falls back to generic wording for a board with no matching
+ * CHECKIN_EVENTS entry, where confirmDueLeaves instead uses a flat delay.
+ */
+function confirmTimingLabel(boardName: string): string {
+  const event = getCheckinEventByBoardName(boardName);
+  if (!event) return "อีกสักครู่";
+  const { end } = windowFor(event, thaiDateString());
+  const timeLabel = end.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  return `ตอนกิจกรรมจบ (${timeLabel} น.)`;
+}
 
 /** Ensures both the reaction and its parent message are fully loaded (both can arrive as partials). */
 async function resolve(reaction: MessageReaction | PartialMessageReaction): Promise<MessageReaction> {
@@ -79,9 +102,9 @@ const LEAVE_CONFIRMATION_LIFETIME_MS = 30_000; // how long the temp confirmation
  * anyone else watching) can see the exact date they just logged a leave on,
  * a rough running count against the guild's monthly-leave guideline, and —
  * since this wasn't obvious before and members asked about it — when the
- * leave actually becomes official (mirrors CONFIRM_AFTER_MS in
- * attendance-confirm.ts, the same 30-minute hold that quietly runs behind
- * this). Auto-deletes itself after LEAVE_CONFIRMATION_LIFETIME_MS so it
+ * leave actually becomes official (see confirmTimingLabel above, which
+ * mirrors confirmDueLeaves' own event-end gating in attendance-confirm.ts).
+ * Auto-deletes itself after LEAVE_CONFIRMATION_LIFETIME_MS so it
  * doesn't clutter the channel long-term — states that lifetime in the
  * message too, so its disappearance doesn't read as the bot glitching or
  * someone deleting it. Best-effort — a missing "Send Messages"/"Manage
@@ -110,11 +133,10 @@ async function sendTempLeaveConfirmation(
       timeStyle: "short",
       timeZone: "Asia/Bangkok",
     });
-    const confirmMinutes = Math.round(CONFIRM_AFTER_MS / 60_000);
     const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
     const sent = await channel.send(
       `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
-        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการใน ${confirmMinutes} นาที (ถ้ากดผิด เอา ${emoji} ออกก่อนเวลานี้เพื่อยกเลิก)\n` +
+        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการ${confirmTimingLabel(boardName)} (เอา ${emoji} ออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา)\n` +
         `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
     );
     setTimeout(() => {
@@ -163,12 +185,11 @@ async function sendTempClassConfirmation(
  * off just doesn't get this, the leave itself is already logged regardless.
  */
 async function dmMemberLeaveStatus(discordId: string, boardName: string, leaveCount: number) {
-  const confirmMinutes = Math.round(CONFIRM_AFTER_MS / 60_000);
   try {
     await sendDirectMessage(
       discordId,
       `🗓️ บันทึกคำขอลาในกระดาน "${boardName}" แล้ว (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้ เฉพาะกระดานนี้)\n` +
-        `จะยืนยันอย่างเป็นทางการใน ${confirmMinutes} นาที ถ้าเปลี่ยนใจให้เอารีแอคชั่นออกก่อนเวลานี้เพื่อยกเลิก`
+        `จะยืนยันอย่างเป็นทางการ${confirmTimingLabel(boardName)} ถ้าเปลี่ยนใจให้เอารีแอคชั่นออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา`
     );
   } catch (err) {
     console.error(`[bot] failed to DM member ${discordId} about pending leave`, err);
@@ -313,7 +334,70 @@ export async function handleReactionAdd(
   }
 }
 
-/** Un-reacting the ATTENDANCE emoji brings a member back off the Busy/ลา list for that board (they don't auto-return to a slot). */
+/**
+ * Takes a member off a board's Busy/ลา list right now, regardless of how
+ * they got on it (a live "ลา" reaction, or an advance /leave request that
+ * already auto-applied) — shared by handleReactionRemove below and
+ * bot/interactions.ts's self-service "cancel my leave now" picker option, so
+ * both paths behave identically instead of only live reactions being
+ * cancelable.
+ *
+ * If the leave hasn't event-confirmed yet (confirmDueLeaves in
+ * attendance-confirm.ts only flips confirmedAt once the event's own end time
+ * passes — see that file), it never became a real, counted leave — discard
+ * it outright instead of logging a return, so cancelling before the event
+ * ends leaves no trace and doesn't touch the monthly leave count. Once
+ * confirmed (event already over), this instead logs a normal
+ * ATTENDANCE_RETURN — the leave itself still counts, this just clears them
+ * for next time, same as an admin dragging them back into a party slot.
+ *
+ * Returns "none" if they weren't actually marked ลา on this board (nothing
+ * to do), "discarded" if a still-pending leave was wiped with no trace, or
+ * "returned" if an already-confirmed leave was closed out normally.
+ */
+export async function cancelCurrentLeave(
+  memberId: string,
+  boardId: string,
+  actorSuffix: string
+): Promise<"none" | "discarded" | "returned"> {
+  const deleted = await db
+    .delete(partyBusyEntries)
+    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)))
+    .returning({ id: partyBusyEntries.id });
+  if (deleted.length === 0) return "none";
+
+  const [pendingLeave] = await db
+    .select({ id: membershipEvents.id })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.memberId, memberId),
+        eq(membershipEvents.boardId, boardId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        isNull(membershipEvents.confirmedAt)
+      )
+    )
+    .orderBy(desc(membershipEvents.createdAt))
+    .limit(1);
+
+  if (pendingLeave) {
+    await db.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
+    return "discarded";
+  }
+
+  // boardId included here too (not just on the LEAVE side above) — without
+  // it this return's audit-log row can't be attributed to a board, which
+  // silently broke both /attendance's per-board breakdown and /checkin's
+  // "who's on leave" lookup for the LEAVE half of the same pair (found via
+  // a real member showing up in /attendance's "ไม่ระบุกระดาน" bucket).
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  await logEvent(memberId, "ATTENDANCE_RETURN", `ยกเลิกลาในกระดาน "${board?.name ?? boardId}"${actorSuffix}`, {
+    boardId,
+  });
+  return "returned";
+}
+
+/** Un-reacting the ATTENDANCE emoji brings a member back off the Busy/ลา list for that board (they don't auto-return to a slot) — see cancelCurrentLeave above for the shared discard-vs-return logic. */
 export async function handleReactionRemove(
   rawReaction: MessageReaction | PartialMessageReaction,
   user: User | PartialUser
@@ -330,44 +414,5 @@ export async function handleReactionRemove(
   const member = await db.query.members.findFirst({ where: eq(members.discordId, user.id) });
   if (!member) return;
 
-  const deleted = await db
-    .delete(partyBusyEntries)
-    .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, member.id)))
-    .returning({ id: partyBusyEntries.id });
-  if (deleted.length === 0) return; // wasn't actually marked ลา on this board — nothing to log
-
-  // If the leave that put them on this board hasn't been confirmed yet
-  // (< 30 min since they reacted), it never became a real, counted leave —
-  // discard it outright instead of logging a return, so a quick
-  // click-then-undo (e.g. someone testing the button) leaves no trace.
-  const [pendingLeave] = await db
-    .select({ id: membershipEvents.id })
-    .from(membershipEvents)
-    .where(
-      and(
-        eq(membershipEvents.memberId, member.id),
-        eq(membershipEvents.boardId, row.boardId),
-        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
-        isNull(membershipEvents.confirmedAt)
-      )
-    )
-    .orderBy(desc(membershipEvents.createdAt))
-    .limit(1);
-
-  if (pendingLeave) {
-    await db.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
-    return;
-  }
-
-  // boardId included here too (not just on the LEAVE side above) — without
-  // it this return's audit-log row can't be attributed to a board, which
-  // silently broke both /attendance's per-board breakdown and /checkin's
-  // "who's on leave" lookup for the LEAVE half of the same pair (found via
-  // a real member showing up in /attendance's "ไม่ระบุกระดาน" bucket).
-  await logEvent(
-    member.id,
-    "ATTENDANCE_RETURN",
-    `ยกเลิกลาในกระดาน "${board?.name ?? row.boardId}" ผ่าน Discord reaction`,
-    { boardId: row.boardId }
-  );
+  await cancelCurrentLeave(member.id, row.boardId, " ผ่าน Discord reaction");
 }
