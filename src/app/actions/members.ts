@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { lootQueueEntries, members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
+import { lootCategories, lootQueueEntries, members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
 import { env } from "@/lib/env";
@@ -164,13 +164,54 @@ export async function deleteMemberNote(noteId: string, memberId: string): Promis
   return { ok: true };
 }
 
+/**
+ * Adds a member to the BACK of every existing loot-queue category — the web
+ * equivalent of bot/sync.ts's addToAllLootQueues (kept as a separate copy
+ * since that file isn't importable from Next.js server actions, same as the
+ * other bot/web duplicated helpers in this codebase). Called whenever a
+ * member starts/resumes being ACTIVE from THIS side (restoreMemberStatus) —
+ * the bot-side rejoin/re-sync paths already call their own copy. Skips any
+ * category the member is already queued in (defensive, mirrors the bot copy).
+ */
+async function addToAllLootQueues(memberId: string) {
+  const categories = await db.select({ id: lootCategories.id }).from(lootCategories);
+  for (const { id: categoryId } of categories) {
+    const existing = await db.query.lootQueueEntries.findFirst({
+      where: and(eq(lootQueueEntries.categoryId, categoryId), eq(lootQueueEntries.memberId, memberId)),
+    });
+    if (existing) continue;
+
+    const [{ maxPos } = { maxPos: -1 }] = await db
+      .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId));
+
+    await db.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
+  }
+}
+
 export async function restoreMemberStatus(memberId: string): Promise<UpdateMemberResult> {
   const session = await requireAdmin();
+
+  const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  // Only re-add to loot queues for a member row that actually exists and was
+  // genuinely inactive — a bad/unknown memberId shouldn't attempt an insert
+  // that would just fail on the memberId foreign key.
+  const wasInactive = Boolean(existing && existing.status !== "ACTIVE");
 
   await db
     .update(members)
     .set({ status: "ACTIVE", leftDiscordAt: null, updatedAt: new Date() })
     .where(eq(members.id, memberId));
+
+  // Mirrors what a real Discord rejoin does (bot/sync.ts's
+  // upsertMemberFromGateway/runFullSync) — without this, someone an admin
+  // had kicked (which clears every loot-queue category, see
+  // markMemberKicked) came back ACTIVE but stayed invisible in every loot
+  // queue until an admin noticed and re-added them by hand.
+  if (wasInactive) {
+    await addToAllLootQueues(memberId);
+  }
 
   await db.insert(membershipEvents).values({
     memberId,
@@ -183,6 +224,7 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
   revalidatePath("/members");
   revalidatePath("/");
   revalidatePath("/party");
+  revalidatePath("/loot-queue");
 
   return { ok: true };
 }

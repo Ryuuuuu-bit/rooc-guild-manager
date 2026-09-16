@@ -62,6 +62,10 @@ export async function reconcileVoicePresence(client: Client) {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel || !channel.isVoiceBased()) continue;
 
+    const presentDiscordIds = new Set(
+      [...channel.members.values()].filter((m) => !m.user.bot).map((m) => m.id)
+    );
+
     for (const [, voiceMember] of channel.members) {
       if (voiceMember.user.bot) continue;
       const member = await db.query.members.findFirst({ where: eq(members.discordId, voiceMember.id) });
@@ -74,6 +78,34 @@ export async function reconcileVoicePresence(client: Client) {
       if (lastEvent?.type === "JOIN") continue; // session already open — nothing to backfill
 
       await db.insert(voiceAttendanceEvents).values({ memberId: member.id, channelId, type: "JOIN" });
+    }
+
+    // The other direction: close out anyone with a still-open JOIN for this
+    // channel from before the restart who ISN'T actually sitting in it right
+    // now (they left while the bot was offline, so the matching LEAVE never
+    // got logged). Left alone, that session stays open forever — permanently
+    // inflating their counted presence, or worse, later pairing with some
+    // unrelated future JOIN/LEAVE and reporting one giant multi-day
+    // "session". The synthetic LEAVE is stamped at reconcile time (now) —
+    // same known limitation as the JOIN backfill above: the real gap while
+    // the bot was offline isn't recovered, but the session at least stops
+    // growing unbounded.
+    const membersWithHistory = await db
+      .selectDistinct({ memberId: voiceAttendanceEvents.memberId })
+      .from(voiceAttendanceEvents)
+      .where(eq(voiceAttendanceEvents.channelId, channelId));
+
+    for (const { memberId } of membersWithHistory) {
+      const lastEvent = await db.query.voiceAttendanceEvents.findFirst({
+        where: and(eq(voiceAttendanceEvents.memberId, memberId), eq(voiceAttendanceEvents.channelId, channelId)),
+        orderBy: desc(voiceAttendanceEvents.createdAt),
+      });
+      if (lastEvent?.type !== "JOIN") continue; // already closed — nothing to do
+
+      const memberRow = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+      if (memberRow && presentDiscordIds.has(memberRow.discordId)) continue; // still actually here — leave it open
+
+      await db.insert(voiceAttendanceEvents).values({ memberId, channelId, type: "LEAVE" });
     }
   }
 }

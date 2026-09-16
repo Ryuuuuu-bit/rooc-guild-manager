@@ -218,6 +218,13 @@
       "when": 1789050439631,
       "tag": "0030_solid_mandarin",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789530825722,
+      "tag": "0031_add_board_checkin_event_key",
+      "breakpoints": true
     }
   ]
 }

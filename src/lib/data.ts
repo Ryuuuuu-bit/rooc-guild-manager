@@ -183,10 +183,11 @@ function attendanceConditions(filter: AttendanceRangeFilter) {
  * page itself instead of only in the per-member activity feed.
  */
 export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
-  // Only confirmed leaves count — a member has to leave the "ลา" reaction
-  // in place for 30 minutes before it's counted, so a quick test-click that
-  // gets un-reacted right away is discarded rather than ever showing up
-  // here (see confirmDueLeaves in bot/attendance-confirm.ts).
+  // Only confirmed leaves count — a "ลา" only locks in once the matching
+  // event's window actually ends, so a leave that gets cancelled (un-reacted,
+  // or via /leave's self-service cancel) before then is discarded rather
+  // than ever showing up here (see confirmDueLeaves in
+  // bot/attendance-confirm.ts).
   const rows = await db
     .select({
       memberId: membershipEvents.memberId,

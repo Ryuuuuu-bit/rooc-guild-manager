@@ -7,6 +7,7 @@
 - **Check this file and the existing schema/docs before re-exploring the codebase.** An Explore/review subagent sent to "understand the auth layer" or "understand the DB schema" re-derives things that are often already written down here or in `src/db/schema.ts`'s own comments.
 - **When pulling Railway logs**, prefer a narrow `startDate`/`endDate` or a `filter` expression over a full unbounded pull — large log dumps exceed the tool's output limit, get written to disk, and need a second read pass anyway (use `jq`/`grep` on the saved file instead of reading the whole thing back into context).
 - **Deliver code changes via the device-bridge file-write + the user's own `push.bat`**, not `git format-patch`/`git am` round-trips — the sandbox's git remote here is read-only, so direct pushes and patch files both fail; the device-bridge write is the working path.
+- **`device_commit_files` needs a `fileUuid`, not just a `stagedPath`** — passing `stagedPath` for a file that was written to `/mnt/user-data/outputs/` but never sent via `SendUserFile` fails with a 404 ("No such file under /mnt/user-data/outputs/ in this session"), even though the file is really there. Always call `SendUserFile` on the staged files first (one call, all files, `display: "attach"` to avoid spamming previews) to get each `file_uuid`, then pass those to `device_commit_files`.
 
 # Write the smallest correct solution (lean coding)
 

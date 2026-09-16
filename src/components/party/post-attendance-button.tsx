@@ -3,12 +3,15 @@
 import { useState } from "react";
 import {
   getAttendanceStatus,
+  getBoardCheckinEventKey,
   getBoardEmoji,
   listDiscordChannels,
   postAttendanceMessage,
+  setBoardCheckinEventKey,
   type BotMessageStatus,
 } from "@/app/actions/bot-messages";
 import type { DiscordChannel } from "@/lib/discord";
+import { CHECKIN_EVENTS } from "@/lib/checkin-events";
 
 /**
  * Admin tool: posts (or reposts) THIS board's "Leave" reaction message in a
@@ -23,6 +26,9 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
   const [status, setStatus] = useState<BotMessageStatus | null>(null);
   const [channelId, setChannelId] = useState("");
   const [emoji, setEmoji] = useState("🙋");
+  const [checkinEventKey, setCheckinEventKey] = useState<string | null>(null);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
 
@@ -30,10 +36,12 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
     setOpen(true);
     setLoading(true);
     setError(null);
-    const [chRes, currentStatus, currentEmoji] = await Promise.all([
+    setLinkError(null);
+    const [chRes, currentStatus, currentEmoji, currentEventKey] = await Promise.all([
       listDiscordChannels(),
       getAttendanceStatus(boardId),
       getBoardEmoji(boardId),
+      getBoardCheckinEventKey(boardId),
     ]);
     setLoading(false);
     if (!chRes.ok || !chRes.channels) {
@@ -44,6 +52,20 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
     setStatus(currentStatus);
     setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
     setEmoji(currentEmoji);
+    setCheckinEventKey(currentEventKey);
+  }
+
+  async function handleLinkChange(nextKey: string) {
+    const resolved = nextKey || null;
+    setLinkSaving(true);
+    setLinkError(null);
+    const res = await setBoardCheckinEventKey(boardId, resolved);
+    setLinkSaving(false);
+    if (!res.ok) {
+      setLinkError(res.error ?? "Failed to update the link.");
+      return;
+    }
+    setCheckinEventKey(resolved);
   }
 
   async function handlePost() {
@@ -102,6 +124,27 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
                     className="w-20 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-center text-lg focus:border-amber-500 focus:outline-none"
                   />
                 </label>
+
+                <label className="flex flex-col gap-1 text-xs text-zinc-400">
+                  Link to check-in event (controls when a &quot;ลา&quot; on this board actually locks in — waits for the
+                  linked event to end instead of a flat timer — and whether it shows up in /checkin and /calendar)
+                  <select
+                    value={checkinEventKey ?? ""}
+                    onChange={(e) => handleLinkChange(e.target.value)}
+                    disabled={linkSaving}
+                    className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="">Not linked</option>
+                    {CHECKIN_EVENTS.map((e) => (
+                      <option key={e.key} value={e.key}>
+                        {e.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {linkError && (
+                  <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{linkError}</p>
+                )}
 
                 {status && (
                   <p className="rounded-lg border border-emerald-900/60 bg-emerald-950/30 p-2 text-xs text-emerald-300">

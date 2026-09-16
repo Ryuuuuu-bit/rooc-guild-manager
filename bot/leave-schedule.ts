@@ -10,7 +10,8 @@ import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import { db } from "../src/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries, scheduledLeaves } from "../src/db/schema";
 import { CHECKIN_EVENTS } from "../src/lib/checkin-events";
-import { clearMemberSlotOnBoard } from "./reactions";
+import { clearMemberSlotOnBoard, countLeavesThisMonth, dmMemberLeaveStatus } from "./reactions";
+import { notifyAdminsOfLeave } from "./attendance-confirm";
 
 /** "YYYY-MM-DD" for now in Thailand's local time — a local copy rather than
  * an import from midnight-reset.ts, since that module calls into this one
@@ -55,12 +56,11 @@ export interface LeaveOption {
   eventLabel: string;
 }
 
-/** boardId lookup by event.attendanceBoardName — re-queried per call since /leave only runs a handful of times a day, no need for a standing cache. */
+/** boardId lookup by the board's own checkinEventKey link (schema.ts) — re-queried per call since /leave only runs a handful of times a day, no need for a standing cache. */
 async function resolveEventBoards(): Promise<Map<string, { id: string; name: string }>> {
   const boardByEventKey = new Map<string, { id: string; name: string }>();
   for (const event of CHECKIN_EVENTS) {
-    if (!event.attendanceBoardName) continue;
-    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.name, event.attendanceBoardName) });
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.checkinEventKey, event.key) });
     if (board) boardByEventKey.set(event.key, { id: board.id, name: board.name });
   }
   return boardByEventKey;
@@ -209,7 +209,11 @@ export async function cancelScheduledLeave(memberId: string, id: string): Promis
  * that an advance request is deliberate rather than a possibly-accidental
  * click — but that also meant there was no way left for a member to change
  * their mind afterward, since the scheduledLeaves-cancel flow only ever
- * touches not-yet-applied requests. Consumed rows are deleted right after
+ * touches not-yet-applied requests. Also now DMs the member + notifies
+ * admins the moment it applies (see dmMemberLeaveStatus/notifyAdminsOfLeave
+ * below) — this used to notify no one at all, so a member had no way to
+ * learn their leave had gone into effect and was still cancellable short of
+ * opening /leave themselves. Consumed rows are deleted right after
  * applying either way (even if the member is no longer eligible) — see
  * scheduledLeaves in schema.ts for why this table isn't meant to accumulate
  * history.
@@ -274,6 +278,20 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
           boardId: row.boardId,
           confirmedAt: null,
         });
+
+        // A live "ลา" reaction proactively DMs the member + notifies admins
+        // the moment it's marked (see handleReactionAdd in reactions.ts) —
+        // this auto-applied path used to do neither, so a member had no way
+        // to know their scheduled leave had gone into effect (and was still
+        // freely cancellable) short of opening /leave themselves to check,
+        // and admins had no heads-up to rework the party board either.
+        // Fire-and-forget, same as the live-reaction path — a slow/failed
+        // DM shouldn't hold up applying the rest of today's due leaves. Only
+        // sent when a fresh row was actually inserted above (skipped for
+        // pendingFromLiveReaction, whose own react already sent both).
+        const leaveCount = await countLeavesThisMonth(row.memberId, row.boardId);
+        void dmMemberLeaveStatus(member.discordId, board?.name ?? row.boardId, leaveCount, "schedule", row.eventKey);
+        void notifyAdminsOfLeave(row.memberId, row.boardId);
       }
       applied++;
     }

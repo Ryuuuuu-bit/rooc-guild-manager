@@ -233,7 +233,12 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const n = Number(count);
-  const preview = n > 0 ? category.queue.slice(0, n) : [];
+  // Mirror runLootRound's server-side logic (loot-queue.ts): walk the queue
+  // in order and skip anyone currently auction-banned rather than just
+  // taking the first N — otherwise this preview shows a banned member as
+  // "will be served" when the actual round run will pass over them and pull
+  // someone from further back instead.
+  const preview = n > 0 ? category.queue.filter((m) => !m.isAuctionBanned).slice(0, n) : [];
 
   async function handleCopy(text: string) {
     const ok = await copyToClipboard(text);

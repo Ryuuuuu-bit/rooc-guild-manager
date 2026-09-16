@@ -14,7 +14,8 @@ import {
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
 import { sendDirectMessage } from "../src/lib/discord";
 import { getEmojiToClassMap } from "./job-classes";
-import { getCheckinEventByBoardName, windowFor } from "../src/lib/checkin-events";
+import { getCheckinEvent, nextOccurrenceEnd } from "../src/lib/checkin-events";
+import { notifyAdminsOfLeave } from "./attendance-confirm";
 
 /** "YYYY-MM-DD" for now in Thailand's local time — local copy, see
  * bot/leave-schedule.ts's own copy for why every file keeps its own. */
@@ -26,17 +27,25 @@ function thaiDateString(d: Date = new Date()): string {
 /**
  * When a "ลา" on this board actually locks in, as human-readable Thai text —
  * matches confirmDueLeaves' own event-end gating in attendance-confirm.ts
- * (a leave only counts once the matching event's window for TODAY actually
- * ends), so this message never promises a timing the backend doesn't
- * enforce. Falls back to generic wording for a board with no matching
- * CHECKIN_EVENTS entry, where confirmDueLeaves instead uses a flat delay.
+ * (a leave only counts once the matching event's NEXT NOT-YET-ENDED
+ * occurrence actually ends — see nextOccurrenceEnd in checkin-events.ts, not
+ * necessarily today's window), so this message never promises a timing the
+ * backend doesn't enforce. Takes the board's checkinEventKey (schema.ts)
+ * rather than its name — falls back to generic wording when it's null/
+ * doesn't match a configured event, where confirmDueLeaves instead uses a
+ * flat delay. Spells out the date too when the relevant occurrence isn't
+ * today — e.g. reacting on a Monday for GL (Tue/Thu only) locks in Tuesday,
+ * not "later today".
  */
-function confirmTimingLabel(boardName: string): string {
-  const event = getCheckinEventByBoardName(boardName);
+function confirmTimingLabel(checkinEventKey: string | null): string {
+  const event = checkinEventKey ? getCheckinEvent(checkinEventKey) : undefined;
   if (!event) return "อีกสักครู่";
-  const { end } = windowFor(event, thaiDateString());
+  const now = new Date();
+  const end = nextOccurrenceEnd(event, now);
   const timeLabel = end.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
-  return `ตอนกิจกรรมจบ (${timeLabel} น.)`;
+  if (thaiDateString(end) === thaiDateString(now)) return `ตอนกิจกรรมจบ (${timeLabel} น.)`;
+  const dateLabel = end.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
+  return `ตอนกิจกรรมจบวันที่ ${dateLabel} (${timeLabel} น.)`;
 }
 
 /** Ensures both the reaction and its parent message are fully loaded (both can arrive as partials). */
@@ -80,7 +89,7 @@ function startOfThaiMonth(): Date {
  * are separate boards with separate quotas, per the guild admin, so a leave
  * on one shouldn't count against the other's 0/2.
  */
-async function countLeavesThisMonth(memberId: string, boardId: string): Promise<number> {
+export async function countLeavesThisMonth(memberId: string, boardId: string): Promise<number> {
   const rows = await db
     .select({ id: membershipEvents.id })
     .from(membershipEvents)
@@ -116,7 +125,8 @@ async function sendTempLeaveConfirmation(
   displayName: string,
   boardName: string,
   leaveCount: number,
-  emoji: string
+  emoji: string,
+  checkinEventKey: string | null
 ) {
   const channel = reaction.message.channel;
   if (!channel.isTextBased() || !("send" in channel)) return;
@@ -136,7 +146,7 @@ async function sendTempLeaveConfirmation(
     const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
     const sent = await channel.send(
       `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
-        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการ${confirmTimingLabel(boardName)} (เอา ${emoji} ออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา)\n` +
+        `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการ${confirmTimingLabel(checkinEventKey)} (เอา ${emoji} ออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา)\n` +
         `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
     );
     setTimeout(() => {
@@ -183,13 +193,36 @@ async function sendTempClassConfirmation(
  * and one that reaches them even if they don't happen to be watching the
  * channel right when they click. Best-effort/non-fatal: a member with DMs
  * off just doesn't get this, the leave itself is already logged regardless.
+ *
+ * Also called from leave-schedule.ts's applyTodaysScheduledLeaves (origin
+ * "schedule") — an advance /leave request auto-applying used to send NO
+ * notification of any kind, so a member had no way to know their scheduled
+ * leave had gone into effect and was cancellable, short of opening /leave
+ * themselves to check. That gap is exactly what let a leave like this sit
+ * unnoticed until it locked in with no one realizing there was still time to
+ * undo it. `origin` only changes the wording (there's no reaction to remove
+ * for a leave that auto-applied from a schedule).
  */
-async function dmMemberLeaveStatus(discordId: string, boardName: string, leaveCount: number) {
+export async function dmMemberLeaveStatus(
+  discordId: string,
+  boardName: string,
+  leaveCount: number,
+  origin: "reaction" | "schedule" = "reaction",
+  checkinEventKey: string | null = null
+) {
+  const intro =
+    origin === "reaction"
+      ? `🗓️ บันทึกคำขอลาในกระดาน "${boardName}" แล้ว`
+      : `🗓️ คำขอลาล่วงหน้าที่แจ้งไว้ในกระดาน "${boardName}" มีผลแล้ววันนี้`;
+  const cancelHint =
+    origin === "reaction"
+      ? "ถ้าเปลี่ยนใจให้เอารีแอคชั่นออก หรือใช้ /leave เลือก \"ยกเลิกลาที่มีผลอยู่ตอนนี้\" ก่อนเวลานี้ ไม่นับเป็นการลา"
+      : "ถ้าเปลี่ยนใจให้เปิด /leave แล้วเลือก \"ยกเลิกลาที่มีผลอยู่ตอนนี้\" ก่อนเวลานี้ ไม่นับเป็นการลา";
   try {
     await sendDirectMessage(
       discordId,
-      `🗓️ บันทึกคำขอลาในกระดาน "${boardName}" แล้ว (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้ เฉพาะกระดานนี้)\n` +
-        `จะยืนยันอย่างเป็นทางการ${confirmTimingLabel(boardName)} ถ้าเปลี่ยนใจให้เอารีแอคชั่นออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา`
+      `${intro} (ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้ เฉพาะกระดานนี้)\n` +
+        `จะยืนยันอย่างเป็นทางการ${confirmTimingLabel(checkinEventKey)} ${cancelHint}`
     );
   } catch (err) {
     console.error(`[bot] failed to DM member ${discordId} about pending leave`, err);
@@ -315,10 +348,10 @@ export async function handleReactionAdd(
     await clearMemberSlotOnBoard(member.id, boardId);
 
     // Logged right away so it shows in the activity feed immediately, but
-    // left unconfirmed (confirmedAt: null) — the /attendance stats page
-    // only counts it once it survives 30 minutes without being un-reacted
-    // (see confirmDueLeaves in attendance-confirm.ts). Un-reacting before
-    // then discards this row entirely, see handleReactionRemove below.
+    // left unconfirmed (confirmedAt: null) — the /attendance stats page only
+    // counts it once the matching event's window actually ends (see
+    // confirmDueLeaves in attendance-confirm.ts). Un-reacting before then
+    // discards this row entirely, see handleReactionRemove below.
     await logEvent(
       member.id,
       "ATTENDANCE_LEAVE",
@@ -328,9 +361,11 @@ export async function handleReactionAdd(
 
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id, boardId);
+    const checkinEventKey = board?.checkinEventKey ?? null;
     // Fire-and-forget — don't hold up the reaction handler on a channel post/DM.
-    void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji);
-    void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount);
+    void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji, checkinEventKey);
+    void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount, "reaction", checkinEventKey);
+    void notifyAdminsOfLeave(member.id, boardId);
   }
 }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
@@ -118,17 +118,26 @@ export async function deleteGroup(groupId: string): Promise<ActionResult> {
 export async function createParty(groupId: string): Promise<ActionResultWithId> {
   await requireAdmin();
 
-  const [{ maxOrder, partyCount } = { maxOrder: -1, partyCount: 0 }] = await db
-    .select({
-      maxOrder: sql<number>`coalesce(max(${partyGroupParties.sortOrder}), -1)::int`,
-      partyCount: sql<number>`count(*)::int`,
-    })
+  const existing = await db
+    .select({ label: partyGroupParties.label, sortOrder: partyGroupParties.sortOrder })
     .from(partyGroupParties)
     .where(eq(partyGroupParties.groupId, groupId));
 
+  const maxOrder = existing.reduce((m, p) => Math.max(m, p.sortOrder), -1);
+  // Name the new party after the highest existing "Party N" number, not by
+  // how many parties currently exist — counting was wrong the moment a party
+  // got deleted from the middle: e.g. deleting "Party 2" out of 1/2/3 drops
+  // the count to 2, so the next created party was named "Party 3" again,
+  // colliding with the "Party 3" still sitting right there.
+  const usedNumbers = existing
+    .map((p) => /^Party (\d+)$/.exec(p.label)?.[1])
+    .filter((n): n is string => Boolean(n))
+    .map(Number);
+  const nextNumber = (usedNumbers.length ? Math.max(...usedNumbers) : 0) + 1;
+
   const [inserted] = await db
     .insert(partyGroupParties)
-    .values({ groupId, label: `Party ${partyCount + 1}`, sortOrder: maxOrder + 1 })
+    .values({ groupId, label: `Party ${nextNumber}`, sortOrder: maxOrder + 1 })
     .returning({ id: partyGroupParties.id });
 
   revalidatePath("/party");
@@ -170,6 +179,15 @@ export async function moveMember(
   const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!member || member.status !== "ACTIVE") {
     return { ok: false, error: "Member not found, or they are no longer in the guild" };
+  }
+  // Benched members are supposed to be cleared off every board (see
+  // setMemberBenched) and never appear in a board's own unassigned/busy/slot
+  // lists — but the client's list of pickable members can go stale (e.g.
+  // another admin benches this member while this admin's board is still
+  // open in their browser), and this is the only real gate left once that
+  // happens. Removing them (destination "unassigned") stays allowed.
+  if (member.benched && destination.type !== "unassigned") {
+    return { ok: false, error: "This member is currently benched and can't be placed on a party board" };
   }
 
   const partyIds = await getPartyIdsForBoard(boardId);
@@ -218,14 +236,44 @@ export async function moveMember(
         confirmedAt: new Date(),
       });
     } else if (destination.type !== "busy" && wasBusy) {
-      const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-      await tx.insert(membershipEvents).values({
-        memberId,
-        type: "ATTENDANCE_RETURN",
-        detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
-        actor: session.user.username,
-        boardId,
-      });
+      // Whether this logs a normal return or discards the leave outright
+      // depends on whether it had already event-confirmed (see
+      // confirmDueLeaves in bot/attendance-confirm.ts) — mirrors
+      // cancelCurrentLeave in bot/reactions.ts (the same check a member's
+      // own un-react / /leave self-service cancel goes through), so an admin
+      // manually pulling someone out of Busy/ลา behaves identically instead
+      // of leaving a stale still-pending ATTENDANCE_LEAVE row behind. Left
+      // unhandled, that row would just sit there (this branch never touched
+      // it before) until confirmDueLeaves' own sweep later discarded it once
+      // the event ended — silently vanishing from the activity feed with no
+      // explanation, well after the admin had already logged what looked
+      // like a completed "return".
+      const [pendingLeave] = await tx
+        .select({ id: membershipEvents.id })
+        .from(membershipEvents)
+        .where(
+          and(
+            eq(membershipEvents.memberId, memberId),
+            eq(membershipEvents.boardId, boardId),
+            eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+            isNull(membershipEvents.confirmedAt)
+          )
+        )
+        .orderBy(desc(membershipEvents.createdAt))
+        .limit(1);
+
+      if (pendingLeave) {
+        await tx.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
+      } else {
+        const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+        await tx.insert(membershipEvents).values({
+          memberId,
+          type: "ATTENDANCE_RETURN",
+          detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
+          actor: session.user.username,
+          boardId,
+        });
+      }
     }
 
     if (destination.type === "slot") {
@@ -311,10 +359,16 @@ export async function resetPartyBoard(boardId: string): Promise<ActionResult> {
   await requireAdmin();
 
   const partyIds = await getPartyIdsForBoard(boardId);
-  if (partyIds.length) {
-    await db.delete(partySlots).where(inArray(partySlots.partyId, partyIds));
-  }
-  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId));
+  // Both deletes in one transaction — otherwise a failure/interruption
+  // between them (e.g. a deploy landing mid-request) can clear every slot
+  // but leave the busy/leave list (or vice versa) behind, leaving the board
+  // in a half-reset state with no way to tell it happened.
+  await db.transaction(async (tx) => {
+    if (partyIds.length) {
+      await tx.delete(partySlots).where(inArray(partySlots.partyId, partyIds));
+    }
+    await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId));
+  });
 
   revalidatePath("/party");
   return { ok: true };

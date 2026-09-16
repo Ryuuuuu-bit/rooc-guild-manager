@@ -186,27 +186,55 @@ export const membershipEvents = pgTable(
 // (job) is NOT stored per-slot — it lives once on `members.characterClass`
 // and is shared everywhere that member appears, on every board.
 
-export const partyBoards = pgTable("party_boards", {
-  id: text("id").primaryKey().$defaultFn(() => createId()),
-  name: text("name").notNull(),
-  sortOrder: integer("sort_order").notNull().default(0),
-  // The reaction emoji used for THIS board's "ลา" (attendance opt-out)
-  // message — null means "use the default" (ATTENDANCE_EMOJI in
-  // src/lib/class-emoji.ts). Lets an admin give each board (e.g. "GL" vs
-  // "WOE") a visually distinct emoji so it's obvious at a glance in Discord
-  // which event a leave reaction is for, without needing a second "reason"
-  // concept layered onto the existing one-board-one-emoji model. Set (and
-  // re-settable) from the "โพสต์ ลา ใน Discord" dialog — see postAttendanceMessage.
-  emoji: text("emoji"),
-  // Discord channel id the "ประกาศภาพผังปาร์ตี้" button last posted this
-  // board to — remembered per-board so the picker defaults to it next time
-  // instead of making an admin re-pick the same channel every single
-  // announcement. Just a remembered default: the dropdown still lets them
-  // pick a different channel any time.
-  lastImageAnnounceChannelId: text("last_image_announce_channel_id"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const partyBoards = pgTable(
+  "party_boards",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    name: text("name").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    // The reaction emoji used for THIS board's "ลา" (attendance opt-out)
+    // message — null means "use the default" (ATTENDANCE_EMOJI in
+    // src/lib/class-emoji.ts). Lets an admin give each board (e.g. "GL" vs
+    // "WOE") a visually distinct emoji so it's obvious at a glance in Discord
+    // which event a leave reaction is for, without needing a second "reason"
+    // concept layered onto the existing one-board-one-emoji model. Set (and
+    // re-settable) from the "โพสต์ ลา ใน Discord" dialog — see postAttendanceMessage.
+    emoji: text("emoji"),
+    // Which CHECKIN_EVENTS entry (checkin-events.ts) this board's "ลา"
+    // tracks approved leave for — e.g. the board admins use for "GL" links
+    // to the "gl" event. A config key, not a DB row reference (same pattern
+    // as scheduledLeaves.eventKey) — null means "not linked to any check-in
+    // event": the board still works as an ordinary party/busy board, it just
+    // won't be found by the event-end leave-timing gate (confirmDueLeaves in
+    // bot/attendance-confirm.ts, which falls back to a flat short delay for
+    // an unlinked board) or show up in /checkin's no-show exclusion or
+    // /calendar.
+    //
+    // Deliberately an explicit link rather than matching on partyBoards.name
+    // against CHECKIN_EVENTS' old attendanceBoardName field (removed) — name
+    // matching broke silently the moment an admin created a differently-named
+    // board for the same event, renamed the linked board, or (nothing ever
+    // stopped this) created a second board that happened to share the exact
+    // same name. The unique index below makes "two boards fighting over one
+    // event" impossible to represent at all, rather than just unlikely.
+    // Set/cleared from the "โพสต์ ลา ใน Discord" dialog — see
+    // getBoardCheckinEventKey/setBoardCheckinEventKey in
+    // src/app/actions/bot-messages.ts.
+    checkinEventKey: text("checkin_event_key"),
+    // Discord channel id the "ประกาศภาพผังปาร์ตี้" button last posted this
+    // board to — remembered per-board so the picker defaults to it next time
+    // instead of making an admin re-pick the same channel every single
+    // announcement. Just a remembered default: the dropdown still lets them
+    // pick a different channel any time.
+    lastImageAnnounceChannelId: text("last_image_announce_channel_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  // Postgres unique indexes treat every NULL as distinct from every other
+  // NULL, so any number of not-yet-linked boards can coexist — this only
+  // ever blocks a SECOND board from linking to an event key already taken.
+  (table) => [uniqueIndex("party_boards_checkin_event_key_idx").on(table.checkinEventKey)]
+);
 
 export const partyGroups = pgTable(
   "party_groups",

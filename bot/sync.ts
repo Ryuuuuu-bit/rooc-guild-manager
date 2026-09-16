@@ -278,7 +278,6 @@ export async function runFullSync(guild: Guild) {
     .filter((m) => m.hasTrackedRole);
 
   const dbMembers = await db.select().from(members);
-  const dbByDiscordId = new Map(dbMembers.map((m) => [m.discordId, m]));
   const seenDiscordIds = new Set<string>();
 
   let joined = 0;
@@ -287,36 +286,73 @@ export async function runFullSync(guild: Guild) {
 
   for (const normalized of normalizedList) {
     seenDiscordIds.add(normalized.discordId);
-    const existing = dbByDiscordId.get(normalized.discordId);
 
-    if (!existing) {
-      const [inserted] = await db
-        .insert(members)
-        .values({
-          discordId: normalized.discordId,
-          discordUsername: normalized.username,
-          discordGlobalName: normalized.globalName,
-          discordNickname: normalized.nickname,
-          discordAvatar: normalized.avatarUrl,
-          discordRoles: normalized.roles,
-          status: "ACTIVE",
-          joinedDiscordAt: normalized.joinedAt ?? new Date(),
-          lastSyncedAt: new Date(),
-        })
-        .returning();
-      await logEvent(inserted.id, "JOIN", "พบจากการซิงค์ครั้งแรก");
-      await addToAllLootQueues(inserted.id);
-      await sendWelcomeMessage(inserted);
-      joined++;
-      continue;
-    }
+    try {
+      // Re-read this member's row fresh right here, rather than trusting the
+      // bulk `dbMembers` snapshot taken above before guild.members.fetch()
+      // (which can take a while on a large guild). A concurrent real
+      // Discord leave — the gateway's markMemberLeftFromGateway — can commit
+      // its LEFT status in that gap; reading fresh means this loop sees that
+      // write instead of blindly flipping the member back to ACTIVE and
+      // silently undoing a leave that just happened for real. This narrows
+      // the race window down to a single query+update instead of the whole
+      // fetch+loop duration, though it can't close it completely without
+      // row-level locking, which isn't worth the complexity here.
+      const existing = await db.query.members.findFirst({ where: eq(members.discordId, normalized.discordId) });
 
-    const wasInactive = existing.status !== "ACTIVE";
-    // Same KICKED guard as upsertMemberFromGateway above — see its comment.
-    const wasKicked = existing.status === "KICKED";
-    await maybeLogNameChange(existing, normalized);
+      if (!existing) {
+        try {
+          const [inserted] = await db
+            .insert(members)
+            .values({
+              discordId: normalized.discordId,
+              discordUsername: normalized.username,
+              discordGlobalName: normalized.globalName,
+              discordNickname: normalized.nickname,
+              discordAvatar: normalized.avatarUrl,
+              discordRoles: normalized.roles,
+              status: "ACTIVE",
+              joinedDiscordAt: normalized.joinedAt ?? new Date(),
+              lastSyncedAt: new Date(),
+            })
+            .returning();
+          await logEvent(inserted.id, "JOIN", "พบจากการซิงค์ครั้งแรก");
+          await addToAllLootQueues(inserted.id);
+          await sendWelcomeMessage(inserted);
+          joined++;
+        } catch (err) {
+          const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
+          if (!isDuplicate) throw err;
+          // A gateway event (upsertMemberFromGateway) already inserted this
+          // same brand-new member concurrently while this full sync was
+          // fetching/diffing — not an error, just two paths racing to
+          // handle the same join. Nothing left to do this cycle.
+        }
+        continue;
+      }
 
-    if (wasKicked) {
+      const wasInactive = existing.status !== "ACTIVE";
+      // Same KICKED guard as upsertMemberFromGateway above — see its comment.
+      const wasKicked = existing.status === "KICKED";
+      await maybeLogNameChange(existing, normalized);
+
+      if (wasKicked) {
+        await db
+          .update(members)
+          .set({
+            discordUsername: normalized.username,
+            discordGlobalName: normalized.globalName,
+            discordNickname: normalized.nickname,
+            discordAvatar: normalized.avatarUrl,
+            discordRoles: normalized.roles,
+            inGameName: normalized.nickname || existing.inGameName,
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(members.id, existing.id));
+        continue;
+      }
+
       await db
         .update(members)
         .set({
@@ -326,33 +362,24 @@ export async function runFullSync(guild: Guild) {
           discordAvatar: normalized.avatarUrl,
           discordRoles: normalized.roles,
           inGameName: normalized.nickname || existing.inGameName,
+          status: "ACTIVE",
+          leftDiscordAt: null,
           lastSyncedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(members.id, existing.id));
-      continue;
-    }
 
-    await db
-      .update(members)
-      .set({
-        discordUsername: normalized.username,
-        discordGlobalName: normalized.globalName,
-        discordNickname: normalized.nickname,
-        discordAvatar: normalized.avatarUrl,
-        discordRoles: normalized.roles,
-        inGameName: normalized.nickname || existing.inGameName,
-        status: "ACTIVE",
-        leftDiscordAt: null,
-        lastSyncedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(members.id, existing.id));
-
-    if (wasInactive) {
-      await logEvent(existing.id, "JOIN", "กลับเข้าร่วม Discord server (พบจากการซิงค์)");
-      await addToAllLootQueues(existing.id);
-      reactivated++;
+      if (wasInactive) {
+        await logEvent(existing.id, "JOIN", "กลับเข้าร่วม Discord server (พบจากการซิงค์)");
+        await addToAllLootQueues(existing.id);
+        reactivated++;
+      }
+    } catch (err) {
+      // One member's row failing to process (a transient DB hiccup, or
+      // anything else unexpected) shouldn't abort the whole reconciliation —
+      // in particular, it must not skip the LEFT-detection pass below, which
+      // used to happen when this loop threw partway through.
+      console.error(`runFullSync: failed to process member ${normalized.discordId}`, err);
     }
   }
 

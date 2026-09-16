@@ -62,20 +62,25 @@ export async function deleteLootCategory(id: string): Promise<ActionResult> {
 export async function moveLootCategory(id: string, direction: "up" | "down"): Promise<ActionResult> {
   await requireAdmin();
 
-  const all = await db.select().from(lootCategories).orderBy(asc(lootCategories.sortOrder));
-  const idx = all.findIndex((c) => c.id === id);
-  if (idx === -1) return { ok: false, error: "Category not found" };
+  return db.transaction(async (tx) => {
+    const all = await tx.select().from(lootCategories).orderBy(asc(lootCategories.sortOrder));
+    const idx = all.findIndex((c) => c.id === id);
+    if (idx === -1) return { ok: false, error: "Category not found" };
 
-  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-  if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
 
-  const a = all[idx];
-  const b = all[swapIdx];
-  await db.update(lootCategories).set({ sortOrder: b.sortOrder }).where(eq(lootCategories.id, a.id));
-  await db.update(lootCategories).set({ sortOrder: a.sortOrder }).where(eq(lootCategories.id, b.id));
+    const a = all[idx];
+    const b = all[swapIdx];
+    // In one transaction — a failure between the two updates used to be able
+    // to leave two categories sharing the same sortOrder (a stable-sort tie,
+    // ambiguous display order) instead of a clean swap.
+    await tx.update(lootCategories).set({ sortOrder: b.sortOrder }).where(eq(lootCategories.id, a.id));
+    await tx.update(lootCategories).set({ sortOrder: a.sortOrder }).where(eq(lootCategories.id, b.id));
 
-  revalidateEverywhere();
-  return { ok: true };
+    revalidateEverywhere();
+    return { ok: true };
+  });
 }
 
 // --- Queue membership ---------------------------------------------------
@@ -94,25 +99,36 @@ export async function moveLootCategory(id: string, direction: "up" | "down"): Pr
 export async function addToLootQueue(categoryId: string, memberId: string): Promise<ActionResult> {
   await requireAdmin();
 
-  const existing = await db.query.lootQueueEntries.findFirst({
-    where: and(eq(lootQueueEntries.categoryId, categoryId), eq(lootQueueEntries.memberId, memberId)),
+  return db.transaction(async (tx) => {
+    // Lock the category row for the rest of this transaction so two admins
+    // adding DIFFERENT members to the SAME category at once serialize
+    // instead of both reading the same current max position and inserting
+    // at the same position (the unique index below only catches the
+    // same-member-twice case, not two different members landing on the same
+    // position). Different categories don't block each other.
+    const [category] = await tx.select().from(lootCategories).where(eq(lootCategories.id, categoryId)).for("update");
+    if (!category) return { ok: false, error: "Category not found" };
+
+    const existing = await tx.query.lootQueueEntries.findFirst({
+      where: and(eq(lootQueueEntries.categoryId, categoryId), eq(lootQueueEntries.memberId, memberId)),
+    });
+    if (existing) return { ok: false, error: "This member is already in this category's queue" };
+
+    const [{ maxPos } = { maxPos: -1 }] = await tx
+      .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId));
+
+    try {
+      await tx.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
+    } catch (err) {
+      const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
+      if (isDuplicate) return { ok: false, error: "This member is already in this category's queue" };
+      throw err;
+    }
+    revalidateEverywhere();
+    return { ok: true };
   });
-  if (existing) return { ok: false, error: "This member is already in this category's queue" };
-
-  const [{ maxPos } = { maxPos: -1 }] = await db
-    .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
-    .from(lootQueueEntries)
-    .where(eq(lootQueueEntries.categoryId, categoryId));
-
-  try {
-    await db.insert(lootQueueEntries).values({ categoryId, memberId, position: maxPos + 1 });
-  } catch (err) {
-    const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
-    if (isDuplicate) return { ok: false, error: "This member is already in this category's queue" };
-    throw err;
-  }
-  revalidateEverywhere();
-  return { ok: true };
 }
 
 export async function removeFromLootQueue(categoryId: string, memberId: string): Promise<ActionResult> {
@@ -132,24 +148,29 @@ export async function moveLootQueueEntry(
 ): Promise<ActionResult> {
   await requireAdmin();
 
-  const all = await db
-    .select()
-    .from(lootQueueEntries)
-    .where(eq(lootQueueEntries.categoryId, categoryId))
-    .orderBy(asc(lootQueueEntries.position));
-  const idx = all.findIndex((e) => e.memberId === memberId);
-  if (idx === -1) return { ok: false, error: "Member not found in queue" };
+  return db.transaction(async (tx) => {
+    const all = await tx
+      .select()
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId))
+      .orderBy(asc(lootQueueEntries.position));
+    const idx = all.findIndex((e) => e.memberId === memberId);
+    if (idx === -1) return { ok: false, error: "Member not found in queue" };
 
-  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-  if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= all.length) return { ok: true };
 
-  const a = all[idx];
-  const b = all[swapIdx];
-  await db.update(lootQueueEntries).set({ position: b.position }).where(eq(lootQueueEntries.id, a.id));
-  await db.update(lootQueueEntries).set({ position: a.position }).where(eq(lootQueueEntries.id, b.id));
+    const a = all[idx];
+    const b = all[swapIdx];
+    // Both updates in one transaction — a failure between them used to be
+    // able to leave two members sharing the same position (an ambiguous tie
+    // in queue order) instead of a clean swap.
+    await tx.update(lootQueueEntries).set({ position: b.position }).where(eq(lootQueueEntries.id, a.id));
+    await tx.update(lootQueueEntries).set({ position: a.position }).where(eq(lootQueueEntries.id, b.id));
 
-  revalidateEverywhere();
-  return { ok: true };
+    revalidateEverywhere();
+    return { ok: true };
+  });
 }
 
 /**
@@ -365,6 +386,26 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
         .update(lootQueueEntries)
         .set({ position: round.previousPositions[i] })
         .where(and(eq(lootQueueEntries.categoryId, round.categoryId), eq(lootQueueEntries.memberId, round.memberIds[i])));
+    }
+
+    // Re-normalize every position in this category to 0..n-1, in whatever
+    // order the restored values now sort into. Restoring the raw saved
+    // `previousPositions` is only exactly right if nothing else moved since
+    // this round ran — if someone was manually reordered in the meantime
+    // (moveLootQueueEntry / moveLootQueueEntryToPosition), a restored value
+    // can collide with a position someone else now occupies, leaving two
+    // members tied on the same position (ambiguous queue order) instead of
+    // undoing cleanly. Same normalization moveLootQueueEntryToPosition
+    // already does after its own reorder.
+    const all = await tx
+      .select()
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, round.categoryId))
+      .orderBy(asc(lootQueueEntries.position), asc(lootQueueEntries.id));
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].position !== i) {
+        await tx.update(lootQueueEntries).set({ position: i }).where(eq(lootQueueEntries.id, all[i].id));
+      }
     }
 
     await tx.delete(lootRounds).where(eq(lootRounds.id, roundId));

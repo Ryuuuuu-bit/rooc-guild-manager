@@ -14,11 +14,13 @@
 
 **ปาร์ตี้และการเข้าร่วมกิจกรรม**
 - จัดปาร์ตี้หลายบอร์ด (multi-board), ลาก-วาง หรือแตะเพื่อย้ายสมาชิก, บันทึก/โหลด template ผังปาร์ตี้
-- ระบบ reaction ใน Discord ให้สมาชิกเลือกอาชีพ/แจ้งลาเองต่อบอร์ด (บอทคุมให้เลือกได้ครั้งเดียวต่อครั้ง)
+- แต่ละบอร์ดผูกกับ check-in event (เช่น GL/WOE) ได้แบบชัดเจนผ่าน dropdown ในหน้าเว็บ (ไม่ได้จับคู่จากชื่อบอร์ดแบบเดา) เพื่อกำหนดว่าปุ่ม "ลา"/เวลานับผลของบอร์ดนั้นอิงจากอีเวนต์ไหน
+- ระบบเลือกอาชีพผ่าน GUI dropdown (ephemeral) ในดิสคอร์ด แจ้งลาแบบสด (reaction) ต่อบอร์ด, และแจ้งลาล่วงหน้าได้ผ่านคำสั่ง `/leave` (เลือกวันกิจกรรมที่จะถึงล่วงหน้าแบบ multi-select, ยกเลิกได้, ระบบ apply ให้อัตโนมัติเมื่อถึงวันจริง) — การนับ "ลา" ทุกช่องทางรอจนเวลากิจกรรมนั้นจบจริงก่อนล็อกผล กันกดพลาดแล้วแก้ไม่ทัน
 - ประกาศผังปาร์ตี้เป็นรูปภาพ (server-side canvas render) ลง Discord ได้ในคลิกเดียว จำช่องล่าสุดที่เคยประกาศไว้
 - Slash command `/party` — พิมพ์ในดิสคอร์ดแล้วดูผังปาร์ตี้ปัจจุบันแบบ ephemeral โดยไม่ต้องเปิดเว็บ
 - `/checkin` — เช็คว่าใครเข้าห้อง voice ตรงเวลากิจกรรมจริงไหม (ตั้งค่าห้อง/วันเวลาต่ออีเวนต์ได้ที่ `src/lib/checkin-events.ts`) พร้อมโยงกับสถานะ "ลา" ของบอร์ดที่เกี่ยวข้อง ไม่ให้ขึ้นเป็น "ขาดกิจกรรม" ทั้งที่ลาไว้แล้ว
 - `/attendance` — สรุปสถิติการเข้าร่วม/ลา ย้อนหลังแยกตามบอร์ด
+- `/calendar` — ปฏิทินรวมทุกรอบ GL/WOE ที่จะมาถึง กดวันไหนดูได้ว่าใครลาแล้วบ้าง (เฉพาะวันนี้เป็นต้นไป ไม่ย้อนหลัง)
 
 **สถิติ PVP**
 - สมาชิกกรอก/อัปเดตสถิติของตัวเองได้เอง (CP, DEF, ATK, การ์ดบอส ฯลฯ) — ทุกครั้งที่กรอกคือประวัติใหม่ ไม่ทับของเก่า
@@ -189,7 +191,7 @@ docker run --name rooc-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=roo
 src/
   app/
     (app)/            หน้าที่ต้อง login: dashboard, members, activity, party,
-                       attendance, checkin, classes, pvp-stats, loot-queue, random
+                       attendance, checkin, calendar, classes, pvp-stats, loot-queue, random
     login/             หน้า login ด้วย Discord
     api/auth/          Auth.js route handler
     actions/           Server actions: members, party, checkin, attendance,
@@ -202,7 +204,9 @@ src/
 bot/
   index.ts              Entry point ของบอท
   sync.ts                ตรรกะซิงค์สมาชิก (full sync + อีเวนต์เรียลไทม์)
-  reactions.ts           ระบบ reaction เลือกอาชีพ/แจ้งลา
+  reactions.ts           ระบบ reaction เลือกอาชีพ/แจ้งลาสด ต่อบอร์ด
+  leave-schedule.ts       แจ้งลาล่วงหน้า (`/leave`) + apply อัตโนมัติเมื่อถึงวันจริง
+  attendance-confirm.ts   คำนวณว่าลาแต่ละรายการนับผล/ล็อกแล้วหรือยัง (รอเวลากิจกรรมจบจริง) + แจ้งแอดมิน
   voice-attendance.ts     ติดตามใครเข้าห้อง voice ตอนไหน (สำหรับ /checkin)
   midnight-reset.ts       รีเซ็ตสถานะ "ลา" ทุกเที่ยงคืน
   commands.ts / interactions.ts   Slash command /party

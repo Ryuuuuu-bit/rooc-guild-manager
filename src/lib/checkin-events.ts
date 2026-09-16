@@ -17,14 +17,16 @@ export interface CheckinEventConfig {
   endTime: string;
   /** Being in ANY of these channels counts as present for this event — e.g. two separate team rooms for the same event. */
   channelIds: string[];
-  /** Name (partyBoards.name, exact match) of the party board whose "ลา"
-   * reaction tracks approved leave for this event — lets the /checkin
-   * report exclude someone who clicked ลา on the matching board from
-   * looking like an unexplained no-show. Omit if this event has no
-   * matching board (leave just won't be shown for it). */
-  attendanceBoardName?: string;
 }
 
+// Which party board's "ลา" tracks approved leave for each event is NOT
+// stored here — that's an explicit link on partyBoards.checkinEventKey (see
+// schema.ts), set from the "โพสต์ ลา ใน Discord" dialog, rather than a name
+// this config would have to match against partyBoards.name exactly. An
+// earlier version had that as an `attendanceBoardName` field here — removed
+// because matching by name broke silently the moment an admin created a
+// differently-named board for the same event, renamed the linked board, or
+// created a second board sharing the same name (nothing ever stopped that).
 export const CHECKIN_EVENTS: CheckinEventConfig[] = [
   {
     key: "gl",
@@ -33,7 +35,6 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:20:00",
     channelIds: ["1488971259113902090", "1488971308225269943", "1486678906214809721", "1545045768107196488"],
-    attendanceBoardName: "GL",
   },
   {
     key: "woe",
@@ -42,7 +43,6 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:40:00",
     channelIds: ["1490330449275260988"],
-    attendanceBoardName: "WOE",
   },
 ];
 
@@ -62,12 +62,60 @@ export function windowFor(event: CheckinEventConfig, dateStr: string): { start: 
   };
 }
 
-/** Look up an event by the party board name its "ลา" reaction tracks (see
- * CheckinEventConfig.attendanceBoardName) — used wherever code has a boardId
- * (party boards) rather than an eventKey and needs the matching event's
- * schedule, e.g. to know when that board's leave officially locks in. */
-export function getCheckinEventByBoardName(boardName: string): CheckinEventConfig | undefined {
-  return CHECKIN_EVENTS.find((e) => e.attendanceBoardName === boardName);
+// Local date-math helpers for nextOccurrenceEnd below only — every other
+// consumer of this "plain data" module (bot/*.ts, src/lib/checkin-data.ts)
+// keeps its own copy of this same trick rather than importing one from here,
+// so this file keeps one too instead of becoming a second source for it.
+function weekdayOf(dateStr: string): number {
+  return new Date(`${dateStr}T12:00:00+07:00`).getUTCDay();
+}
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(`${dateStr}T12:00:00+07:00`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function thaiDateString(d: Date): string {
+  const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return thai.toISOString().slice(0, 10);
+}
+
+/**
+ * The end time of this event's NEXT occurrence (today or later, relative to
+ * `now`) whose window hasn't already finished — the actual moment a "ลา"
+ * marked against this event should lock in, regardless of which day within
+ * the event's weekly cycle it was marked on.
+ *
+ * This matters because a live "ลา" reaction has no explicit target date the
+ * way an advance /leave request does (see scheduleLeave in
+ * bot/leave-schedule.ts) — it's just a click on a standing, never-reposted
+ * board message (see postAttendanceMessage in src/app/actions/bot-messages.ts)
+ * that a member can click on ANY day, not only the event's own. An earlier
+ * version of this gating (in bot/attendance-confirm.ts) assumed a live
+ * reaction always happens same-day as the event it's for, and fell back to a
+ * flat short delay whenever that assumption didn't hold (reacting on a day
+ * the event doesn't run, or reacting after that day's window had already
+ * closed) — which locked the leave in almost immediately, reintroducing the
+ * exact "confirmed before the event, no real way to undo it" problem this
+ * whole event-end-gating design was built to fix. Searching forward for the
+ * next not-yet-ended occurrence closes that gap: reacting early for an
+ * upcoming date behaves the same as scheduling it in advance through /leave.
+ *
+ * Searches up to 14 days ahead — every event configured here recurs at least
+ * weekly, so that's always enough to find one.
+ */
+export function nextOccurrenceEnd(event: CheckinEventConfig, now: Date): Date {
+  const today = thaiDateString(now);
+  for (let i = 0; i <= 14; i++) {
+    const date = addDays(today, i);
+    if (!event.weekdays.includes(weekdayOf(date))) continue;
+    const { end } = windowFor(event, date);
+    if (end > now) return end;
+  }
+  // Unreachable given the 14-day search above and every real event's weekly
+  // recurrence — kept as a safety net (confirm right away) rather than
+  // throwing, in case a future event config ever ships with an empty
+  // `weekdays` array.
+  return now;
 }
 
 /** Every channel ID watched by any check-in event — what the bot subscribes to. */

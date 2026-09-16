@@ -43,20 +43,23 @@ export default async function PvpStatsPage() {
 
       {/* Surfaced right above the update button — a member who got reviewed shouldn't have to
           find their own row in the full list below to learn an admin left them a note. */}
-      {myLatest?.reviewNote && (
+      {/* Gated on reviewStatus, not just reviewNote — a FAIL left with no note
+          still needs to tell the member to fix and resubmit; requiring a
+          note here would silently hide that a review even happened. */}
+      {(myLatest?.reviewStatus === "FAIL" || myLatest?.reviewNote) && (
         <div
           className={`rounded-xl border px-4 py-3 text-sm ${
-            myLatest.reviewStatus === "FAIL"
+            myLatest?.reviewStatus === "FAIL"
               ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
               : "border-amber-500/30 bg-amber-500/10 text-amber-200"
           }`}
         >
           <p className="font-medium">
-            {myLatest.reviewStatus === "FAIL"
+            {myLatest?.reviewStatus === "FAIL"
               ? "An admin reviewed your latest stats — please adjust and update again."
               : "Admin note on your latest stats"}
           </p>
-          <p className="mt-1 opacity-90">{myLatest.reviewNote}</p>
+          {myLatest?.reviewNote && <p className="mt-1 opacity-90">{myLatest.reviewNote}</p>}
         </div>
       )}
 

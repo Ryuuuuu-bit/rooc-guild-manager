@@ -300,9 +300,19 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     // (party-slot.tsx) — that's what stops the real layout shift.
     setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
     startTransition(async () => {
-      const result = await moveMember(selectedBoardId, member.id, destination);
-      if (!result.ok) {
-        alert(result.error ?? "Failed to move member. Please try again.");
+      try {
+        const result = await moveMember(selectedBoardId, member.id, destination);
+        if (!result.ok) {
+          alert(result.error ?? "Failed to move member. Please try again.");
+          router.refresh();
+        }
+      } catch (err) {
+        // moveMember's transaction can throw (not just return {ok:false}) —
+        // without this catch, the optimistic move above stays on screen as
+        // if it had succeeded even though nothing was actually saved, and
+        // only a manual refresh would reveal the mismatch.
+        console.error("Failed to move member", err);
+        alert("Failed to move member. Please try again.");
         router.refresh();
       }
     });
@@ -353,7 +363,17 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     const className = value || null;
     setBoard((prev) => (prev ? patchMemberClass(prev, memberId, className) : prev));
     startTransition(async () => {
-      await setMemberClass(memberId, className);
+      try {
+        const result = await setMemberClass(memberId, className);
+        if (!result.ok) {
+          alert(result.error ?? "Failed to change class. Please try again.");
+          router.refresh();
+        }
+      } catch (err) {
+        console.error("Failed to change class", err);
+        alert("Failed to change class. Please try again.");
+        router.refresh();
+      }
     });
   }
 

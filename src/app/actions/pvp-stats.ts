@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, pvpStatEntries, pvpStatFieldDefs } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/authz";
@@ -43,6 +43,37 @@ function cleanNumber(n: number | null | undefined): number | null {
   return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
+// Postgres `integer` columns (cp/pDef/.../ignoreMDef below — see
+// pvpStatEntries in schema.ts) are int32 and throw a raw DB error instead of
+// a friendly message when a submitted number falls outside that range (an
+// extra mistyped digit, or someone poking at the form). Checked here before
+// anything reaches an insert/update. The *Pct fields are doublePrecision, so
+// they're exempt, and customValues is jsonb (no column-level limit).
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+const INT_FIELD_LABELS = {
+  cp: "CP",
+  pDef: "P.DEF",
+  mDef: "M.DEF",
+  pvpBonus: "PVP Bonus",
+  pvpReduction: "PVP Reduction",
+  atk: "ATK",
+  matk: "MATK",
+  ignorePDef: "Ignore P.DEF",
+  ignoreMDef: "Ignore M.DEF",
+} as const satisfies Partial<Record<keyof PvpStatInput, string>>;
+
+function validateIntBounds(input: PvpStatInput): string | null {
+  for (const key of Object.keys(INT_FIELD_LABELS) as (keyof typeof INT_FIELD_LABELS)[]) {
+    const v = input[key];
+    if (v === null || v === undefined) continue;
+    if (!Number.isFinite(v) || !Number.isInteger(v) || v < INT32_MIN || v > INT32_MAX) {
+      return `${INT_FIELD_LABELS[key]} must be a whole number between ${INT32_MIN.toLocaleString()} and ${INT32_MAX.toLocaleString()}`;
+    }
+  }
+  return null;
+}
+
 async function getActiveFieldKeys(): Promise<Set<string>> {
   const rows = await db.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.active, true));
   return new Set(rows.map((r) => r.key));
@@ -59,7 +90,34 @@ function sanitizeCustomValues(raw: Record<string, number | null> | undefined, ac
   return out;
 }
 
-function buildEntryValues(input: PvpStatInput, customValues: Record<string, number>) {
+/**
+ * Applies a submission's customValues onto whatever was already stored,
+ * touching ONLY the currently-active keys present in this submission —
+ * used by adminEditPvpStatEntry instead of sanitizeCustomValues' plain
+ * replace. The edit form only ever renders currently-active fields, so a
+ * field an admin later deactivated is never present in `raw` at all; a
+ * naive sanitize-and-replace would silently wipe its stored value on the
+ * next unrelated edit. Merging preserves it untouched, while still letting
+ * the admin clear an active field back to blank (submitted as `null`).
+ */
+function mergeCustomValues(
+  existing: Record<string, number> | null,
+  raw: Record<string, number | null> | undefined,
+  activeKeys: Set<string>
+): Record<string, number> | null {
+  const merged: Record<string, number> = { ...(existing ?? {}) };
+  if (raw) {
+    for (const [key, value] of Object.entries(raw)) {
+      if (!activeKeys.has(key)) continue;
+      const n = cleanNumber(value);
+      if (n === null) delete merged[key];
+      else merged[key] = n;
+    }
+  }
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
+function buildEntryValues(input: PvpStatInput) {
   const role = input.role && (PVP_ROLES as readonly string[]).includes(input.role) ? input.role : null;
   return {
     role,
@@ -77,15 +135,21 @@ function buildEntryValues(input: PvpStatInput, customValues: Record<string, numb
     pDmgBonusPct: cleanNumber(input.pDmgBonusPct),
     mDmgBonusPct: cleanNumber(input.mDmgBonusPct),
     bossCards: input.bossCards?.trim() || null,
-    customValues: Object.keys(customValues).length > 0 ? customValues : null,
   };
 }
 
 async function insertPvpStatEntry(memberId: string, input: PvpStatInput): Promise<ActionResult> {
+  const boundsError = validateIntBounds(input);
+  if (boundsError) return { ok: false, error: boundsError };
+
   const activeKeys = await getActiveFieldKeys();
   const customValues = sanitizeCustomValues(input.customValues, activeKeys);
 
-  await db.insert(pvpStatEntries).values({ memberId, ...buildEntryValues(input, customValues) });
+  await db.insert(pvpStatEntries).values({
+    memberId,
+    ...buildEntryValues(input),
+    customValues: Object.keys(customValues).length > 0 ? customValues : null,
+  });
 
   revalidatePath("/pvp-stats");
   revalidatePath(`/pvp-stats/${memberId}`);
@@ -131,13 +195,17 @@ export async function adminEditPvpStatEntry(entryId: string, input: PvpStatInput
   const existing = await db.query.pvpStatEntries.findFirst({ where: eq(pvpStatEntries.id, entryId) });
   if (!existing) return { ok: false, error: "Entry not found" };
 
+  const boundsError = validateIntBounds(input);
+  if (boundsError) return { ok: false, error: boundsError };
+
   const activeKeys = await getActiveFieldKeys();
-  const customValues = sanitizeCustomValues(input.customValues, activeKeys);
+  const customValues = mergeCustomValues(existing.customValues, input.customValues, activeKeys);
 
   await db
     .update(pvpStatEntries)
     .set({
-      ...buildEntryValues(input, customValues),
+      ...buildEntryValues(input),
+      customValues,
       updatedAt: new Date(),
       editedByUsername: session.user.username,
     })
@@ -291,19 +359,38 @@ export async function setPvpStatFieldActive(id: string, active: boolean): Promis
 
 /**
  * Admin permanently removes a field definition (hard delete, not the
- * "ปิดใช้งาน" soft-delete above). Only the *definition row* is deleted —
- * `customValues` on old pvpStatEntries rows is a plain jsonb blob keyed by
- * `key` with no foreign key back to this table (see the comment on
- * customValues in schema.ts), so any already-submitted values for this field
- * are left in place; they simply have no live column to render against
- * anymore and stop showing up anywhere. This is intentionally irreversible —
+ * "ปิดใช้งาน" soft-delete above). `customValues` on old pvpStatEntries rows
+ * is a plain jsonb blob keyed by `key` with no foreign key back to this
+ * table (see the comment on customValues in schema.ts) — so this also strips
+ * that key out of every entry's customValues blob at the same time, not just
+ * the definition row. Previously the key was left behind in old entries and
+ * simply had no live column to render against; that made it possible for a
+ * LATER field whose label happens to slugify to the same key (see
+ * createPvpStatField, which only checks currently-existing keys) to silently
+ * inherit those old, unrelated numbers. This is intentionally irreversible —
  * the confirming UI is in PvpFieldManagerButton.
  */
 export async function deletePvpStatField(id: string): Promise<ActionResult> {
   await requireAdmin();
-  const [deleted] = await db.delete(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.id, id)).returning({ id: pvpStatFieldDefs.id });
-  if (!deleted) return { ok: false, error: "Field not found" };
 
-  revalidatePath("/pvp-stats");
-  return { ok: true };
+  return db.transaction(async (tx) => {
+    const [existing] = await tx.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.id, id));
+    if (!existing) return { ok: false, error: "Field not found" };
+
+    // Strip this field's key out of every historical entry's customValues
+    // blob BEFORE deleting the definition itself. Otherwise the key is free
+    // to be handed out again the next time an admin creates a field whose
+    // label slugifies to the same key (createPvpStatField only checks
+    // currently-existing keys) — and that brand-new field would silently
+    // inherit whatever numbers were left behind under the old one.
+    await tx
+      .update(pvpStatEntries)
+      .set({ customValues: sql`${pvpStatEntries.customValues} - ${existing.key}` })
+      .where(sql`${pvpStatEntries.customValues} is not null`);
+
+    await tx.delete(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.id, id));
+
+    revalidatePath("/pvp-stats");
+    return { ok: true };
+  });
 }

@@ -141,12 +141,13 @@ export interface CheckinReport {
 }
 
 /**
- * Member IDs currently marked "ลา" on the party board matching this
- * check-in event (see attendanceBoardName in checkin-events.ts), as of
- * `asOf` — i.e. their most recent ATTENDANCE_LEAVE/ATTENDANCE_RETURN event on
- * that board, at or before `asOf`, was a LEAVE rather than a RETURN. Mirrors
- * listOnlineMemberIds's last-write-wins reduction over an ascending-time
- * event log.
+ * Member IDs currently marked "ลา" on the party board linked to this
+ * check-in event (partyBoards.checkinEventKey, see schema.ts — an explicit
+ * link set from the "โพสต์ ลา ใน Discord" dialog, not a name match against
+ * this event's key), as of `asOf` — i.e. their most recent
+ * ATTENDANCE_LEAVE/ATTENDANCE_RETURN event on that board, at or before
+ * `asOf`, was a LEAVE rather than a RETURN. Mirrors listOnlineMemberIds's
+ * last-write-wins reduction over an ascending-time event log.
  *
  * Deliberately NOT gated on confirmedAt (unlike getAttendanceStats in
  * data.ts, which only counts confirmed leaves toward the monthly quota/stats
@@ -159,15 +160,12 @@ export interface CheckinReport {
  * bot/reactions.ts), so it simply stops appearing here too — no separate
  * confirmedAt check needed to keep a discarded test-click out of this set.
  *
- * Returns an empty set if this event has no matching board configured, or
- * the board itself doesn't exist (e.g. renamed/deleted) — leave just won't
- * be shown rather than erroring the whole report.
+ * Returns an empty set if no board is currently linked to this event — leave
+ * just won't be shown rather than erroring the whole report.
  */
 export async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): Promise<Set<string>> {
-  if (!event.attendanceBoardName) return new Set();
-
   const board = await db.query.partyBoards.findFirst({
-    where: eq(partyBoards.name, event.attendanceBoardName),
+    where: eq(partyBoards.checkinEventKey, event.key),
   });
   if (!board) return new Set();
 
@@ -266,8 +264,8 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
   // Evaluated at the window's own end (capped at `now` for a window that
   // hasn't finished yet) so a past window's report doesn't get "helped" by
   // someone who only clicked ลา on that board afterwards — kept fully
-  // separate per event/board (see attendanceBoardName in checkin-events.ts:
-  // "gl" only ever reads the "GL" board, "woe" only ever reads "WOE").
+  // separate per event/board (see partyBoards.checkinEventKey in schema.ts:
+  // "gl" only ever reads whichever board is linked to it, same for "woe").
   const asOf = end.getTime() < now.getTime() ? end : now;
   const leaveMemberIds = await getLeaveMemberIds(event, asOf);
 
