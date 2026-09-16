@@ -104,7 +104,14 @@ export async function countLeavesThisMonth(memberId: string, boardId: string): P
   return rows.length;
 }
 
-const LEAVE_CONFIRMATION_LIFETIME_MS = 30_000; // how long the temp confirmation message itself stays up
+// Was 30s — a member reported reacting "ลา" and seeing no confirmation at
+// all: they simply weren't still looking at the channel by the time this
+// self-deleted (and their DM either failed silently or is off, see
+// dmMemberLeaveStatus below — Discord gives no way to force a DM through).
+// The channel post is the only confirmation surface this best-effort path
+// can guarantee, so it needs to survive long enough to actually be seen —
+// 5 minutes gives a much wider window while still clearing out on its own.
+const LEAVE_CONFIRMATION_LIFETIME_MS = 5 * 60_000; // how long the temp confirmation message itself stays up
 
 /**
  * Posts a short-lived confirmation in the same channel so a member (and
@@ -118,7 +125,10 @@ const LEAVE_CONFIRMATION_LIFETIME_MS = 30_000; // how long the temp confirmation
  * message too, so its disappearance doesn't read as the bot glitching or
  * someone deleting it. Best-effort — a missing "Send Messages"/"Manage
  * Messages" permission just means no confirmation shows up, nothing else
- * breaks.
+ * breaks — but that failure is now logged (see catch below) instead of
+ * disappearing silently, since a member getting NO confirmation at all
+ * (channel post AND DM both failing/missed) was reported with nothing in
+ * the logs to explain why.
  */
 async function sendTempLeaveConfirmation(
   reaction: MessageReaction,
@@ -129,7 +139,10 @@ async function sendTempLeaveConfirmation(
   checkinEventKey: string | null
 ) {
   const channel = reaction.message.channel;
-  if (!channel.isTextBased() || !("send" in channel)) return;
+  if (!channel.isTextBased() || !("send" in channel)) {
+    console.error(`[bot] can't post leave confirmation — channel ${reaction.message.channelId} isn't sendable`);
+    return;
+  }
   try {
     // Explicit timeZone — without it, toLocaleString uses the SERVER's own
     // timezone for the actual clock time (only "th-TH" itself just picks
@@ -143,17 +156,17 @@ async function sendTempLeaveConfirmation(
       timeStyle: "short",
       timeZone: "Asia/Bangkok",
     });
-    const lifetimeSeconds = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 1000);
+    const lifetimeMinutes = Math.round(LEAVE_CONFIRMATION_LIFETIME_MS / 60_000);
     const sent = await channel.send(
       `🗓️ **${displayName}** ลาในกระดาน "${boardName}" — บันทึกวันที่ ${dateStr}\n` +
         `ครั้งที่ ${leaveCount}/${MONTHLY_LEAVE_LIMIT} ของเดือนนี้ (เฉพาะกระดานนี้) · จะนับอย่างเป็นทางการ${confirmTimingLabel(checkinEventKey)} (เอา ${emoji} ออก หรือใช้ /leave ยกเลิกก่อนเวลานี้ ไม่นับเป็นการลา)\n` +
-        `_ข้อความนี้จะลบเองใน ${lifetimeSeconds} วินาที_`
+        `_ข้อความนี้จะลบเองใน ${lifetimeMinutes} นาที_`
     );
     setTimeout(() => {
       sent.delete().catch(() => {});
     }, LEAVE_CONFIRMATION_LIFETIME_MS);
-  } catch {
-    // Non-fatal — the leave itself is already logged regardless.
+  } catch (err) {
+    console.error(`[bot] failed to post leave confirmation in channel ${reaction.message.channelId}`, err);
   }
 }
 
