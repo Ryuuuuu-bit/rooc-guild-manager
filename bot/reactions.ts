@@ -12,7 +12,7 @@ import {
   partySlots,
 } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
-import { sendDirectMessage } from "../src/lib/discord";
+import { removeMemberReaction, sendDirectMessage } from "../src/lib/discord";
 import { getEmojiToClassMap } from "./job-classes";
 import { getCheckinEvent, nextOccurrenceEnd } from "../src/lib/checkin-events";
 import { notifyAdminsOfLeave } from "./attendance-confirm";
@@ -360,25 +360,72 @@ export async function handleReactionAdd(
     await db.insert(partyBusyEntries).values({ boardId, memberId: member.id, sortOrder: 0 });
     await clearMemberSlotOnBoard(member.id, boardId);
 
+    // A member's advance /leave request can already have auto-applied for
+    // today (applyTodaysScheduledLeaves in leave-schedule.ts) before they
+    // also react "ลา" live on the board out of habit/to double-check —
+    // without this check, that would insert a SECOND still-pending
+    // ATTENDANCE_LEAVE row for the same member+board, and confirmDueLeaves
+    // would later confirm both, double-counting one real absence toward the
+    // monthly quota. Mirrors the equivalent check applyTodaysScheduledLeaves
+    // does in the other direction (skipping its own insert when a live
+    // reaction already logged one first) — this closes the gap for the
+    // reverse ordering.
+    const pendingLeave = await db.query.membershipEvents.findFirst({
+      where: and(
+        eq(membershipEvents.memberId, member.id),
+        eq(membershipEvents.boardId, boardId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        isNull(membershipEvents.confirmedAt)
+      ),
+      orderBy: desc(membershipEvents.createdAt),
+    });
+
     // Logged right away so it shows in the activity feed immediately, but
     // left unconfirmed (confirmedAt: null) — the /attendance stats page only
     // counts it once the matching event's window actually ends (see
     // confirmDueLeaves in attendance-confirm.ts). Un-reacting before then
     // discards this row entirely, see handleReactionRemove below.
-    await logEvent(
-      member.id,
-      "ATTENDANCE_LEAVE",
-      `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
-      { boardId, confirmedAt: null }
-    );
+    if (!pendingLeave) {
+      await logEvent(
+        member.id,
+        "ATTENDANCE_LEAVE",
+        `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
+        { boardId, confirmedAt: null }
+      );
+    }
 
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id, boardId);
     const checkinEventKey = board?.checkinEventKey ?? null;
-    // Fire-and-forget — don't hold up the reaction handler on a channel post/DM.
+    // Confirmation always shows (so the member gets feedback either way),
+    // but the DM/admin-notify are skipped when a pending row already existed
+    // — those already fired once when that row was created, and re-sending
+    // them on every extra react would just be noise.
     void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji, checkinEventKey);
-    void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount, "reaction", checkinEventKey);
-    void notifyAdminsOfLeave(member.id, boardId);
+    if (!pendingLeave) {
+      void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount, "reaction", checkinEventKey);
+      void notifyAdminsOfLeave(member.id, boardId);
+    }
+  }
+}
+
+/** Best-effort removal of one member's own reaction from a board's tracked
+ * ATTENDANCE message (see removeMemberReaction's doc comment for why this
+ * matters) — silently no-ops if the board has no tracked message, or if
+ * Discord errors (message/reaction already gone, bot lacks "Manage
+ * Messages"). Never awaited by its caller; nothing else depends on it. */
+async function stripMemberAttendanceReaction(memberId: string, boardId: string): Promise<void> {
+  try {
+    const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+    if (!member) return;
+    const tracked = await db.query.botReactionMessages.findFirst({
+      where: and(eq(botReactionMessages.kind, "ATTENDANCE"), eq(botReactionMessages.boardId, boardId)),
+    });
+    if (!tracked) return;
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    await removeMemberReaction(tracked.channelId, tracked.messageId, board?.emoji || ATTENDANCE_EMOJI, member.discordId);
+  } catch {
+    // Non-fatal — see doc comment above.
   }
 }
 
@@ -413,6 +460,18 @@ export async function cancelCurrentLeave(
     .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)))
     .returning({ id: partyBusyEntries.id });
   if (deleted.length === 0) return "none";
+
+  // Best-effort: also strip the member's own reaction off the board's
+  // tracked ATTENDANCE message, if any — a no-op when this leave came from a
+  // scheduled auto-apply (no reaction ever existed) or when this call IS the
+  // un-react itself (handleReactionRemove below; the reaction's already
+  // gone, this just harmlessly no-ops/404s). Matters for the /leave
+  // self-service cancel path: without it, a live-reaction-originated leave
+  // left the emoji visually stuck on the message after cancelling through
+  // /leave, and Discord treats a click on an already-present reaction as a
+  // toggle-OFF — so the member's next real "ลา" click silently registered as
+  // a removal instead of a fresh leave, with no confirmation shown at all.
+  void stripMemberAttendanceReaction(memberId, boardId);
 
   const [pendingLeave] = await db
     .select({ id: membershipEvents.id })

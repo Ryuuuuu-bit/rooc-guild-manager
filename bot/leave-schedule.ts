@@ -259,15 +259,29 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
       // confirms both. Skipping the insert when one's already sitting there
       // pending avoids that double-count — the existing row already
       // represents this exact leave, nothing else to do with it.
-      const pendingFromLiveReaction = await db.query.membershipEvents.findFirst({
-        where: and(
-          eq(membershipEvents.memberId, row.memberId),
-          eq(membershipEvents.boardId, row.boardId),
-          eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
-          isNull(membershipEvents.confirmedAt)
-        ),
-        orderBy: desc(membershipEvents.createdAt),
-      });
+      //
+      // Only checked for row.date === today — that race is only physically
+      // possible against TODAY's occurrence (a live reaction can't pre-date
+      // itself). Scoping it that way matters when the bot has been down
+      // across more than one due date for the same member+board (`due` can
+      // contain several rows via the `date <= today` catch-up query above):
+      // without the date scope, this dedup query isn't aware which date the
+      // existing pending row belongs to, so applying an older missed date
+      // first would make the SECOND due row's dedup check find that first
+      // insert and skip its own — silently merging two distinct missed
+      // leaves into one.
+      const pendingFromLiveReaction =
+        row.date === today
+          ? await db.query.membershipEvents.findFirst({
+              where: and(
+                eq(membershipEvents.memberId, row.memberId),
+                eq(membershipEvents.boardId, row.boardId),
+                eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+                isNull(membershipEvents.confirmedAt)
+              ),
+              orderBy: desc(membershipEvents.createdAt),
+            })
+          : undefined;
 
       if (!pendingFromLiveReaction) {
         await db.insert(membershipEvents).values({

@@ -52,8 +52,13 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
 
   async function handleToggle(id: string, active: boolean) {
     setTogglingId(id);
-    await setPvpStatFieldActive(id, active);
+    const result = await setPvpStatFieldActive(id, active);
     setTogglingId(null);
+    if (!result.ok) {
+      setError(result.error ?? "Failed to update field");
+      return;
+    }
+    setError(null);
     router.refresh();
   }
 

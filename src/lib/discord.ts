@@ -282,6 +282,29 @@ export async function removeAllReactionsForEmoji(channelId: string, messageId: s
   }
 }
 
+/**
+ * Removes one specific user's reaction from a message — used when a ลา is
+ * cancelled through `/leave`'s self-service picker rather than by un-reacting
+ * (see cancelCurrentLeave in bot/reactions.ts). Without this, the member's
+ * emoji stayed visually attached to the board message after a /leave cancel,
+ * and Discord treats an already-present reaction click as a toggle-OFF — so
+ * their next real "ลา" click on that board silently registered as a removal
+ * instead of a fresh leave. Requires "Manage Messages", same as
+ * removeAllReactionsForEmoji; callers treat failure as non-fatal (message/
+ * reaction already gone, or the bot lacks the permission).
+ */
+export async function removeMemberReaction(
+  channelId: string,
+  messageId: string,
+  emoji: string,
+  userId: string
+): Promise<void> {
+  await discordBotFetch(
+    `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}/${userId}`,
+    { method: "DELETE" }
+  );
+}
+
 /** Best-effort delete of a previously-posted reaction message (e.g. when replacing it with a fresh one). */
 export async function deleteChannelMessage(channelId: string, messageId: string): Promise<void> {
   try {

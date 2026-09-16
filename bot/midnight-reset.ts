@@ -89,7 +89,14 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number; sche
       // admin reposts the message. Re-seed it right after clearing so the
       // one-click option (and that piggyback path) survives every night's
       // reset. Best-effort — same as the seeding in postAttendanceMessage.
-      await addMessageReaction(tracked.channelId, tracked.messageId, emoji).catch(() => {});
+      // Logged (not silently swallowed) — a missing "Add Reactions"
+      // permission or a deleted tracked message used to fail this every
+      // single night with zero trace in Railway logs, so a role-restricted
+      // member losing the one-click ลา option indefinitely only ever
+      // surfaced as vague confusion with nothing pointing an admin at why.
+      await addMessageReaction(tracked.channelId, tracked.messageId, emoji).catch((err) => {
+        console.error(`[bot] failed to re-seed ลา reaction on board "${board.name}" after nightly reset`, err);
+      });
     }
   }
 

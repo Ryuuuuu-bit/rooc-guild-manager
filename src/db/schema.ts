@@ -9,9 +9,10 @@ import {
   uniqueIndex,
   boolean,
   jsonb,
+  check,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 
 export const memberStatusEnum = pgEnum("member_status", [
@@ -145,7 +146,15 @@ export const membershipEvents = pgTable(
     // lets the confirm sweep (bot/attendance-confirm.ts) check whether the
     // member is still marked busy on that board before the leave counts
     // toward /attendance stats.
-    boardId: text("board_id").references(() => partyBoards.id, { onDelete: "cascade" }),
+    // "set null" (not "cascade") — this table is the app's permanent audit
+    // trail (attendance/leave history feeds /attendance's monthly stats), so
+    // deleting a party board must NOT delete the events ever logged against
+    // it. The board's name is already baked into each row's `detail` text at
+    // write time, so a row stays meaningful even after its boardId goes null.
+    // Was cascade — deleting a board (e.g. an old unused one) used to
+    // silently wipe every ATTENDANCE_LEAVE/RETURN etc. ever logged for it,
+    // permanently changing past /attendance numbers with no warning.
+    boardId: text("board_id").references(() => partyBoards.id, { onDelete: "set null" }),
     // Null = pending confirmation — the leave is in effect (shows on the
     // party board, excludes them from /checkin's no-show list — see
     // getLeaveMemberIds in src/lib/checkin-data.ts, which doesn't gate on
@@ -279,6 +288,13 @@ export const partySlots = pgTable(
   (table) => [
     uniqueIndex("party_slots_position_idx").on(table.partyId, table.slotIndex),
     index("party_slots_member_id_idx").on(table.memberId),
+    // Defense-in-depth for the "0-4" comment above — the app layer (party
+    // rendering, canvas image export in party-image.ts, which hardcodes
+    // SLOTS_PER_PARTY = 5) is currently the only thing enforcing this range.
+    // A future bug or a manual DB fix writing outside it would otherwise be
+    // silently accepted by Postgres and only surface later as a rendering
+    // bug or an out-of-bounds crash somewhere that assumes exactly 5 slots.
+    check("party_slots_slot_index_range", sql`${table.slotIndex} >= 0 AND ${table.slotIndex} <= 4`),
   ]
 );
 
@@ -610,7 +626,19 @@ export const lootRounds = pgTable(
     actor: text("actor"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("loot_rounds_category_idx").on(table.categoryId)]
+  (table) => [
+    index("loot_rounds_category_idx").on(table.categoryId),
+    // Defense-in-depth for the "same index order as memberIds" comment above
+    // — undoLootRound relies on the two arrays lining up 1:1 by index to
+    // know which position to restore each served member to. Nothing
+    // previously stopped the two from drifting out of length-sync (a future
+    // bug, or a manual DB fix); this at least turns that into a loud insert-
+    // time failure instead of a silent wrong-member-restored bug much later.
+    check(
+      "loot_rounds_member_ids_positions_length_match",
+      sql`array_length(${table.memberIds}, 1) IS NOT DISTINCT FROM array_length(${table.previousPositions}, 1)`
+    ),
+  ]
 );
 
 // Advance leave requests — a member picks one or more upcoming event dates

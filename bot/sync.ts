@@ -70,15 +70,22 @@ interface NormalizedMember {
  */
 const TRACKED_ROLE_NAME = (process.env.DISCORD_TRACKED_ROLE_NAME || "Rooc").trim().toLowerCase();
 
-/** Resolves the tracked role in a guild by name (case-insensitive). */
-export function resolveTrackedRole(guild: Guild): Role | null {
-  return guild.roles.cache.find((r) => r.name.trim().toLowerCase() === TRACKED_ROLE_NAME) ?? null;
+/**
+ * Resolves EVERY role in the guild matching the tracked role name
+ * (case-insensitive) — Discord does not enforce unique role names, so more
+ * than one role can legitimately share a name (most often an accidental
+ * duplicate created by an admin). Picking just one via `.find()` used to mean
+ * whichever role won was arbitrary/undeterministic, and a member holding only
+ * the OTHER same-named role was silently treated as not having the tracked
+ * role at all — never added to the roster. Checking membership against the
+ * whole set instead removes that ambiguity entirely.
+ */
+export function resolveTrackedRoles(guild: Guild): Role[] {
+  return [...guild.roles.cache.filter((r) => r.name.trim().toLowerCase() === TRACKED_ROLE_NAME).values()];
 }
 
 function memberHasTrackedRole(member: GuildMember): boolean {
-  const role = resolveTrackedRole(member.guild);
-  if (!role) return false;
-  return member.roles.cache.has(role.id);
+  return resolveTrackedRoles(member.guild).some((role) => member.roles.cache.has(role.id));
 }
 
 export function normalizeMember(member: GuildMember): NormalizedMember {
@@ -132,23 +139,33 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
   });
 
   if (!existing) {
-    const [inserted] = await db
-      .insert(members)
-      .values({
-        discordId: normalized.discordId,
-        discordUsername: normalized.username,
-        discordGlobalName: normalized.globalName,
-        discordNickname: normalized.nickname,
-        discordAvatar: normalized.avatarUrl,
-        discordRoles: normalized.roles,
-        status: "ACTIVE",
-        joinedDiscordAt: normalized.joinedAt ?? new Date(),
-        lastSyncedAt: new Date(),
-      })
-      .returning();
-    await logEvent(inserted.id, "JOIN", "เข้าร่วม Discord server");
-    await addToAllLootQueues(inserted.id);
-    await sendWelcomeMessage(inserted);
+    try {
+      const [inserted] = await db
+        .insert(members)
+        .values({
+          discordId: normalized.discordId,
+          discordUsername: normalized.username,
+          discordGlobalName: normalized.globalName,
+          discordNickname: normalized.nickname,
+          discordAvatar: normalized.avatarUrl,
+          discordRoles: normalized.roles,
+          status: "ACTIVE",
+          joinedDiscordAt: normalized.joinedAt ?? new Date(),
+          lastSyncedAt: new Date(),
+        })
+        .returning();
+      await logEvent(inserted.id, "JOIN", "เข้าร่วม Discord server");
+      await addToAllLootQueues(inserted.id);
+      await sendWelcomeMessage(inserted);
+    } catch (err) {
+      const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
+      if (!isDuplicate) throw err;
+      // Same benign race runFullSync's own insert guards against (see its
+      // comment) — a concurrent runFullSync pass already inserted this same
+      // brand-new member. Previously unguarded here, so this side of the
+      // race surfaced as a raw, unexplained-looking DB error in the logs
+      // instead of being recognized as "two paths handled the same join."
+    }
     return;
   }
 

@@ -1,8 +1,12 @@
 import { db } from "@/db";
-import { members, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { memberDisplayName } from "@/lib/ui";
 import type { Member } from "@/db/schema";
+
+/** Either the module-level `db`, or the `tx` handed to a `db.transaction`
+ * callback — see loot-queue-data.ts's identical DbOrTx for why. */
+type DbOrTx = typeof db | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
 
 const SLOTS_PER_PARTY = 5;
 
@@ -150,4 +154,69 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     busy,
     unassigned,
   };
+}
+
+/**
+ * Resolves a member's still-open ลา status on a board before their
+ * `partyBusyEntries` row for it is removed — discards a still-pending
+ * ("confirmedAt: null") `ATTENDANCE_LEAVE` outright (same rule
+ * `cancelCurrentLeave` in bot/reactions.ts follows for a member's own
+ * un-react/`/leave` cancel), or logs `ATTENDANCE_RETURN` if it had already
+ * event-confirmed. `moveMember` (src/app/actions/party.ts) already did this
+ * correctly for its one member+board case; `resetPartyBoard`,
+ * `markMemberKicked`, and `setMemberBenched` used to just delete the busy
+ * row directly, leaving a still-pending ลา orphaned — confirmDueLeaves
+ * (bot/attendance-confirm.ts) would later find the member no longer "still
+ * busy" and silently discard it with no record it ever happened. Call this
+ * for every board a member is currently busy on, inside the same
+ * transaction that deletes their partyBusyEntries row(s), BEFORE that
+ * delete runs.
+ */
+export async function reconcilePendingLeaveOnBoard(
+  tx: DbOrTx,
+  memberId: string,
+  boardId: string,
+  actor: string
+): Promise<void> {
+  const [pendingLeave] = await tx
+    .select({ id: membershipEvents.id })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.memberId, memberId),
+        eq(membershipEvents.boardId, boardId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        isNull(membershipEvents.confirmedAt)
+      )
+    )
+    .orderBy(desc(membershipEvents.createdAt))
+    .limit(1);
+
+  if (pendingLeave) {
+    await tx.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
+    return;
+  }
+
+  const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  await tx.insert(membershipEvents).values({
+    memberId,
+    type: "ATTENDANCE_RETURN",
+    detail: `ยกเลิกลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${actor}`,
+    actor,
+    boardId,
+  });
+}
+
+/** Runs reconcilePendingLeaveOnBoard for every board a member currently has
+ * an OPEN busy entry on (a member can be busy on more than one board's
+ * independent busy list at once) — for call sites (kick/bench) that clear a
+ * member's busy status guild-wide rather than one board at a time. */
+export async function reconcilePendingLeaveEverywhere(tx: DbOrTx, memberId: string, actor: string): Promise<void> {
+  const busyRows = await tx
+    .select({ boardId: partyBusyEntries.boardId })
+    .from(partyBusyEntries)
+    .where(eq(partyBusyEntries.memberId, memberId));
+  for (const { boardId } of busyRows) {
+    await reconcilePendingLeaveOnBoard(tx, memberId, boardId, actor);
+  }
 }

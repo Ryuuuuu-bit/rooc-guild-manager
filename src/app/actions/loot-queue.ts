@@ -149,6 +149,13 @@ export async function moveLootQueueEntry(
   await requireAdmin();
 
   return db.transaction(async (tx) => {
+    // Lock the category row first — same reasoning as addToLootQueue/
+    // runLootRound: without it, two concurrent reorders on the same
+    // category could both read the same snapshot and write conflicting
+    // positions.
+    const [category] = await tx.select().from(lootCategories).where(eq(lootCategories.id, categoryId)).for("update");
+    if (!category) return { ok: false, error: "Category not found" };
+
     const all = await tx
       .select()
       .from(lootQueueEntries)
@@ -191,6 +198,10 @@ export async function moveLootQueueEntryToPosition(
   if (!Number.isInteger(newRank) || newRank < 1) return { ok: false, error: "Position must be an integer of 1 or greater" };
 
   return db.transaction(async (tx) => {
+    // Same category-row lock as the other queue-mutating actions above.
+    const [category] = await tx.select().from(lootCategories).where(eq(lootCategories.id, categoryId)).for("update");
+    if (!category) return { ok: false, error: "Category not found" };
+
     const all = await tx
       .select()
       .from(lootQueueEntries)
@@ -250,6 +261,14 @@ export async function runLootRound(categoryId: string, count: number, label?: st
   if (!Number.isInteger(count) || count <= 0) return { ok: false, error: "Number of people must be an integer greater than 0" };
 
   return db.transaction(async (tx) => {
+    // Lock the category row first, same as addToLootQueue — without this,
+    // two admins clicking "Run Round" on the same category at nearly the
+    // same time could both read the same pre-round queue/maxPos under
+    // READ COMMITTED and both write overlapping positions afterward,
+    // landing two different members on the same position.
+    const [category] = await tx.select().from(lootCategories).where(eq(lootCategories.id, categoryId)).for("update");
+    if (!category) return { ok: false, error: "Category not found" };
+
     const queue = await tx
       .select({ entry: lootQueueEntries, auctionBanUntil: members.auctionBanUntil })
       .from(lootQueueEntries)
@@ -370,6 +389,11 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
   return db.transaction(async (tx) => {
     const round = await tx.query.lootRounds.findFirst({ where: eq(lootRounds.id, roundId) });
     if (!round) return { ok: false, error: "Round not found (it may have been deleted)" };
+
+    // Same category-row lock as the other queue-mutating actions in this
+    // file, taken before the recency check/restore below so a concurrent
+    // runLootRound/reorder on this category can't interleave with this undo.
+    await tx.select().from(lootCategories).where(eq(lootCategories.id, round.categoryId)).for("update");
 
     const [mostRecent] = await tx
       .select()

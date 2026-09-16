@@ -337,7 +337,19 @@ export async function createPvpStatField(input: {
   const [top] = await db.select({ sortOrder: pvpStatFieldDefs.sortOrder }).from(pvpStatFieldDefs).orderBy(desc(pvpStatFieldDefs.sortOrder)).limit(1);
   const sortOrder = (top?.sortOrder ?? 0) + 1;
 
-  await db.insert(pvpStatFieldDefs).values({ key, label, groupTitle, isPercent: input.isPercent, sortOrder });
+  // `key` has a unique index (schema.ts) — existingKeys above is a precheck
+  // only, not atomic with this insert, same class of race addToLootQueue
+  // (loot-queue.ts) already guards against. Two admins creating a field with
+  // the same label at nearly the same moment could otherwise both pass the
+  // precheck and the second insert would throw a raw, uncaught Postgres
+  // unique-violation instead of a friendly message.
+  try {
+    await db.insert(pvpStatFieldDefs).values({ key, label, groupTitle, isPercent: input.isPercent, sortOrder });
+  } catch (err) {
+    const isDuplicate = typeof err === "object" && err !== null && "code" in err && (err as { code?: string }).code === "23505";
+    if (isDuplicate) return { ok: false, error: "A field with this name was just added — please try again" };
+    throw err;
+  }
 
   revalidatePath("/pvp-stats");
   return { ok: true };

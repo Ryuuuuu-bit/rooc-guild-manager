@@ -1,0 +1,2 @@
+ALTER TABLE "loot_rounds" ADD CONSTRAINT "loot_rounds_member_ids_positions_length_match" CHECK (array_length("loot_rounds"."member_ids", 1) IS NOT DISTINCT FROM array_length("loot_rounds"."previous_positions", 1));--> statement-breakpoint
+ALTER TABLE "party_slots" ADD CONSTRAINT "party_slots_slot_index_range" CHECK ("party_slots"."slot_index" >= 0 AND "party_slots"."slot_index" <= 4);

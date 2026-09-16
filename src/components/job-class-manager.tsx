@@ -33,11 +33,19 @@ function ClassForm({
   initial,
   onSubmit,
   onCancel,
+  onSuccess,
   submitLabel,
 }: {
   initial?: { name: string; emoji: string; colorKey: string };
   onSubmit: (formData: FormData) => Promise<{ ok: boolean; error?: string }>;
   onCancel: () => void;
+  /** Called after a successful save (in addition to router.refresh() below)
+   * so the caller can close/reset the form — without this, a successful add
+   * or edit left the form sitting open with the just-saved values still in
+   * it and no "saved" confirmation, so clicking "Add class"/"Save" again out
+   * of uncertainty hit a confusing "already exists" error for something that
+   * had, in fact, just worked. */
+  onSuccess?: () => void;
   submitLabel: string;
 }) {
   const router = useRouter();
@@ -60,6 +68,7 @@ function ClassForm({
         return;
       }
       router.refresh();
+      onSuccess?.();
     });
   }
 
@@ -115,8 +124,13 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
 
   function handleMove(id: string, direction: "up" | "down") {
     setMovingId(id);
-    moveJobClass(id, direction).then(() => {
+    moveJobClass(id, direction).then((res) => {
       setMovingId(null);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to reorder");
+        return;
+      }
+      setError(null);
       router.refresh();
     });
   }
@@ -167,6 +181,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                       initial={c}
                       submitLabel="Save"
                       onCancel={() => setEditingId(null)}
+                      onSuccess={() => setEditingId(null)}
                       onSubmit={(fd) => updateJobClass(c.id, fd)}
                     />
                   </td>
@@ -223,7 +238,12 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
       </div>
 
       {showAdd ? (
-        <ClassForm submitLabel="Add class" onCancel={() => setShowAdd(false)} onSubmit={createJobClass} />
+        <ClassForm
+          submitLabel="Add class"
+          onCancel={() => setShowAdd(false)}
+          onSuccess={() => setShowAdd(false)}
+          onSubmit={createJobClass}
+        />
       ) : (
         <button
           type="button"

@@ -486,8 +486,14 @@ function QueueList({
 
   function handleMove(memberId: string, direction: "up" | "down") {
     setMovingId(memberId);
-    moveLootQueueEntry(category.id, memberId, direction).then(() => {
+    moveLootQueueEntry(category.id, memberId, direction).then((res) => {
       setMovingId(null);
+      // Same alert() pattern as handleAdd below — without checking `.ok`, a
+      // failure here (e.g. another admin removed this member from the queue
+      // moments earlier) looked exactly like a click that silently did
+      // nothing, with no way to tell "it didn't register" from "it's just
+      // slow".
+      if (!res.ok) alert(res.error ?? "Failed to reorder");
       router.refresh();
     });
   }
@@ -726,7 +732,10 @@ function CategoryTabs({
   }
 
   function handleMove(id: string, direction: "up" | "down") {
-    moveLootCategory(id, direction).then(() => router.refresh());
+    moveLootCategory(id, direction).then((res) => {
+      if (!res.ok) alert(res.error ?? "Failed to reorder");
+      router.refresh();
+    });
   }
 
   return (

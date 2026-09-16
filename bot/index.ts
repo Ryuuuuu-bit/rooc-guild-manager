@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Events } from "discord.js";
+import { Events, type Guild } from "discord.js";
 import { createBotClient } from "./discord-client";
 import {
   runFullSync,
@@ -35,10 +35,27 @@ if (!GUILD_ID) {
 
 const client = createBotClient();
 
+// Tracks the in-flight midnight-reset run (if any) so shutdown() can wait for
+// it instead of exiting mid-loop and leaving a board's reaction re-seed half
+// done — see the "resetDailyBusyLists" usage below.
+let midnightResetInFlight: Promise<unknown> | null = null;
+
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`[bot] logged in as ${readyClient.user.tag}`);
 
-  const guild = await readyClient.guilds.fetch(GUILD_ID!);
+  // guilds.fetch can reject on a transient Discord API hiccup (common right
+  // after a reconnect) — nothing below can proceed without a guild, but an
+  // unguarded throw here would be an unhandled rejection that kills the whole
+  // process. Retry with a short backoff instead of crashing/crash-looping.
+  let guild: Guild | undefined;
+  while (!guild) {
+    try {
+      guild = await readyClient.guilds.fetch(GUILD_ID!);
+    } catch (err) {
+      console.error("[bot] failed to fetch guild, retrying in 10s", err);
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
+  }
   console.log(`[bot] watching guild: ${guild.name} (${guild.id})`);
 
   // Guild-scoped (not global) commands apply instantly — global commands can
@@ -99,15 +116,20 @@ client.once(Events.ClientReady, async (readyClient) => {
   const runMidnightResetCheck = async () => {
     const today = thaiDateString();
     if (today === lastResetThaiDate) return;
-    try {
-      const { boardsReset, scheduledLeavesApplied } = await resetDailyBusyLists();
-      lastResetThaiDate = today; // only advance on success — a failure retries every minute until it works
-      console.log(
-        `[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน, แจ้งลาล่วงหน้าที่ถึงกำหนด ${scheduledLeavesApplied} รายการ`
-      );
-    } catch (err) {
-      console.error("[bot] เที่ยงคืน reset ล้มเหลว จะลองใหม่นาทีถัดไป", err);
-    }
+    const task = (async () => {
+      try {
+        const { boardsReset, scheduledLeavesApplied } = await resetDailyBusyLists();
+        lastResetThaiDate = today; // only advance on success — a failure retries every minute until it works
+        console.log(
+          `[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน, แจ้งลาล่วงหน้าที่ถึงกำหนด ${scheduledLeavesApplied} รายการ`
+        );
+      } catch (err) {
+        console.error("[bot] เที่ยงคืน reset ล้มเหลว จะลองใหม่นาทีถัดไป", err);
+      }
+    })();
+    midnightResetInFlight = task;
+    await task;
+    midnightResetInFlight = null;
   };
   setInterval(runMidnightResetCheck, MIDNIGHT_CHECK_INTERVAL_MS);
 
@@ -240,11 +262,20 @@ client.on(Events.Error, (err) => {
 
 async function shutdown(signal: string) {
   console.log(`[bot] received ${signal}, shutting down...`);
-  client.destroy();
+  // Give an in-flight midnight reset a chance to finish its per-board
+  // clear+re-seed loop rather than being cut off partway through (that used
+  // to be able to leave the bot's own "piggyback" reaction missing from a
+  // board until the next nightly cycle) — capped so a stuck run can't block
+  // shutdown forever.
+  if (midnightResetInFlight) {
+    console.log("[bot] waiting for in-flight midnight reset to finish before exiting...");
+    await Promise.race([midnightResetInFlight, new Promise((resolve) => setTimeout(resolve, 10_000))]);
+  }
+  await client.destroy();
   process.exit(0);
 }
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 client.login(process.env.DISCORD_BOT_TOKEN);

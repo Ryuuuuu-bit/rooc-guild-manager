@@ -117,12 +117,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // the app) but are not added to the roster. Never block sign-in on
       // any of this failing.
       try {
-        const trackedRole = await db.query.discordRoles.findFirst({
+        // Discord doesn't enforce unique role names, so more than one role
+        // can share `trackedRoleName` (most often an accidental duplicate) —
+        // findFirst picked one non-deterministically, which meant a member
+        // holding only the OTHER same-named role was silently treated as not
+        // having the tracked role and never added to the roster on sign-in.
+        // Checking membership against every matching role instead removes
+        // that ambiguity (mirrors bot/sync.ts's resolveTrackedRoles fix).
+        const trackedRoles = await db.query.discordRoles.findMany({
           where: ilike(discordRoles.name, env.trackedRoleName),
         });
-        const hasTrackedRole = Boolean(
-          trackedRole && guildMember.roles.includes(trackedRole.id)
-        );
+        const hasTrackedRole = trackedRoles.some((role) => guildMember.roles.includes(role.id));
 
         if (hasTrackedRole) {
           const existing = await db.query.members.findFirst({

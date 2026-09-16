@@ -12,6 +12,14 @@ export interface ActionResult {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** "YYYY-MM-DD" for now in Thailand's local time — same local-copy pattern
+ * every other file in this codebase uses for this (see e.g.
+ * bot/leave-schedule.ts's own copy). */
+function thaiDateString(d: Date = new Date()): string {
+  const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return thai.toISOString().slice(0, 10);
+}
+
 /**
  * Lets an admin log a "ลา" a member reported outside Discord (DM, in
  * person, etc.) that never went through the reaction flow — e.g. a
@@ -45,8 +53,15 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
   if (Number.isNaN(leaveDate.getTime())) {
     return { ok: false, error: "Invalid date" };
   }
-  const today = new Date();
-  if (leaveDate.getTime() > today.getTime()) {
+  // Compared as Thai-calendar DATES, not raw timestamps — the old
+  // `leaveDate.getTime() > today.getTime()` check pinned the chosen date to
+  // noon Thai time, but compared that against the actual current instant, so
+  // picking TODAY'S own date before ~noon Thai time (e.g. logging an
+  // overnight/early-morning leave at 8am) was wrongly rejected as "in
+  // advance" even though it plainly wasn't. String comparison works directly
+  // since both sides are "YYYY-MM-DD".
+  const todayStr = thaiDateString();
+  if (dateStr > todayStr) {
     return { ok: false, error: "Cannot log a leave in advance" };
   }
 

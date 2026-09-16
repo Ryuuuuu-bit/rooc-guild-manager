@@ -40,9 +40,24 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
 
   function handleDelete(noteId: string) {
     if (!confirm("Delete this note?")) return;
+    const previous = items;
     setItems((prev) => prev.filter((n) => n.id !== noteId));
+    setError(null);
     startTransition(async () => {
-      await deleteMemberNote(noteId, memberId);
+      try {
+        const res = await deleteMemberNote(noteId, memberId);
+        if (!res.ok) {
+          // Roll back the optimistic removal — without this, a failed delete
+          // (session race, DB hiccup, requireAdmin() throwing) left the note
+          // looking gone from the UI while it was actually still in the DB,
+          // with nothing telling the admin it hadn't really been deleted.
+          setItems(previous);
+          setError(res.error ?? "Failed to delete note");
+        }
+      } catch {
+        setItems(previous);
+        setError("Failed to delete note");
+      }
     });
   }
 
@@ -57,7 +72,6 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
           placeholder="e.g. AFK during GVG on 8/20, already warned..."
           className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-amber-500 focus:outline-none"
         />
-        {error && <p className="text-xs text-rose-400">{error}</p>}
         <button
           type="submit"
           disabled={pending || !text.trim()}
@@ -66,6 +80,8 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
           Add Note
         </button>
       </form>
+
+      {error && <p className="text-xs text-rose-400">{error}</p>}
 
       <ul className="flex flex-col gap-2">
         {items.length === 0 && <li className="text-xs text-zinc-600">No notes yet</li>}

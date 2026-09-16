@@ -8,6 +8,7 @@ import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
 import { env } from "@/lib/env";
 import { DiscordApiError, kickGuildMember } from "@/lib/discord";
+import { reconcilePendingLeaveEverywhere } from "@/lib/party-data";
 
 export interface UpdateMemberResult {
   ok: boolean;
@@ -99,7 +100,15 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .update(partySlots)
     .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
-  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+  // Reconcile (discard if still pending, log ATTENDANCE_RETURN if already
+  // confirmed) any open ลา on every board before wiping the busy list — see
+  // reconcilePendingLeaveEverywhere's doc comment (src/lib/party-data.ts).
+  // Without this, kicking someone mid-leave silently orphaned their pending
+  // leave event once confirmDueLeaves swept it later.
+  await db.transaction(async (tx) => {
+    await reconcilePendingLeaveEverywhere(tx, memberId, session.user.username);
+    await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+  });
   // Also drop them from every loot-queue category — otherwise their row
   // just sits there forever (the members row itself is never deleted, only
   // its status, so the table's onDelete: "cascade" never fires) and an
@@ -249,7 +258,12 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
       .update(partySlots)
       .set({ memberId: null, updatedAt: new Date() })
       .where(eq(partySlots.memberId, memberId));
-    await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+    // Same reconcile as markMemberKicked above — benching someone mid-leave
+    // shouldn't silently drop their pending/confirmed ลา record.
+    await db.transaction(async (tx) => {
+      await reconcilePendingLeaveEverywhere(tx, memberId, session.user.username);
+      await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+    });
   }
 
   await db.insert(membershipEvents).values({
