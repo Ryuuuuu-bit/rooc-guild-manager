@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Guild, GuildMember, Role } from "discord.js";
 import { db } from "../src/db";
 import { discordRoles, lootCategories, lootQueueEntries, members, membershipEvents, partyBusyEntries, partySlots } from "../src/db/schema";
+import { cancelCurrentLeave } from "./reactions";
 import { sendWelcomeMessage } from "./welcome-message";
 
 /**
@@ -19,7 +20,38 @@ async function clearPartyAssignments(memberId: string) {
     .update(partySlots)
     .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
-  await db.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
+
+  // Reconcile (discard pending / log ATTENDANCE_RETURN) any open "ลา" on
+  // every board this member is currently busy on, BEFORE wiping
+  // partyBusyEntries below — mirrors reconcilePendingLeaveEverywhere
+  // (src/lib/party-data.ts, used by markMemberKicked/setMemberBenched in
+  // src/app/actions/members.ts) and resetDailyBusyLists' own
+  // ATTENDANCE_RETURN logging (midnight-reset.ts), reimplemented here via
+  // cancelCurrentLeave (bot/reactions.ts) since src/lib/party-data.ts's `@/`
+  // imports don't resolve under tsx (see class-emoji.ts's note on that).
+  //
+  // Without this, a member who leaves Discord — or loses the tracked role —
+  // while marked "ลา" left a stale, never-closed-out ATTENDANCE_LEAVE as
+  // their most recent event on that board FOREVER. getLeaveMemberIds
+  // (src/lib/checkin-data.ts) — the shared source for both /checkin's "On
+  // Leave" count and /calendar's per-day leave list — reconstructs status by
+  // last-write-wins over that event trail with no date bound, so it kept
+  // counting them as on leave on every future round, even though the live
+  // party board (which only ever lists currently-ACTIVE, non-benched
+  // members — see getPartyBoardDetail in party-data.ts) had already stopped
+  // showing them entirely. That mismatch is exactly what made /calendar's
+  // "On Leave" count run higher than the number of people actually visible
+  // on the board. cancelCurrentLeave already deletes the matching
+  // partyBusyEntries row per board internally, so there's no separate
+  // delete(partyBusyEntries) left to do here.
+  const busyBoards = await db
+    .select({ boardId: partyBusyEntries.boardId })
+    .from(partyBusyEntries)
+    .where(eq(partyBusyEntries.memberId, memberId));
+  for (const { boardId } of busyBoards) {
+    await cancelCurrentLeave(memberId, boardId, " (ออกจากกิลด์/role หลุด)");
+  }
+
   await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
 }
 
