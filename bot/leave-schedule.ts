@@ -238,81 +238,110 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
 
   for (const row of due) {
     const member = await db.query.members.findFirst({ where: eq(members.id, row.memberId) });
+
     if (member && member.status === "ACTIVE" && !member.benched) {
       const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
-      await db
-        .delete(partyBusyEntries)
-        .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, row.memberId)));
-      await db.insert(partyBusyEntries).values({ boardId: row.boardId, memberId: row.memberId, sortOrder: 0 });
-      await clearMemberSlotOnBoard(row.memberId, row.boardId);
+      let insertedLeaveLog = false;
 
-      // A live "ลา" reaction can land in the narrow window between the Thai
-      // calendar date rolling over and this function actually running (the
-      // midnight-check loop polls every 60s — see bot/index.ts), logging its
-      // own still-unconfirmed ATTENDANCE_LEAVE for this exact member+board
-      // moments before resetDailyBusyLists' busy-clear loop deletes that
-      // reaction's partyBusyEntries row (and logs a spurious RETURN for it —
-      // harmless, see that function's comment) just ahead of this insert.
-      // Left unhandled, that would leave TWO still-pending ATTENDANCE_LEAVE
-      // rows for the same member+board once attendance-confirm.ts's sweep
-      // finds partyBusyEntries true again (from the insert above) and
-      // confirms both. Skipping the insert when one's already sitting there
-      // pending avoids that double-count — the existing row already
-      // represents this exact leave, nothing else to do with it.
-      //
-      // Only checked for row.date === today — that race is only physically
-      // possible against TODAY's occurrence (a live reaction can't pre-date
-      // itself). Scoping it that way matters when the bot has been down
-      // across more than one due date for the same member+board (`due` can
-      // contain several rows via the `date <= today` catch-up query above):
-      // without the date scope, this dedup query isn't aware which date the
-      // existing pending row belongs to, so applying an older missed date
-      // first would make the SECOND due row's dedup check find that first
-      // insert and skip its own — silently merging two distinct missed
-      // leaves into one.
-      const pendingFromLiveReaction =
-        row.date === today
-          ? await db.query.membershipEvents.findFirst({
-              where: and(
-                eq(membershipEvents.memberId, row.memberId),
-                eq(membershipEvents.boardId, row.boardId),
-                eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
-                isNull(membershipEvents.confirmedAt)
-              ),
-              orderBy: desc(membershipEvents.createdAt),
-            })
-          : undefined;
+      // Marking the member busy, clearing their party slot, the same-day
+      // dedup check below, the new ATTENDANCE_LEAVE log, and removing this
+      // row from scheduledLeaves now all commit as one transaction. Before
+      // this they ran as separate statements, and the bot process CAN be
+      // torn down mid-request by a routine Railway redeploy — a crash
+      // partway through used to be able to leave this half-applied (e.g. the
+      // busy row inserted but the row never removed from scheduledLeaves),
+      // so the NEXT run would re-process it. That's fine for the busy-entry
+      // delete+insert (idempotent), but the dedup check just below only
+      // guards a live reaction landing on the exact due date — re-running
+      // this same block a second time for an already-applied OVERDUE
+      // (date < today) row would have inserted a second ATTENDANCE_LEAVE for
+      // the same absence. Wrapping the whole row means it's either fully
+      // applied and removed, or neither happened at all — nothing left
+      // half-done for a retry to double up on.
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(partyBusyEntries)
+          .where(and(eq(partyBusyEntries.boardId, row.boardId), eq(partyBusyEntries.memberId, row.memberId)));
+        await tx.insert(partyBusyEntries).values({ boardId: row.boardId, memberId: row.memberId, sortOrder: 0 });
+        await clearMemberSlotOnBoard(tx, row.memberId, row.boardId);
 
-      if (!pendingFromLiveReaction) {
-        await db.insert(membershipEvents).values({
-          memberId: row.memberId,
-          type: "ATTENDANCE_LEAVE",
-          detail: `ลาในกระดาน "${board?.name ?? row.boardId}" (แจ้งลาล่วงหน้าผ่าน /leave)`,
-          actor: "bot:leave-schedule",
-          boardId: row.boardId,
-          confirmedAt: null,
-        });
+        // A live "ลา" reaction can land in the narrow window between the Thai
+        // calendar date rolling over and this function actually running (the
+        // midnight-check loop polls every 60s — see bot/index.ts), logging its
+        // own still-unconfirmed ATTENDANCE_LEAVE for this exact member+board
+        // moments before resetDailyBusyLists' busy-clear loop deletes that
+        // reaction's partyBusyEntries row (and logs a spurious RETURN for it —
+        // harmless, see that function's comment) just ahead of this insert.
+        // Left unhandled, that would leave TWO still-pending ATTENDANCE_LEAVE
+        // rows for the same member+board once attendance-confirm.ts's sweep
+        // finds partyBusyEntries true again (from the insert above) and
+        // confirms both. Skipping the insert when one's already sitting there
+        // pending avoids that double-count — the existing row already
+        // represents this exact leave, nothing else to do with it.
+        //
+        // Only checked for row.date === today — that race is only physically
+        // possible against TODAY's occurrence (a live reaction can't pre-date
+        // itself). Scoping it that way matters when the bot has been down
+        // across more than one due date for the same member+board (`due` can
+        // contain several rows via the `date <= today` catch-up query above):
+        // without the date scope, this dedup query isn't aware which date the
+        // existing pending row belongs to, so applying an older missed date
+        // first would make the SECOND due row's dedup check find that first
+        // insert and skip its own — silently merging two distinct missed
+        // leaves into one.
+        const pendingFromLiveReaction =
+          row.date === today
+            ? await tx.query.membershipEvents.findFirst({
+                where: and(
+                  eq(membershipEvents.memberId, row.memberId),
+                  eq(membershipEvents.boardId, row.boardId),
+                  eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+                  isNull(membershipEvents.confirmedAt)
+                ),
+                orderBy: desc(membershipEvents.createdAt),
+              })
+            : undefined;
 
-        // A live "ลา" reaction proactively DMs the member + notifies admins
-        // the moment it's marked (see handleReactionAdd in reactions.ts) —
-        // this auto-applied path used to do neither, so a member had no way
-        // to know their scheduled leave had gone into effect (and was still
-        // freely cancellable) short of opening /leave themselves to check,
-        // and admins had no heads-up to rework the party board either.
-        // Fire-and-forget, same as the live-reaction path — a slow/failed
-        // DM shouldn't hold up applying the rest of today's due leaves. Only
-        // sent when a fresh row was actually inserted above (skipped for
-        // pendingFromLiveReaction, whose own react already sent both).
+        if (!pendingFromLiveReaction) {
+          await tx.insert(membershipEvents).values({
+            memberId: row.memberId,
+            type: "ATTENDANCE_LEAVE",
+            detail: `ลาในกระดาน "${board?.name ?? row.boardId}" (แจ้งลาล่วงหน้าผ่าน /leave)`,
+            actor: "bot:leave-schedule",
+            boardId: row.boardId,
+            confirmedAt: null,
+          });
+          insertedLeaveLog = true;
+        }
+
+        await tx.delete(scheduledLeaves).where(eq(scheduledLeaves.id, row.id));
+      });
+
+      applied++;
+
+      // A live "ลา" reaction proactively DMs the member + notifies admins
+      // the moment it's marked (see handleReactionAdd in reactions.ts) —
+      // this auto-applied path used to do neither, so a member had no way
+      // to know their scheduled leave had gone into effect (and was still
+      // freely cancellable) short of opening /leave themselves to check,
+      // and admins had no heads-up to rework the party board either.
+      // Fire-and-forget, same as the live-reaction path — a slow/failed
+      // DM shouldn't hold up applying the rest of today's due leaves, and
+      // it stays outside the transaction above (a Discord API call, not a
+      // DB write). Only sent when a fresh row was actually inserted above
+      // (skipped for pendingFromLiveReaction, whose own react already sent
+      // both).
+      if (insertedLeaveLog) {
         const leaveCount = await countLeavesThisMonth(row.memberId, row.boardId);
         void dmMemberLeaveStatus(member.discordId, board?.name ?? row.boardId, leaveCount, "schedule", row.eventKey);
         void notifyAdminsOfLeave(row.memberId, row.boardId);
       }
-      applied++;
+    } else {
+      // Row's job is done either way — a member who left/got benched between
+      // scheduling and today just has the request silently drop instead of
+      // applying to a board they're no longer part of.
+      await db.delete(scheduledLeaves).where(eq(scheduledLeaves.id, row.id));
     }
-    // Row's job is done either way — a member who left/got benched between
-    // scheduling and today just has the request silently drop instead of
-    // applying to a board they're no longer part of.
-    await db.delete(scheduledLeaves).where(eq(scheduledLeaves.id, row.id));
   }
 
   return { applied };

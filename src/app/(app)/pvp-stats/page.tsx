@@ -9,7 +9,6 @@ import { isReviewStatus } from "@/lib/pvp-stat-review";
 import { PvpStatForm } from "@/components/pvp-stat-form";
 import { PvpStatsTable } from "@/components/pvp-stats-table";
 import { AdminAddEntryButton } from "@/components/pvp-stat-admin-entry";
-import { PvpFieldManagerButton } from "@/components/pvp-field-manager";
 import { StatCard } from "@/components/stat-card";
 
 export default async function PvpStatsPage() {
@@ -52,7 +51,6 @@ export default async function PvpStatsPage() {
         </div>
         {isAdmin && (
           <div className="flex flex-wrap gap-2">
-            <PvpFieldManagerButton fields={allFieldDefs} />
             <AdminAddEntryButton members={memberOptions} customFieldDefs={activeFieldDefs} />
           </div>
         )}

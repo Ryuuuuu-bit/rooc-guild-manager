@@ -42,33 +42,47 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number; sche
   let boardsReset = 0;
 
   for (const board of boards) {
-    const cleared = await db
-      .delete(partyBusyEntries)
-      .where(eq(partyBusyEntries.boardId, board.id))
-      .returning({ memberId: partyBusyEntries.memberId });
+    // The busy-clear and its per-member ATTENDANCE_RETURN log below now
+    // commit together as one transaction. Before this they were separate
+    // statements, and the bot process CAN be torn down mid-request by a
+    // routine Railway redeploy — a crash between clearing a member's busy
+    // row and writing the RETURN that closes it out used to be able to
+    // leave their most recent event on this board stuck as an unclosed
+    // ATTENDANCE_LEAVE, which is exactly the "permanently misattributed as
+    // on leave" failure this function's RETURN-logging exists to prevent in
+    // the first place (see this function's header comment above) — just
+    // reached through a different door than the one that comment describes.
+    const cleared = await db.transaction(async (tx) => {
+      const clearedRows = await tx
+        .delete(partyBusyEntries)
+        .where(eq(partyBusyEntries.boardId, board.id))
+        .returning({ memberId: partyBusyEntries.memberId });
+
+      // Being in partyBusyEntries always means this member's most recent
+      // ATTENDANCE_LEAVE/RETURN event on this board was a LEAVE not yet
+      // followed by a RETURN (reactions.ts and party.ts's moveMember both
+      // keep the two in sync on every add/remove) — including one still
+      // pending confirmation. Logging the return unconditionally is safe
+      // either way: for an already-confirmed leave, this is exactly the
+      // missing close-out described above; for a still-pending one (reacted
+      // in the last 30 minutes before rollover), the pending row itself gets
+      // discarded shortly after by confirmDueLeaves (it's no longer "still
+      // busy" once this clears it), so this return is a harmless no-op next
+      // to a leave that was never going to count anyway.
+      for (const { memberId } of clearedRows) {
+        await tx.insert(membershipEvents).values({
+          memberId,
+          type: "ATTENDANCE_RETURN",
+          detail: `ยกเลิกลาในกระดาน "${board.name}" อัตโนมัติ (รีเซ็ตประจำวัน)`,
+          actor: "bot:midnight-reset",
+          boardId: board.id,
+        });
+      }
+
+      return clearedRows;
+    });
     if (cleared.length === 0) continue; // nothing was busy on this board — no-op
     boardsReset++;
-
-    // Being in partyBusyEntries always means this member's most recent
-    // ATTENDANCE_LEAVE/RETURN event on this board was a LEAVE not yet
-    // followed by a RETURN (reactions.ts and party.ts's moveMember both
-    // keep the two in sync on every add/remove) — including one still
-    // pending confirmation. Logging the return unconditionally is safe
-    // either way: for an already-confirmed leave, this is exactly the
-    // missing close-out described above; for a still-pending one (reacted
-    // in the last 30 minutes before rollover), the pending row itself gets
-    // discarded shortly after by confirmDueLeaves (it's no longer "still
-    // busy" once this clears it), so this return is a harmless no-op next
-    // to a leave that was never going to count anyway.
-    for (const { memberId } of cleared) {
-      await db.insert(membershipEvents).values({
-        memberId,
-        type: "ATTENDANCE_RETURN",
-        detail: `ยกเลิกลาในกระดาน "${board.name}" อัตโนมัติ (รีเซ็ตประจำวัน)`,
-        actor: "bot:midnight-reset",
-        boardId: board.id,
-      });
-    }
 
     const tracked = await db.query.botReactionMessages.findFirst({
       where: and(eq(botReactionMessages.kind, "ATTENDANCE"), eq(botReactionMessages.boardId, board.id)),

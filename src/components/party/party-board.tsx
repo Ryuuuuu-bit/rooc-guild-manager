@@ -20,7 +20,6 @@ import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
 import {
-  createBoard,
   createGroup,
   createParty,
   deleteBoard,
@@ -419,18 +418,6 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (result.ok) router.refresh();
   }
 
-  async function handleCreateBoard() {
-    const name = window.prompt("New board name (e.g. GVG, Normal, Special Event):");
-    if (!name) return;
-    const result = await createBoard(name);
-    if (result.ok && result.id) {
-      router.push(`/party?board=${result.id}`);
-      router.refresh();
-    } else if (result.error) {
-      alert(result.error);
-    }
-  }
-
   async function handleRenameBoard() {
     if (!board || !selectedBoardId) return;
     const name = window.prompt("Rename board:", board.name);
@@ -525,22 +512,11 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               {b.name}
             </button>
           ))}
-          {effectiveAdmin && (
-            <>
-              <button
-                type="button"
-                onClick={handleCreateBoard}
-                className="rounded-lg border border-dashed border-zinc-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
-              >
-                + New Board
-              </button>
-            </>
-          )}
         </div>
 
         {!board ? (
           <div className="rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
-            No boards yet{effectiveAdmin ? " — click \"+ New Board\" above to create one" : ""}
+            No boards yet
           </div>
         ) : (
           <>

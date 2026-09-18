@@ -5,7 +5,6 @@ import {
   applyPartyTemplate,
   deletePartyTemplate,
   listPartyTemplates,
-  saveBoardAsTemplate,
   type PartyTemplateListItem,
 } from "@/app/actions/party-templates";
 
@@ -39,13 +38,6 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
     setOpen(true);
     setTemplates(null);
     setTemplates(await listPartyTemplates());
-  }
-
-  async function handleSave() {
-    const name = window.prompt(`Save "${boardName}"'s layout as a template named:`);
-    if (!name) return;
-    const result = await saveBoardAsTemplate(boardId, name);
-    if (!result.ok) alert(result.error ?? "Failed to save. Please try again.");
   }
 
   async function handleApply(t: PartyTemplateListItem) {
@@ -82,13 +74,6 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
     <>
       <button
         type="button"
-        onClick={handleSave}
-        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-      >
-        Save as Template
-      </button>
-      <button
-        type="button"
         onClick={openPanel}
         className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
       >
@@ -118,10 +103,7 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
             {templates === null ? (
               <p className="py-4 text-center text-sm text-zinc-500">Loading...</p>
             ) : templates.length === 0 ? (
-              <p className="py-4 text-center text-sm text-zinc-500">
-                No templates saved yet — click &quot;Save as Template&quot; from a layout you have already set up to
-                start collecting them.
-              </p>
+              <p className="py-4 text-center text-sm text-zinc-500">No templates saved yet.</p>
             ) : (
               <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
                 {templates.map((t) => (

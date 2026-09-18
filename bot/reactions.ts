@@ -59,13 +59,18 @@ async function findTrackedMessage(messageId: string) {
   return db.query.botReactionMessages.findFirst({ where: eq(botReactionMessages.messageId, messageId) });
 }
 
+/** Either the module-level `db`, or the `tx` handed to a `db.transaction`
+ * callback — see src/lib/loot-queue-data.ts's identical DbOrTx for why. */
+type DbOrTx = typeof db | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
+
 async function logEvent(
   memberId: string,
   type: (typeof membershipEvents.$inferInsert)["type"],
   detail: string,
-  extra?: { boardId?: string | null; confirmedAt?: Date | null }
+  extra?: { boardId?: string | null; confirmedAt?: Date | null },
+  dbOrTx: DbOrTx = db
 ) {
-  await db.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions", ...extra });
+  await dbOrTx.insert(membershipEvents).values({ memberId, type, detail, actor: "bot:reactions", ...extra });
 }
 
 // Purely informational display hint next to the temporary leave
@@ -243,8 +248,8 @@ export async function dmMemberLeaveStatus(
 }
 
 /** Clears a member's slot on ONE specific board (unlike sync.ts's clearPartyAssignments, which clears every board). Exported for reuse by bot/leave-schedule.ts's applyTodaysScheduledLeaves — same "remove from any slot when marked ลา" behavior, just triggered by a scheduled date arriving instead of a live reaction. */
-export async function clearMemberSlotOnBoard(memberId: string, boardId: string) {
-  const rows = await db
+export async function clearMemberSlotOnBoard(tx: DbOrTx, memberId: string, boardId: string) {
+  const rows = await tx
     .select({ slotId: partySlots.id })
     .from(partySlots)
     .innerJoin(partyGroupParties, eq(partySlots.partyId, partyGroupParties.id))
@@ -252,7 +257,7 @@ export async function clearMemberSlotOnBoard(memberId: string, boardId: string) 
     .where(and(eq(partySlots.memberId, memberId), eq(partyGroups.boardId, boardId)));
 
   for (const row of rows) {
-    await db.update(partySlots).set({ memberId: null, updatedAt: new Date() }).where(eq(partySlots.id, row.slotId));
+    await tx.update(partySlots).set({ memberId: null, updatedAt: new Date() }).where(eq(partySlots.id, row.slotId));
   }
 }
 
@@ -354,45 +359,58 @@ export async function handleReactionAdd(
       return;
     }
 
-    await db
-      .delete(partyBusyEntries)
-      .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, member.id)));
-    await db.insert(partyBusyEntries).values({ boardId, memberId: member.id, sortOrder: 0 });
-    await clearMemberSlotOnBoard(member.id, boardId);
+    // The busy-row delete+insert, the party-slot clear, the duplicate-pending
+    // check, and (when it applies) the new ATTENDANCE_LEAVE log all commit as
+    // one transaction now. Before this they ran as separate statements —
+    // harmless as long as nothing interrupts the sequence, but the bot
+    // process CAN be torn down mid-request by a routine Railway redeploy
+    // (see bot/index.ts's own startup-reset fix from the same investigation
+    // this came out of), and a crash landing between the delete and the
+    // insert used to be able to silently drop a member's "ลา" — the busy row
+    // gone, nothing re-inserted, no log to show it ever happened.
+    const pendingLeave = await db.transaction(async (tx) => {
+      await tx
+        .delete(partyBusyEntries)
+        .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, member.id)));
+      await tx.insert(partyBusyEntries).values({ boardId, memberId: member.id, sortOrder: 0 });
+      await clearMemberSlotOnBoard(tx, member.id, boardId);
 
-    // A member's advance /leave request can already have auto-applied for
-    // today (applyTodaysScheduledLeaves in leave-schedule.ts) before they
-    // also react "ลา" live on the board out of habit/to double-check —
-    // without this check, that would insert a SECOND still-pending
-    // ATTENDANCE_LEAVE row for the same member+board, and confirmDueLeaves
-    // would later confirm both, double-counting one real absence toward the
-    // monthly quota. Mirrors the equivalent check applyTodaysScheduledLeaves
-    // does in the other direction (skipping its own insert when a live
-    // reaction already logged one first) — this closes the gap for the
-    // reverse ordering.
-    const pendingLeave = await db.query.membershipEvents.findFirst({
-      where: and(
-        eq(membershipEvents.memberId, member.id),
-        eq(membershipEvents.boardId, boardId),
-        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
-        isNull(membershipEvents.confirmedAt)
-      ),
-      orderBy: desc(membershipEvents.createdAt),
+      // A member's advance /leave request can already have auto-applied for
+      // today (applyTodaysScheduledLeaves in leave-schedule.ts) before they
+      // also react "ลา" live on the board out of habit/to double-check —
+      // without this check, that would insert a SECOND still-pending
+      // ATTENDANCE_LEAVE row for the same member+board, and confirmDueLeaves
+      // would later confirm both, double-counting one real absence toward the
+      // monthly quota. Mirrors the equivalent check applyTodaysScheduledLeaves
+      // does in the other direction (skipping its own insert when a live
+      // reaction already logged one first) — this closes the gap for the
+      // reverse ordering.
+      const pending = await tx.query.membershipEvents.findFirst({
+        where: and(
+          eq(membershipEvents.memberId, member.id),
+          eq(membershipEvents.boardId, boardId),
+          eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+          isNull(membershipEvents.confirmedAt)
+        ),
+        orderBy: desc(membershipEvents.createdAt),
+      });
+
+      // Logged right away so it shows in the activity feed immediately, but
+      // left unconfirmed (confirmedAt: null) — the /attendance stats page only
+      // counts it once the matching event's window actually ends (see
+      // confirmDueLeaves in attendance-confirm.ts). Un-reacting before then
+      // discards this row entirely, see handleReactionRemove below.
+      if (!pending) {
+        await logEvent(
+          member.id,
+          "ATTENDANCE_LEAVE",
+          `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
+          { boardId, confirmedAt: null },
+          tx
+        );
+      }
+      return pending;
     });
-
-    // Logged right away so it shows in the activity feed immediately, but
-    // left unconfirmed (confirmedAt: null) — the /attendance stats page only
-    // counts it once the matching event's window actually ends (see
-    // confirmDueLeaves in attendance-confirm.ts). Un-reacting before then
-    // discards this row entirely, see handleReactionRemove below.
-    if (!pendingLeave) {
-      await logEvent(
-        member.id,
-        "ATTENDANCE_LEAVE",
-        `ลาในกระดาน "${board?.name ?? boardId}" ผ่าน Discord reaction`,
-        { boardId, confirmedAt: null }
-      );
-    }
 
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id, boardId);
@@ -455,14 +473,62 @@ export async function cancelCurrentLeave(
   boardId: string,
   actorSuffix: string
 ): Promise<"none" | "discarded" | "returned"> {
-  const deleted = await db
-    .delete(partyBusyEntries)
-    .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)))
-    .returning({ id: partyBusyEntries.id });
-  if (deleted.length === 0) return "none";
+  // The busy-row delete and whatever closes it out (discarding the
+  // still-pending leave, or logging the ATTENDANCE_RETURN) now commit
+  // together — same reasoning as handleReactionAdd's ATTENDANCE branch
+  // above. Before this, a crash between the two (a routine Railway
+  // redeploy tearing the bot down mid-request) could delete the busy row
+  // but never write the closing log — leaving the member's most recent
+  // event on this board stuck as an unclosed ATTENDANCE_LEAVE, which is
+  // exactly what made /checkin and /attendance keep misreporting someone as
+  // "on leave" for every future round (see bot/midnight-reset.ts's own
+  // header comment for the same failure mode reached through a different
+  // door).
+  const result = await db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(partyBusyEntries)
+      .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)))
+      .returning({ id: partyBusyEntries.id });
+    if (deleted.length === 0) return "none" as const;
 
-  // Best-effort: also strip the member's own reaction off the board's
-  // tracked ATTENDANCE message, if any — a no-op when this leave came from a
+    const [pendingLeave] = await tx
+      .select({ id: membershipEvents.id })
+      .from(membershipEvents)
+      .where(
+        and(
+          eq(membershipEvents.memberId, memberId),
+          eq(membershipEvents.boardId, boardId),
+          eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+          isNull(membershipEvents.confirmedAt)
+        )
+      )
+      .orderBy(desc(membershipEvents.createdAt))
+      .limit(1);
+
+    if (pendingLeave) {
+      await tx.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
+      return "discarded" as const;
+    }
+
+    // boardId included here too (not just on the LEAVE side above) — without
+    // it this return's audit-log row can't be attributed to a board, which
+    // silently broke both /attendance's per-board breakdown and /checkin's
+    // "who's on leave" lookup for the LEAVE half of the same pair (found via
+    // a real member showing up in /attendance's "ไม่ระบุกระดาน" bucket).
+    const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    await logEvent(
+      memberId,
+      "ATTENDANCE_RETURN",
+      `ยกเลิกลาในกระดาน "${board?.name ?? boardId}"${actorSuffix}`,
+      { boardId },
+      tx
+    );
+    return "returned" as const;
+  });
+
+  // Best-effort, outside the transaction — a Discord API call, not a DB
+  // write. Also strips the member's own reaction off the board's tracked
+  // ATTENDANCE message, if any — a no-op when this leave came from a
   // scheduled auto-apply (no reaction ever existed) or when this call IS the
   // un-react itself (handleReactionRemove below; the reaction's already
   // gone, this just harmlessly no-ops/404s). Matters for the /leave
@@ -471,37 +537,12 @@ export async function cancelCurrentLeave(
   // /leave, and Discord treats a click on an already-present reaction as a
   // toggle-OFF — so the member's next real "ลา" click silently registered as
   // a removal instead of a fresh leave, with no confirmation shown at all.
-  void stripMemberAttendanceReaction(memberId, boardId);
-
-  const [pendingLeave] = await db
-    .select({ id: membershipEvents.id })
-    .from(membershipEvents)
-    .where(
-      and(
-        eq(membershipEvents.memberId, memberId),
-        eq(membershipEvents.boardId, boardId),
-        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
-        isNull(membershipEvents.confirmedAt)
-      )
-    )
-    .orderBy(desc(membershipEvents.createdAt))
-    .limit(1);
-
-  if (pendingLeave) {
-    await db.delete(membershipEvents).where(eq(membershipEvents.id, pendingLeave.id));
-    return "discarded";
+  // Skipped for "none", matching the original early return.
+  if (result !== "none") {
+    void stripMemberAttendanceReaction(memberId, boardId);
   }
 
-  // boardId included here too (not just on the LEAVE side above) — without
-  // it this return's audit-log row can't be attributed to a board, which
-  // silently broke both /attendance's per-board breakdown and /checkin's
-  // "who's on leave" lookup for the LEAVE half of the same pair (found via
-  // a real member showing up in /attendance's "ไม่ระบุกระดาน" bucket).
-  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-  await logEvent(memberId, "ATTENDANCE_RETURN", `ยกเลิกลาในกระดาน "${board?.name ?? boardId}"${actorSuffix}`, {
-    boardId,
-  });
-  return "returned";
+  return result;
 }
 
 /** Un-reacting the ATTENDANCE emoji brings a member back off the Busy/ลา list for that board (they don't auto-return to a slot) — see cancelCurrentLeave above for the shared discard-vs-return logic. */
