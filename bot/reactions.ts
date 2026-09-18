@@ -415,6 +415,15 @@ export async function handleReactionAdd(
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
     const leaveCount = await countLeavesThisMonth(member.id, boardId);
     const checkinEventKey = board?.checkinEventKey ?? null;
+    // A live reaction doesn't necessarily mean "on leave today" — reacting
+    // on a day the linked event doesn't run (e.g. Monday for GL, which is
+    // Tue/Thu only) applies to that event's NEXT occurrence instead (see
+    // confirmTimingLabel above). Resolve that same occurrence's date here so
+    // notifyAdminsOfLeave's DM can name it instead of leaving admins to
+    // guess from the board name alone. undefined for a board with no linked
+    // event — there's no specific occurrence to name in that case.
+    const leaveEvent = checkinEventKey ? getCheckinEvent(checkinEventKey) : undefined;
+    const leaveDate = leaveEvent ? thaiDateString(nextOccurrenceEnd(leaveEvent, new Date())) : undefined;
     // Confirmation always shows (so the member gets feedback either way),
     // but the DM/admin-notify are skipped when a pending row already existed
     // — those already fired once when that row was created, and re-sending
@@ -422,7 +431,7 @@ export async function handleReactionAdd(
     void sendTempLeaveConfirmation(reaction, displayName, board?.name ?? boardId, leaveCount, expectedEmoji, checkinEventKey);
     if (!pendingLeave) {
       void dmMemberLeaveStatus(member.discordId, board?.name ?? boardId, leaveCount, "reaction", checkinEventKey);
-      void notifyAdminsOfLeave(member.id, boardId);
+      void notifyAdminsOfLeave(member.id, boardId, leaveDate);
     }
   }
 }

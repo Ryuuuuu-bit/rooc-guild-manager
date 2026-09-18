@@ -11,6 +11,41 @@ import { getCheckinEvent, nextOccurrenceEnd } from "../src/lib/checkin-events";
 // was added.
 const FALLBACK_CONFIRM_AFTER_MS = 30 * 60 * 1000;
 
+/** "YYYY-MM-DD" for now in Thailand's local time — local copy, see
+ * bot/leave-schedule.ts's own copy for why every file keeps its own. */
+function thaiDateString(d: Date = new Date()): string {
+  const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+  return thai.toISOString().slice(0, 10);
+}
+
+/**
+ * The back half of "ยังไม่ล็อก..." in notifyAdminsOfLeave's DM below —
+ * mirrors confirmTimingLabel in bot/reactions.ts (kept as its own local copy
+ * rather than an import — reactions.ts already imports notifyAdminsOfLeave
+ * FROM this file, so importing back would create a cycle; same reasoning as
+ * every other small helper duplicated across these bot files).
+ *
+ * This used to be hardcoded as "จนกว่ากิจกรรมจะจบ" (won't lock until the
+ * event ends) unconditionally — true for a board linked to a CHECKIN_EVENTS
+ * entry, but for a board with none (checkinEventKey null, see the comment on
+ * FALLBACK_CONFIRM_AFTER_MS above), there's no event to "end": that leave
+ * actually locks in on a flat 30-minute timer instead, so the admin DM was
+ * telling admins the wrong thing for any board not wired up to GL/WOE.
+ */
+function lockInTimingPhrase(checkinEventKey: string | null): string {
+  const event = checkinEventKey ? getCheckinEvent(checkinEventKey) : undefined;
+  if (!event) {
+    const minutes = Math.round(FALLBACK_CONFIRM_AFTER_MS / 60_000);
+    return `อีกประมาณ ${minutes} นาที (กระดานนี้ไม่ได้ผูกกับกิจกรรมไหน)`;
+  }
+  const now = new Date();
+  const end = nextOccurrenceEnd(event, now);
+  const timeLabel = end.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+  if (thaiDateString(end) === thaiDateString(now)) return `จนกว่ากิจกรรมจะจบ (${timeLabel} น.)`;
+  const dateLabel = end.toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "Asia/Bangkok" });
+  return `จนกว่ากิจกรรมจะจบวันที่ ${dateLabel} (${timeLabel} น.)`;
+}
+
 /** Comma-separated Discord user IDs to DM the moment a "ลา" survives
  * confirmation — lets admins rework the party board well ahead of the event
  * instead of only noticing on their next visit to /attendance. Read
@@ -42,7 +77,20 @@ function leaveNotifyUserIds(): string[] {
  * gets cancelled a few minutes later — worth it, since a late-but-guaranteed
  * notification is not actually useful for this purpose.
  */
-export async function notifyAdminsOfLeave(memberId: string, boardId: string) {
+/** Thai "ศ. 20 ก.ย." style label for a "YYYY-MM-DD" date — same
+ * weekday+day+month shape as formatThaiDateLabel in bot/leave-schedule.ts
+ * (kept as its own local copy for the same cross-file-cycle reason as
+ * lockInTimingPhrase above, rather than importing that one). */
+function formatLeaveDateLabel(dateStr: string): string {
+  return new Date(`${dateStr}T12:00:00+07:00`).toLocaleDateString("th-TH", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
+export async function notifyAdminsOfLeave(memberId: string, boardId: string, date?: string) {
   const notifyIds = leaveNotifyUserIds();
   if (notifyIds.length === 0) return;
 
@@ -50,10 +98,20 @@ export async function notifyAdminsOfLeave(memberId: string, boardId: string) {
   if (!member) return;
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
   const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
+  // Which occurrence this leave is actually FOR, not just when it was
+  // marked — a member reacting today for a board whose next occurrence
+  // isn't until later (e.g. reacting Monday for GL, which only runs
+  // Tue/Thu) used to leave admins to guess the date themselves from the
+  // board name alone. Callers resolve this themselves (the live-reaction
+  // path in reactions.ts computes it from the linked event's next
+  // occurrence; the advance-/leave path in leave-schedule.ts already has
+  // the exact requested date on hand) — omitted entirely for a board with
+  // no linked event, where there's no specific occurrence to name.
+  const dateClause = date ? ` วันที่ ${formatLeaveDateLabel(date)}` : "";
 
   const text =
-    `📋 แจ้งลา: ${displayName} ลาในกระดาน "${board?.name ?? boardId}" ` +
-    "(ยังไม่ล็อกจนกว่ากิจกรรมจะจบ — อาจถูกยกเลิกได้ก่อนหน้านั้น เช็ค /party ก่อนเริ่มงานอีกทีถ้าจะย้ายคนแทนที่)\n" +
+    `📋 แจ้งลา: ${displayName} ลาในกระดาน "${board?.name ?? boardId}"${dateClause} ` +
+    `(ยังไม่ล็อก${lockInTimingPhrase(board?.checkinEventKey ?? null)} — อาจถูกยกเลิกได้ก่อนหน้านั้น เช็ค /party ก่อนเริ่มงานอีกทีถ้าจะย้ายคนแทนที่)\n` +
     "เตรียมจัดปาร์ตี้ทดแทนได้เลยครับ";
 
   for (const userId of notifyIds) {

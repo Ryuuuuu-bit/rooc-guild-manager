@@ -334,7 +334,7 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
       if (insertedLeaveLog) {
         const leaveCount = await countLeavesThisMonth(row.memberId, row.boardId);
         void dmMemberLeaveStatus(member.discordId, board?.name ?? row.boardId, leaveCount, "schedule", row.eventKey);
-        void notifyAdminsOfLeave(row.memberId, row.boardId);
+        void notifyAdminsOfLeave(row.memberId, row.boardId, row.date);
       }
     } else {
       // Row's job is done either way — a member who left/got benched between
