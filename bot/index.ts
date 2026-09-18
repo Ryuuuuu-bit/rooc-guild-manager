@@ -109,10 +109,27 @@ client.once(Events.ClientReady, async (readyClient) => {
   await runLeaveConfirmSweep();
   setInterval(runLeaveConfirmSweep, LEAVE_CONFIRM_INTERVAL_MS);
 
-  // Set to today on startup (not undefined) so restarting the bot mid-day
-  // never triggers a spurious reset — only a genuine date rollover, caught
-  // by the interval below, does.
-  let lastResetThaiDate = thaiDateString();
+  // Starts as null (not today's date) so the very first check below always
+  // runs resetDailyBusyLists() once, on every startup — including a routine
+  // mid-day redeploy. resetDailyBusyLists is idempotent (clearing an
+  // already-empty partyBusyEntries list for a board is a no-op per board,
+  // and applyTodaysScheduledLeaves only ever finds rows still sitting in
+  // scheduledLeaves — a row already applied earlier today was already
+  // deleted, so it simply finds nothing left to do), so running it again
+  // even when today's reset already happened moments ago is harmless.
+  //
+  // This closes a real gap: initializing to "today" used to make a restart
+  // silently believe today's reset had already run even when it hadn't —
+  // e.g. redeploying (routine here — see Railway deploy workflow) at any
+  // point between a Thai-date rollover and whenever that rollover's own
+  // 60s-interval check would have caught it. The in-memory flag would come
+  // back up already saying "today's done", so that whole day's reset (and
+  // the "ลา" board clear that comes with it) got skipped entirely — not
+  // caught up until the NEXT rollover, a full day late. Same missed-day
+  // pattern the `<=` in applyTodaysScheduledLeaves' own query already
+  // guards against for scheduled leaves specifically; this is the same fix
+  // applied to the reset itself.
+  let lastResetThaiDate: string | null = null;
   const runMidnightResetCheck = async () => {
     const today = thaiDateString();
     if (today === lastResetThaiDate) return;
@@ -131,6 +148,10 @@ client.once(Events.ClientReady, async (readyClient) => {
     await task;
     midnightResetInFlight = null;
   };
+  // Awaited immediately (matching runLeaveConfirmSweep/runPvpReminderSweep's
+  // own pattern above/below) so a missed day is caught up right at startup
+  // instead of waiting up to 60s for the first interval tick.
+  await runMidnightResetCheck();
   setInterval(runMidnightResetCheck, MIDNIGHT_CHECK_INTERVAL_MS);
 
   const runPvpReminderSweep = async () => {
