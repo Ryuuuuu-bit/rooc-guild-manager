@@ -74,17 +74,26 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
             <span className="absolute -top-4 left-0 text-[10px] text-zinc-600">100%</span>
             <span className="absolute -bottom-4 left-0 text-[10px] text-zinc-600">0%</span>
 
-            {/* bars — columns are capped with max-w so a handful of points
-                (a fresh event with little history yet) cluster at a normal
-                bar width instead of each stretching to fill the panel and
-                leaving huge gaps; justify-center keeps the cluster balanced
-                in the available space rather than pinned to one edge. */}
+            {/* bars — columns use a fixed basis (grow-0) rather than
+                flex-1/max-w so a handful of points (a fresh event with
+                little history yet) cluster at a normal bar width instead of
+                each column individually GROWING to fill the panel (flex-1's
+                flex-grow:1 did exactly that: with few points there's plenty
+                of leftover space, and each column claimed its own share of
+                it up to the max-w cap, centering its narrow bar inside a
+                much wider box — the "stretched out with big gaps" look this
+                comment was trying to describe as prevented, not describing
+                what actually happened). `shrink` still lets columns narrow
+                below that basis when there ARE enough points to overflow the
+                panel, so the many-points case is unaffected; justify-center
+                on the row puts any truly leftover space as outer margin
+                around the whole cluster instead of inside each column. */}
             <div className="absolute inset-0 flex items-end justify-center gap-2.5">
               {points.map((p, i) => {
                 const isLast = i === points.length - 1;
                 const heightPct = p.rate === null ? 0 : Math.max(3, Math.round(p.rate * 100));
                 return (
-                  <div key={p.date} className="group relative flex h-full max-w-16 flex-1 items-end justify-center">
+                  <div key={p.date} className="group relative flex h-full shrink grow-0 basis-16 items-end justify-center">
                     {/* hover tooltip */}
                     <div className="pointer-events-none absolute bottom-[calc(100%+8px)] z-10 hidden flex-col items-center gap-0.5 whitespace-nowrap rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] shadow-xl group-hover:flex">
                       <span className="font-medium text-zinc-200">{fmtShortDate(p.date)}</span>
@@ -121,7 +130,7 @@ export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProp
 
           <div className="mt-2 flex justify-center gap-2.5">
             {points.map((p) => (
-              <span key={p.date} className="max-w-16 flex-1 text-center text-[10px] whitespace-nowrap text-zinc-500">
+              <span key={p.date} className="shrink grow-0 basis-16 text-center text-[10px] whitespace-nowrap text-zinc-500">
                 {fmtShortDate(p.date)}
               </span>
             ))}

@@ -124,26 +124,36 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
 
   function handleMove(id: string, direction: "up" | "down") {
     setMovingId(id);
-    moveJobClass(id, direction).then((res) => {
-      setMovingId(null);
-      if (!res.ok) {
-        setError(res.error ?? "Failed to reorder");
-        return;
-      }
-      setError(null);
-      router.refresh();
-    });
+    moveJobClass(id, direction)
+      .then((res) => {
+        if (!res.ok) {
+          setError(res.error ?? "Failed to reorder");
+          return;
+        }
+        setError(null);
+        router.refresh();
+      })
+      .catch((err) => {
+        console.error("Failed to reorder job class", err);
+        setError("Failed to reorder");
+      })
+      .finally(() => setMovingId(null));
   }
 
   async function handleDelete(id: string, name: string) {
     if (!confirm(`Delete class "${name}"? This cannot be undone.`)) return;
-    const res = await deleteJobClass(id);
-    if (!res.ok) {
-      setError(res.error ?? "Delete failed");
-      return;
+    try {
+      const res = await deleteJobClass(id);
+      if (!res.ok) {
+        setError(res.error ?? "Delete failed");
+        return;
+      }
+      setError(null);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to delete job class", err);
+      setError("Delete failed");
     }
-    setError(null);
-    router.refresh();
   }
 
   return (

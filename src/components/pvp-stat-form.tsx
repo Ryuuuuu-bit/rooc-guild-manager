@@ -66,14 +66,20 @@ export function PvpStatForm({
       customValues,
     };
 
-    const result = await submitPvpStat(input);
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Save failed, please try again");
-      return;
+    try {
+      const result = await submitPvpStat(input);
+      if (!result.ok) {
+        setError(result.error ?? "Save failed, please try again");
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to submit PVP stat", err);
+      setError("Save failed, please try again");
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
-    router.refresh();
   }
 
   if (!open) {

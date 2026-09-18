@@ -29,32 +29,44 @@ export function ClassSelectBroadcastPanel() {
     setOpen(true);
     setLoading(true);
     setError(null);
-    const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getClassSelectStatus()]);
-    setLoading(false);
-    if (!chRes.ok || !chRes.channels) {
-      setError(chRes.error ?? "Failed to fetch channel list.");
-      return;
+    try {
+      const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getClassSelectStatus()]);
+      if (!chRes.ok || !chRes.channels) {
+        setError(chRes.error ?? "Failed to fetch channel list.");
+        return;
+      }
+      setChannels(chRes.channels);
+      setStatus(currentStatus);
+      setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
+    } catch (err) {
+      console.error("Failed to load class select status", err);
+      setError("Failed to fetch channel list. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setChannels(chRes.channels);
-    setStatus(currentStatus);
-    setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
   }
 
   async function handlePost() {
     if (!channelId) return;
     setPosting(true);
     setError(null);
-    const res = await postClassSelectMessage(channelId);
-    setPosting(false);
-    if (!res.ok) {
-      setError(res.error ?? "Failed to post.");
-      return;
+    try {
+      const res = await postClassSelectMessage(channelId);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to post.");
+        return;
+      }
+      // ok can still carry a warning (e.g. some emojis failed to seed) —
+      // surface it rather than silently discarding it.
+      if (res.error) setError(res.error);
+      const fresh = await getClassSelectStatus();
+      setStatus(fresh);
+    } catch (err) {
+      console.error("Failed to post class select message", err);
+      setError("Failed to post. Please try again.");
+    } finally {
+      setPosting(false);
     }
-    // ok can still carry a warning (e.g. some emojis failed to seed) —
-    // surface it rather than silently discarding it.
-    if (res.error) setError(res.error);
-    const fresh = await getClassSelectStatus();
-    setStatus(fresh);
   }
 
   return (

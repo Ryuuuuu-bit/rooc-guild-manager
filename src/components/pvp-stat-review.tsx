@@ -47,14 +47,20 @@ export function PvpReviewButton({
   async function handleSave() {
     setSaving(true);
     setError(null);
-    const result = await reviewPvpStat(entryId, status, note.trim() || null);
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Save failed, please try again");
-      return;
+    try {
+      const result = await reviewPvpStat(entryId, status, note.trim() || null);
+      if (!result.ok) {
+        setError(result.error ?? "Save failed, please try again");
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to save PVP stat review", err);
+      setError("Save failed, please try again");
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
-    router.refresh();
   }
 
   return (

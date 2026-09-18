@@ -35,6 +35,16 @@ export async function createJobClass(formData: FormData): Promise<ActionResult> 
   const dup = await db.query.jobClasses.findFirst({ where: eq(jobClasses.name, name) });
   if (dup) return { ok: false, error: "A class with this name already exists" };
 
+  // Unlike `name`, nothing at the DB level stops two classes from sharing an
+  // emoji (schema.ts only uniques `name`) — but bot/job-classes.ts's
+  // getEmojiToClassMap builds emoji->class as a plain object, so a shared
+  // emoji silently makes the legacy CLASS_SELECT reaction path (still live
+  // as a fallback, see reactions.ts) resolve every such reaction to
+  // whichever of the two classes happens to sort last, misassigning members
+  // clicking the other one with no error shown anywhere.
+  const emojiDup = await db.query.jobClasses.findFirst({ where: eq(jobClasses.emoji, emoji) });
+  if (emojiDup) return { ok: false, error: `Emoji already used by "${emojiDup.name}" — pick a different one` };
+
   const [{ maxOrder } = { maxOrder: -1 }] = await db
     .select({ maxOrder: sql<number>`coalesce(max(${jobClasses.sortOrder}), -1)::int` })
     .from(jobClasses);
@@ -64,6 +74,14 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
       where: and(eq(jobClasses.name, name), ne(jobClasses.id, id)),
     });
     if (dup) return { ok: false, error: "A class with this name already exists" };
+  }
+
+  if (emoji !== existing.emoji) {
+    // See the identical check + comment in createJobClass above.
+    const emojiDup = await db.query.jobClasses.findFirst({
+      where: and(eq(jobClasses.emoji, emoji), ne(jobClasses.id, id)),
+    });
+    if (emojiDup) return { ok: false, error: `Emoji already used by "${emojiDup.name}" — pick a different one` };
   }
 
   await db.update(jobClasses).set({ name, emoji, colorKey, updatedAt: new Date() }).where(eq(jobClasses.id, id));
@@ -118,8 +136,17 @@ export async function moveJobClass(id: string, direction: "up" | "down"): Promis
 
   const a = all[idx];
   const b = all[swapIdx];
-  await db.update(jobClasses).set({ sortOrder: b.sortOrder }).where(eq(jobClasses.id, a.id));
-  await db.update(jobClasses).set({ sortOrder: a.sortOrder }).where(eq(jobClasses.id, b.id));
+  // Both writes commit together — the web app's own process gets killed
+  // mid-request on a routine Railway redeploy same as the bot's does (see
+  // this codebase's other db.transaction() writes for the same reasoning),
+  // and a crash between these two separate updates used to be able to leave
+  // both classes with the SAME sortOrder (a's already flipped to b's, b's
+  // never flipped to a's old one) — an unstable, duplicate order rather than
+  // a clean swap.
+  await db.transaction(async (tx) => {
+    await tx.update(jobClasses).set({ sortOrder: b.sortOrder }).where(eq(jobClasses.id, a.id));
+    await tx.update(jobClasses).set({ sortOrder: a.sortOrder }).where(eq(jobClasses.id, b.id));
+  });
 
   revalidateEverywhere();
   return { ok: true };

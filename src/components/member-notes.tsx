@@ -22,19 +22,24 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
     if (!body) return;
     setError(null);
     startTransition(async () => {
-      const res = await addMemberNote(memberId, body);
-      if (!res.ok) {
-        setError(res.error ?? "Failed to add note");
-        return;
+      try {
+        const res = await addMemberNote(memberId, body);
+        if (!res.ok) {
+          setError(res.error ?? "Failed to add note");
+          return;
+        }
+        // Optimistic prepend — good enough for a same-admin single-tab flow;
+        // a full refresh will reconcile author/timestamp precision anyway.
+        setItems((prev) => [
+          { id: `temp-${Date.now()}`, memberId, body, authorUsername: "You", createdAt: new Date() },
+          ...prev,
+        ]);
+        setText("");
+        formRef.current?.reset();
+      } catch (err) {
+        console.error("Failed to add member note", err);
+        setError("Failed to add note");
       }
-      // Optimistic prepend — good enough for a same-admin single-tab flow;
-      // a full refresh will reconcile author/timestamp precision anyway.
-      setItems((prev) => [
-        { id: `temp-${Date.now()}`, memberId, body, authorUsername: "You", createdAt: new Date() },
-        ...prev,
-      ]);
-      setText("");
-      formRef.current?.reset();
     });
   }
 

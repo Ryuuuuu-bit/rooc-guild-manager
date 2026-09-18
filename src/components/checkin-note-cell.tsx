@@ -38,9 +38,15 @@ export function CheckinNoteCell({
     if (next === (saved ?? "")) return;
     setSaved(next || null);
     startTransition(async () => {
-      const res = await setCheckinNote(eventKey, date, memberId, next);
-      if (!res.ok) {
-        alert(res.error ?? "Failed to save note. Please try again.");
+      try {
+        const res = await setCheckinNote(eventKey, date, memberId, next);
+        if (!res.ok) {
+          alert(res.error ?? "Failed to save note. Please try again.");
+          setSaved(note); // revert optimistic update
+        }
+      } catch (err) {
+        console.error("Failed to save checkin note", err);
+        alert("Failed to save note. Please try again.");
         setSaved(note); // revert optimistic update
       }
     });

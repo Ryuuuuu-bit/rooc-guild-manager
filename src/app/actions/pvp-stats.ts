@@ -74,16 +74,46 @@ function validateIntBounds(input: PvpStatInput): string | null {
   return null;
 }
 
-async function getActiveFieldKeys(): Promise<Set<string>> {
-  const rows = await db.select({ key: pvpStatFieldDefs.key }).from(pvpStatFieldDefs).where(eq(pvpStatFieldDefs.active, true));
-  return new Set(rows.map((r) => r.key));
+/** Maps each active custom field's key to whether it's a percent field
+ * (doublePrecision-equivalent, decimals allowed) or not (treated as a whole
+ * number, same as the built-in int fields validateIntBounds checks above —
+ * there's no DB column constraint enforcing this for customValues (jsonb),
+ * so without this check a non-integer or out-of-int32-range value for a
+ * plain (non-percent) custom field silently stored and rendered with stray
+ * decimals via fmtInt's plain toLocaleString, unlike every built-in field). */
+async function getActiveFieldDefs(): Promise<Map<string, { isPercent: boolean }>> {
+  const rows = await db
+    .select({ key: pvpStatFieldDefs.key, isPercent: pvpStatFieldDefs.isPercent })
+    .from(pvpStatFieldDefs)
+    .where(eq(pvpStatFieldDefs.active, true));
+  return new Map(rows.map((r) => [r.key, { isPercent: r.isPercent }]));
 }
 
-function sanitizeCustomValues(raw: Record<string, number | null> | undefined, activeKeys: Set<string>): Record<string, number> {
+/** Returns an error message if any active, present custom value fails the
+ * same whole-number/int32 check validateIntBounds applies to built-in
+ * fields — skipped for isPercent fields, which allow decimals. */
+function validateCustomValueBounds(
+  raw: Record<string, number | null> | undefined,
+  activeDefs: Map<string, { isPercent: boolean }>
+): string | null {
+  if (!raw) return null;
+  for (const [key, value] of Object.entries(raw)) {
+    const def = activeDefs.get(key);
+    if (!def || def.isPercent) continue;
+    const n = cleanNumber(value);
+    if (n === null) continue;
+    if (!Number.isInteger(n) || n < INT32_MIN || n > INT32_MAX) {
+      return `That field must be a whole number between ${INT32_MIN.toLocaleString()} and ${INT32_MAX.toLocaleString()}`;
+    }
+  }
+  return null;
+}
+
+function sanitizeCustomValues(raw: Record<string, number | null> | undefined, activeDefs: Map<string, { isPercent: boolean }>): Record<string, number> {
   const out: Record<string, number> = {};
   if (!raw) return out;
   for (const [key, value] of Object.entries(raw)) {
-    if (!activeKeys.has(key)) continue;
+    if (!activeDefs.has(key)) continue;
     const n = cleanNumber(value);
     if (n !== null) out[key] = n;
   }
@@ -103,12 +133,12 @@ function sanitizeCustomValues(raw: Record<string, number | null> | undefined, ac
 function mergeCustomValues(
   existing: Record<string, number> | null,
   raw: Record<string, number | null> | undefined,
-  activeKeys: Set<string>
+  activeDefs: Map<string, { isPercent: boolean }>
 ): Record<string, number> | null {
   const merged: Record<string, number> = { ...(existing ?? {}) };
   if (raw) {
     for (const [key, value] of Object.entries(raw)) {
-      if (!activeKeys.has(key)) continue;
+      if (!activeDefs.has(key)) continue;
       const n = cleanNumber(value);
       if (n === null) delete merged[key];
       else merged[key] = n;
@@ -142,8 +172,10 @@ async function insertPvpStatEntry(memberId: string, input: PvpStatInput): Promis
   const boundsError = validateIntBounds(input);
   if (boundsError) return { ok: false, error: boundsError };
 
-  const activeKeys = await getActiveFieldKeys();
-  const customValues = sanitizeCustomValues(input.customValues, activeKeys);
+  const activeDefs = await getActiveFieldDefs();
+  const customBoundsError = validateCustomValueBounds(input.customValues, activeDefs);
+  if (customBoundsError) return { ok: false, error: customBoundsError };
+  const customValues = sanitizeCustomValues(input.customValues, activeDefs);
 
   await db.insert(pvpStatEntries).values({
     memberId,
@@ -198,8 +230,10 @@ export async function adminEditPvpStatEntry(entryId: string, input: PvpStatInput
   const boundsError = validateIntBounds(input);
   if (boundsError) return { ok: false, error: boundsError };
 
-  const activeKeys = await getActiveFieldKeys();
-  const customValues = mergeCustomValues(existing.customValues, input.customValues, activeKeys);
+  const activeDefs = await getActiveFieldDefs();
+  const customBoundsError = validateCustomValueBounds(input.customValues, activeDefs);
+  if (customBoundsError) return { ok: false, error: customBoundsError };
+  const customValues = mergeCustomValues(existing.customValues, input.customValues, activeDefs);
 
   await db
     .update(pvpStatEntries)

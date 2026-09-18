@@ -395,12 +395,18 @@ async function handleClassSelectChoose(interaction: StringSelectMenuInteraction)
   }
 
   const className = interaction.values[0];
-  await db.update(members).set({ characterClass: className, updatedAt: new Date() }).where(eq(members.id, member.id));
-  await db.insert(membershipEvents).values({
-    memberId: member.id,
-    type: "CLASS_CHANGE",
-    detail: `เปลี่ยนอาชีพเป็น ${className} ผ่านเมนูเลือกอาชีพ`,
-    actor: "bot:interactions",
+  // Both writes commit together — same transaction-safety reasoning as the
+  // legacy CLASS_SELECT reaction path in reactions.ts: two separate
+  // statements here meant a crash between them (a routine Railway redeploy)
+  // could change the member's class with no CLASS_CHANGE audit row for it.
+  await db.transaction(async (tx) => {
+    await tx.update(members).set({ characterClass: className, updatedAt: new Date() }).where(eq(members.id, member.id));
+    await tx.insert(membershipEvents).values({
+      memberId: member.id,
+      type: "CLASS_CHANGE",
+      detail: `เปลี่ยนอาชีพเป็น ${className} ผ่านเมนูเลือกอาชีพ`,
+      actor: "bot:interactions",
+    });
   });
 
   await interaction.update({ content: `✅ เลือกอาชีพ: ${className}`, components: [] });

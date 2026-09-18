@@ -93,14 +93,20 @@ export function AdminAddEntryButton({
     }
     setSaving(true);
     setError(null);
-    const result = await adminCreatePvpStatFor(memberId, buildInput(role, bossCards, values, customFieldDefs));
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Save failed, please try again");
-      return;
+    try {
+      const result = await adminCreatePvpStatFor(memberId, buildInput(role, bossCards, values, customFieldDefs));
+      if (!result.ok) {
+        setError(result.error ?? "Save failed, please try again");
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to create PVP stat entry", err);
+      setError("Save failed, please try again");
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
-    router.refresh();
   }
 
   return (
@@ -193,14 +199,20 @@ export function AdminEditEntryButton({ entry, customFieldDefs }: { entry: PvpSta
   async function handleSave() {
     setSaving(true);
     setError(null);
-    const result = await adminEditPvpStatEntry(entry.id, buildInput(role, bossCards, values, customFieldDefs));
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Save failed, please try again");
-      return;
+    try {
+      const result = await adminEditPvpStatEntry(entry.id, buildInput(role, bossCards, values, customFieldDefs));
+      if (!result.ok) {
+        setError(result.error ?? "Save failed, please try again");
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to edit PVP stat entry", err);
+      setError("Save failed, please try again");
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
-    router.refresh();
   }
 
   return (
@@ -264,14 +276,20 @@ export function AdminDeleteEntryButton({ entryId }: { entryId: string }) {
   async function handleDelete() {
     setDeleting(true);
     setError(null);
-    const result = await deletePvpStatEntry(entryId);
-    setDeleting(false);
-    if (!result.ok) {
-      setError(result.error ?? "Delete failed, please try again");
-      return;
+    try {
+      const result = await deletePvpStatEntry(entryId);
+      if (!result.ok) {
+        setError(result.error ?? "Delete failed, please try again");
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to delete PVP stat entry", err);
+      setError("Delete failed, please try again");
+    } finally {
+      setDeleting(false);
     }
-    setOpen(false);
-    router.refresh();
   }
 
   return (

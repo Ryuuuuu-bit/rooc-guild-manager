@@ -305,11 +305,17 @@ export async function handleReactionAdd(
       return;
     }
 
-    await db
-      .update(members)
-      .set({ characterClass: className, updatedAt: new Date() })
-      .where(eq(members.id, member.id));
-    await logEvent(member.id, "CLASS_CHANGE", `เปลี่ยนอาชีพเป็น ${className} ผ่าน Discord reaction`);
+    // Both writes commit together — previously two separate statements, so a
+    // crash between them (a routine Railway redeploy) could leave the class
+    // changed with no CLASS_CHANGE audit row for it, same transaction-safety
+    // reasoning as every other multi-statement write in this file.
+    await db.transaction(async (tx) => {
+      await tx
+        .update(members)
+        .set({ characterClass: className, updatedAt: new Date() })
+        .where(eq(members.id, member.id));
+      await logEvent(member.id, "CLASS_CHANGE", `เปลี่ยนอาชีพเป็น ${className} ผ่าน Discord reaction`, undefined, tx);
+    });
 
     // Enforce single choice — strip the user's reaction from every other
     // class emoji on this message so only their latest click remains.

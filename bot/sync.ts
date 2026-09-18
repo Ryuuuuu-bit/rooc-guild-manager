@@ -133,8 +133,18 @@ export function normalizeMember(member: GuildMember): NormalizedMember {
   };
 }
 
-async function logEvent(memberId: string, type: (typeof membershipEvents.$inferInsert)["type"], detail: string) {
-  await db.insert(membershipEvents).values({
+// See src/lib/loot-queue-data.ts's identical DbOrTx for why this shape —
+// lets logEvent join an existing transaction below instead of always
+// opening its own separate write.
+type DbOrTx = typeof db | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
+
+async function logEvent(
+  memberId: string,
+  type: (typeof membershipEvents.$inferInsert)["type"],
+  detail: string,
+  dbOrTx: DbOrTx = db
+) {
+  await dbOrTx.insert(membershipEvents).values({
     memberId,
     type,
     detail,
@@ -257,20 +267,39 @@ export async function upsertMemberFromGateway(normalized: NormalizedMember) {
   }
 }
 
-/** Mark a member LEFT on a live guildMemberRemove event. */
+/**
+ * Mark a member LEFT on a live guildMemberRemove event.
+ *
+ * Runs clearPartyAssignments BEFORE flipping status, then flips status and
+ * logs the LEAVE event together in one transaction — the reverse of the
+ * order this used to run in. Flipping status to LEFT first meant that if the
+ * bot got killed (a routine Railway redeploy — see this whole file's other
+ * transaction-safety notes) anywhere after that write, the stale party
+ * slot/loot-queue/busy-entry state clearPartyAssignments was supposed to
+ * clean up was stuck there PERMANENTLY: runFullSync's own LEFT-detection
+ * loop below only ever looks at members still marked ACTIVE, so a member
+ * already flipped to LEFT is never revisited to finish the cleanup. Doing
+ * the cleanup first (safe to re-run — clearPartyAssignments only touches
+ * rows that still reference this member, so an already-cleared board is a
+ * no-op) and only then committing the status flip means a crash anywhere in
+ * between just leaves the member looking ACTIVE-but-gone, which the next
+ * sync pass (or the next real leave event) retries from scratch.
+ */
 export async function markMemberLeftFromGateway(discordId: string) {
   const existing = await db.query.members.findFirst({
     where: eq(members.discordId, discordId),
   });
   if (!existing || existing.status !== "ACTIVE") return;
 
-  await db
-    .update(members)
-    .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
-    .where(eq(members.id, existing.id));
   await clearPartyAssignments(existing.id);
 
-  await logEvent(existing.id, "LEAVE", "ออกจาก Discord server");
+  await db.transaction(async (tx) => {
+    await tx
+      .update(members)
+      .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
+      .where(eq(members.id, existing.id));
+    await logEvent(existing.id, "LEAVE", "ออกจาก Discord server", tx);
+  });
 }
 
 /** Upsert the cached name/color/position for a single Discord role. */
@@ -434,15 +463,22 @@ export async function runFullSync(guild: Guild) {
 
   // Anyone marked ACTIVE in the DB but absent from the current tracked-role
   // list either left the Discord server, was kicked/banned, or simply lost
-  // the tracked role — in every case they drop out of the roster.
+  // the tracked role — in every case they drop out of the roster. Same
+  // cleanup-before-status-flip ordering as markMemberLeftFromGateway above,
+  // and for the same reason: once status leaves ACTIVE this loop's own
+  // `dbMember.status === "ACTIVE"` filter above means nothing ever revisits
+  // this member again, so a crash after the old status-first write left
+  // stale party-slot/loot-queue state stuck forever.
   for (const dbMember of dbMembers) {
     if (dbMember.status === "ACTIVE" && !seenDiscordIds.has(dbMember.discordId)) {
-      await db
-        .update(members)
-        .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
-        .where(eq(members.id, dbMember.id));
       await clearPartyAssignments(dbMember.id);
-      await logEvent(dbMember.id, "LEAVE", "ออกจากกิลด์ (ออกจาก Discord server หรือไม่มี role ที่ติดตามแล้ว)");
+      await db.transaction(async (tx) => {
+        await tx
+          .update(members)
+          .set({ status: "LEFT", leftDiscordAt: new Date(), lastSyncedAt: new Date(), updatedAt: new Date() })
+          .where(eq(members.id, dbMember.id));
+        await logEvent(dbMember.id, "LEAVE", "ออกจากกิลด์ (ออกจาก Discord server หรือไม่มี role ที่ติดตามแล้ว)", tx);
+      });
       left++;
     }
   }

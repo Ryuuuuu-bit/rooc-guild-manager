@@ -39,27 +39,39 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
     }
     setSaving(true);
     setError(null);
-    const result = await createPvpStatField({ label, groupTitle, isPercent });
-    setSaving(false);
-    if (!result.ok) {
-      setError(result.error ?? "Add failed, please try again");
-      return;
+    try {
+      const result = await createPvpStatField({ label, groupTitle, isPercent });
+      if (!result.ok) {
+        setError(result.error ?? "Add failed, please try again");
+        return;
+      }
+      setLabel("");
+      setIsPercent(false);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to add PVP stat field", err);
+      setError("Add failed, please try again");
+    } finally {
+      setSaving(false);
     }
-    setLabel("");
-    setIsPercent(false);
-    router.refresh();
   }
 
   async function handleToggle(id: string, active: boolean) {
     setTogglingId(id);
-    const result = await setPvpStatFieldActive(id, active);
-    setTogglingId(null);
-    if (!result.ok) {
-      setError(result.error ?? "Failed to update field");
-      return;
+    try {
+      const result = await setPvpStatFieldActive(id, active);
+      if (!result.ok) {
+        setError(result.error ?? "Failed to update field");
+        return;
+      }
+      setError(null);
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to toggle PVP stat field", err);
+      setError("Failed to update field");
+    } finally {
+      setTogglingId(null);
     }
-    setError(null);
-    router.refresh();
   }
 
   function armDelete(id: string) {
@@ -73,13 +85,19 @@ export function PvpFieldManagerButton({ fields }: { fields: PvpCustomFieldDef[] 
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmDeleteId(null);
     setDeletingId(id);
-    const result = await deletePvpStatField(id);
-    setDeletingId(null);
-    if (!result.ok) {
-      setError(result.error ?? "Delete failed, please try again");
-      return;
+    try {
+      const result = await deletePvpStatField(id);
+      if (!result.ok) {
+        setError(result.error ?? "Delete failed, please try again");
+        return;
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to delete PVP stat field", err);
+      setError("Delete failed, please try again");
+    } finally {
+      setDeletingId(null);
     }
-    router.refresh();
   }
 
   return (

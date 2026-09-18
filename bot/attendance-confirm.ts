@@ -206,7 +206,19 @@ export async function confirmDueLeaves(): Promise<{ confirmed: number; discarded
 
     const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
     const event = board?.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
-    const dueAt = event ? nextOccurrenceEnd(event, now) : new Date(row.createdAt.getTime() + FALLBACK_CONFIRM_AFTER_MS);
+    // IMPORTANT: nextOccurrenceEnd(event, X) is defined to search forward and
+    // return the first occurrence end STRICTLY AFTER X — so passing this
+    // sweep's own `now` here would make dueAt > now true by construction on
+    // every single run, and the `now < dueAt` check below would never fire
+    // for any linked board (a real bug this file shipped with: every
+    // GL/WOE-linked leave sat pending forever, never confirmed, silently
+    // missing from /attendance stats and the monthly quota). The occurrence
+    // being targeted has to be fixed at MARK time instead — same as
+    // reactions.ts already computes it (see leaveDate there) — so that this
+    // sweep's later `now` can actually cross it once the event ends.
+    const dueAt = event
+      ? nextOccurrenceEnd(event, row.createdAt)
+      : new Date(row.createdAt.getTime() + FALLBACK_CONFIRM_AFTER_MS);
     if (now < dueAt) continue; // event hasn't ended yet (or fallback delay hasn't elapsed) — not due
 
     const stillBusy = await db.query.partyBusyEntries.findFirst({

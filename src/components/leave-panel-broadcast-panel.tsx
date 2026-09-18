@@ -29,29 +29,41 @@ export function LeavePanelBroadcastPanel() {
     setOpen(true);
     setLoading(true);
     setError(null);
-    const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getLeavePanelStatus()]);
-    setLoading(false);
-    if (!chRes.ok || !chRes.channels) {
-      setError(chRes.error ?? "Failed to fetch channel list.");
-      return;
+    try {
+      const [chRes, currentStatus] = await Promise.all([listDiscordChannels(), getLeavePanelStatus()]);
+      if (!chRes.ok || !chRes.channels) {
+        setError(chRes.error ?? "Failed to fetch channel list.");
+        return;
+      }
+      setChannels(chRes.channels);
+      setStatus(currentStatus);
+      setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
+    } catch (err) {
+      console.error("Failed to load leave panel status", err);
+      setError("Failed to fetch channel list. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setChannels(chRes.channels);
-    setStatus(currentStatus);
-    setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
   }
 
   async function handlePost() {
     if (!channelId) return;
     setPosting(true);
     setError(null);
-    const res = await postLeavePanelMessage(channelId);
-    setPosting(false);
-    if (!res.ok) {
-      setError(res.error ?? "Failed to post.");
-      return;
+    try {
+      const res = await postLeavePanelMessage(channelId);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to post.");
+        return;
+      }
+      const fresh = await getLeavePanelStatus();
+      setStatus(fresh);
+    } catch (err) {
+      console.error("Failed to post leave panel message", err);
+      setError("Failed to post. Please try again.");
+    } finally {
+      setPosting(false);
     }
-    const fresh = await getLeavePanelStatus();
-    setStatus(fresh);
   }
 
   return (
