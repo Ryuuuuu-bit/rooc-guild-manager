@@ -22,8 +22,15 @@ export interface CalendarDayEvent {
    * friends, or just not using voice at all).
    *
    * "requested" (future dates) — an advance leave request on file
-   * (scheduledLeaves), not yet applied since the date hasn't arrived.
+   * (scheduledLeaves), not yet applied since the date hasn't arrived. A
+   * request still sitting in scheduledLeaves FOR TODAY (the bot hasn't
+   * applied it yet — normally happens within a minute of midnight, but an
+   * unusually long outage could leave it pending longer) is folded into
+   * today's "confirmed" onLeave list instead of its own bucket, so that
+   * member doesn't silently vanish from today's cell while still counting
+   * as "requested, not due" — see getCalendarMonth's dueTodayNotYetApplied.
    *
+
    * "unavailable" (past dates) — deliberately not computed. The calendar's
    * job is "who's on leave for what's coming up", not a historical audit
    * (that's /attendance and /checkin) — the per-round board reconstruction
@@ -102,9 +109,21 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
           .from(scheduledLeaves)
           .where(and(gte(scheduledLeaves.date, monthStart), lte(scheduledLeaves.date, monthEnd)))
       : [];
-  const scheduledByKey = new Map<string, Set<string>>(); // `${date}:${eventKey}` -> memberIds
+  const scheduledByKey = new Map<string, Set<string>>(); // `${date}:${eventKey}` -> memberIds, future dates only
+  // Rows still on file for TODAY specifically — the bot's own catch-up
+  // sweep (applyTodaysScheduledLeaves) usually clears these within a minute
+  // of midnight, but a long enough outage could leave one sitting here past
+  // that. Tracked separately (by eventKey only, no date — there's only ever
+  // one "today") so today's cell can still show them; see the merge below.
+  const dueTodayNotYetApplied = new Map<string, Set<string>>(); // eventKey -> memberIds
   for (const r of scheduledRows) {
-    if (r.date <= today) continue; // belt-and-suspenders — see the comment above
+    if (r.date === today) {
+      const set = dueTodayNotYetApplied.get(r.eventKey) ?? new Set<string>();
+      set.add(r.memberId);
+      dueTodayNotYetApplied.set(r.eventKey, set);
+      continue;
+    }
+    if (r.date < today) continue; // shouldn't happen — see applyTodaysScheduledLeaves' <= catch-up sweep
     const key = `${r.date}:${r.eventKey}`;
     const set = scheduledByKey.get(key) ?? new Set<string>();
     set.add(r.memberId);
@@ -160,7 +179,9 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
         return { eventKey: event.key, label: event.label, status: "unavailable" as const, onLeave: [] };
       }
       if (date === today) {
-        const ids = confirmedIdsByOccurrence.get(`${date}:${event.key}`) ?? new Set<string>();
+        const confirmedIds = confirmedIdsByOccurrence.get(`${date}:${event.key}`) ?? new Set<string>();
+        const notYetAppliedIds = dueTodayNotYetApplied.get(event.key) ?? new Set<string>();
+        const ids = new Set([...confirmedIds, ...notYetAppliedIds]);
         return { eventKey: event.key, label: event.label, status: "confirmed" as const, onLeave: sortedNames(ids) };
       }
       const ids = scheduledByKey.get(`${date}:${event.key}`) ?? new Set<string>();

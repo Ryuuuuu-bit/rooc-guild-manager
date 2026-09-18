@@ -30,6 +30,50 @@ function fmtDayLabel(date: string): string {
   });
 }
 
+/** The small event pill shown in both the month grid and the mobile agenda
+ * list below — kept as one component so the two views can't drift out of
+ * sync with each other. Only 2 events exist today (gl/woe) — a 3rd added to
+ * CHECKIN_EVENTS would fall into the "gl" color here rather than get its
+ * own, which is fine cosmetically but worth widening if that ever happens. */
+function EventPill({ event }: { event: CalendarDayEvent }) {
+  return (
+    <span
+      className={`inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+        event.eventKey === "woe"
+          ? "bg-indigo-400/15 text-indigo-300 ring-1 ring-inset ring-indigo-400/30"
+          : "bg-sky-400/15 text-sky-300 ring-1 ring-inset ring-sky-400/30"
+      }`}
+    >
+      {event.eventKey.toUpperCase()}
+      {event.onLeave.length > 0 && (
+        <span className={event.status === "confirmed" ? "text-amber-300" : "text-zinc-400"}>· {event.onLeave.length}</span>
+      )}
+    </span>
+  );
+}
+
+/** Explains the month grid's/agenda's color coding — without this, the pill
+ * colors and the two-tone leave count (amber vs gray) have nothing on the
+ * page saying what they mean. */
+function CalendarLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500">
+      <span className="flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-sky-400/70" /> GL (Tyr Cup)
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="h-2.5 w-2.5 rounded-full bg-indigo-400/70" /> WOE
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="font-medium text-amber-300">·N</span> On leave (confirmed)
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="font-medium text-zinc-400">·N</span> Requested, not due yet
+      </span>
+    </div>
+  );
+}
+
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   await requireUser();
   const params = await searchParams;
@@ -89,7 +133,51 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         )}
       </div>
 
-      <div className="overflow-x-auto">
+      <CalendarLegend />
+
+      {/* Below sm (640px, the grid's own min-width) a 7-column grid can only
+          be used by scrolling it sideways — most days have no GL/WOE on them
+          anyway, so a compact agenda of just the days that DO is both more
+          mobile-friendly and quicker to scan than a scrolled-off grid. */}
+      <div className="flex flex-col gap-1.5 sm:hidden">
+        {calendar.days.filter((d) => d.events.length > 0).length === 0 ? (
+          <p className="rounded-xl border border-dashed border-zinc-800 p-4 text-center text-sm text-zinc-500">
+            No GL/WOE rounds this month.
+          </p>
+        ) : (
+          calendar.days
+            .filter((d) => d.events.length > 0)
+            .map((day) => {
+              const isSelected = day.date === selectedDate;
+              const dayNum = Number(day.date.slice(-2));
+              return (
+                <Link
+                  key={day.date}
+                  href={`/calendar?y=${year}&m=${month}&d=${day.date}`}
+                  className={`flex items-center gap-3 rounded-xl border p-2.5 transition ${
+                    isSelected ? "border-amber-600 bg-amber-950/20" : "border-zinc-800 bg-zinc-900/50"
+                  } ${day.isPast ? "opacity-40" : ""}`}
+                >
+                  <div
+                    className={`flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-lg text-xs ${
+                      day.isToday ? "bg-amber-600 text-white" : "bg-zinc-800 text-zinc-300"
+                    }`}
+                  >
+                    <span className="font-medium leading-none">{dayNum}</span>
+                    <span className="text-[9px] uppercase leading-none opacity-80">{WEEKDAY_LABELS[day.weekday]}</span>
+                  </div>
+                  <div className="flex flex-1 flex-wrap gap-1">
+                    {day.events.map((ev) => (
+                      <EventPill key={ev.eventKey} event={ev} />
+                    ))}
+                  </div>
+                </Link>
+              );
+            })
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
         <div className="min-w-[640px]">
           <div className="grid grid-cols-7 gap-px overflow-hidden rounded-t-xl border border-zinc-800 bg-zinc-800 text-center text-xs font-medium uppercase tracking-wide text-zinc-500">
             {WEEKDAY_LABELS.map((w) => (
@@ -121,24 +209,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                     {dayNum}
                   </span>
                   <div className="flex flex-col gap-0.5">
-                    {/* Only 2 events exist today (gl/woe) — a 3rd added to
-                        CHECKIN_EVENTS would fall into the "gl" color below
-                        rather than get its own, which is fine cosmetically
-                        but worth widening if that ever happens. */}
                     {day.events.map((ev) => (
-                      <span
-                        key={ev.eventKey}
-                        className={`inline-flex w-fit items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                          ev.eventKey === "woe"
-                            ? "bg-indigo-400/15 text-indigo-300 ring-1 ring-inset ring-indigo-400/30"
-                            : "bg-sky-400/15 text-sky-300 ring-1 ring-inset ring-sky-400/30"
-                        }`}
-                      >
-                        {ev.eventKey.toUpperCase()}
-                        {ev.onLeave.length > 0 && (
-                          <span className={ev.status === "confirmed" ? "text-amber-300" : "text-zinc-400"}>· {ev.onLeave.length}</span>
-                        )}
-                      </span>
+                      <EventPill key={ev.eventKey} event={ev} />
                     ))}
                   </div>
                 </Link>
