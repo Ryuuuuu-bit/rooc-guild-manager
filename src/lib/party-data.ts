@@ -1,7 +1,17 @@
 import { db } from "@/db";
-import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
-import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import {
+  members,
+  membershipEvents,
+  partyBoards,
+  partyBusyEntries,
+  partyGroupParties,
+  partyGroups,
+  partySlots,
+  scheduledLeaves,
+} from "@/db/schema";
+import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm";
 import { memberDisplayName } from "@/lib/ui";
+import { thaiDateString } from "@/lib/checkin-data";
 import type { Member } from "@/db/schema";
 
 /** Either the module-level `db`, or the `tx` handed to a `db.transaction`
@@ -42,6 +52,21 @@ export interface PartyBoardListItem {
   name: string;
 }
 
+/** A member with an advance /leave request on file for THIS board, not yet
+ * due (or due today but the bot hasn't applied it yet — see
+ * calendar-data.ts's dueTodayNotYetApplied for the same edge case). Lets a
+ * party organizer see, before dragging anyone into a slot, who's already
+ * planning to be out for an upcoming date — the board itself has no date
+ * dimension (partyBusyEntries carries no date column), so without this a
+ * member on file for e.g. the 20th looks perfectly available while composing
+ * parties on the 19th. */
+export interface UpcomingBoardLeave {
+  memberId: string;
+  name: string;
+  discordAvatar: string | null;
+  date: string; // "YYYY-MM-DD"
+}
+
 export interface PartyBoardDetail {
   id: string;
   name: string;
@@ -50,6 +75,8 @@ export interface PartyBoardDetail {
   groups: PartyGroupView[];
   busy: PartyBoardMemberRef[];
   unassigned: PartyBoardMemberRef[];
+  /** Sorted by date, then Thai name — see UpcomingBoardLeave. */
+  upcomingLeaves: UpcomingBoardLeave[];
 }
 
 function toRef(member: Member): PartyBoardMemberRef {
@@ -74,12 +101,22 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
   if (!board) return null;
 
-  const [activeMembers, groups, busyRows] = await Promise.all([
+  const today = thaiDateString(new Date());
+
+  const [activeMembers, groups, busyRows, upcomingLeaveRows] = await Promise.all([
     // Benched members are still ACTIVE (still in Discord with the tracked
     // role) but flagged out of party/event management entirely.
     db.select().from(members).where(and(eq(members.status, "ACTIVE"), eq(members.benched, false))),
     db.select().from(partyGroups).where(eq(partyGroups.boardId, boardId)).orderBy(asc(partyGroups.sortOrder)),
     db.select().from(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId)),
+    // >= today, not > today — a same-day request the bot hasn't applied yet
+    // (normally cleared within a minute of midnight, see
+    // applyTodaysScheduledLeaves) should still warn the organizer, same
+    // reasoning as calendar-data.ts's dueTodayNotYetApplied.
+    db
+      .select({ memberId: scheduledLeaves.memberId, date: scheduledLeaves.date })
+      .from(scheduledLeaves)
+      .where(and(eq(scheduledLeaves.boardId, boardId), gte(scheduledLeaves.date, today))),
   ]);
 
   const membersById = new Map(activeMembers.map((m) => [m.id, m]));
@@ -146,6 +183,18 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     .map(toRef)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
+  // Silently drops a row whose member isn't in membersById (left the guild,
+  // got kicked, or was benched since requesting) — same "just don't show
+  // it" handling as the rest of this function uses for stale references.
+  const upcomingLeaves: UpcomingBoardLeave[] = upcomingLeaveRows
+    .map((row) => {
+      const member = membersById.get(row.memberId);
+      if (!member) return null;
+      return { memberId: member.id, name: memberDisplayName(member), discordAvatar: member.discordAvatar, date: row.date };
+    })
+    .filter((v): v is UpcomingBoardLeave => v !== null)
+    .sort((a, b) => (a.date === b.date ? a.name.localeCompare(b.name, "th") : a.date.localeCompare(b.date)));
+
   return {
     id: board.id,
     name: board.name,
@@ -153,6 +202,7 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     groups: groupViews,
     busy,
     unassigned,
+    upcomingLeaves,
   };
 }
 

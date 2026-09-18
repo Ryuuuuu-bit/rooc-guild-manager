@@ -34,6 +34,16 @@ import {
 } from "@/app/actions/party";
 import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
 
+/** "YYYY-MM-DD" -> "20 Sep" — noon UTC+7 anchor avoids the date shifting a
+ * day when parsed in a browser on a different local timezone. */
+function fmtLeaveDate(date: string): string {
+  return new Date(`${date}T12:00:00+07:00`).toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Bangkok",
+  });
+}
+
 export function parseDestination(id: string): PartyDestination | null {
   if (id === "busy") return { type: "busy" };
   if (id === "unassigned") return { type: "unassigned" };
@@ -578,6 +588,30 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 </div>
               )}
             </div>
+
+            {/* Warns an organizer, before they start dragging people into
+                slots, that someone already has an advance /leave request on
+                file for this board on a date at or after today — this board
+                has no date dimension of its own (partyBusyEntries carries no
+                date), so without this a member scheduled out for e.g. the
+                20th looks perfectly available while composing parties on the
+                19th. Hidden in screenshot mode — this is a heads-up for
+                whoever's organizing, not something to broadcast. */}
+            {!screenshotMode && board.upcomingLeaves.length > 0 && (
+              <div className="flex flex-wrap items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
+                <span className="mt-0.5 shrink-0 font-medium">⚠ Upcoming leave on file:</span>
+                <div className="flex flex-1 flex-wrap gap-1.5">
+                  {board.upcomingLeaves.map((l) => (
+                    <span
+                      key={`${l.memberId}-${l.date}`}
+                      className="rounded-full bg-amber-500/15 px-2 py-0.5 ring-1 ring-inset ring-amber-500/30"
+                    >
+                      {l.name} — {fmtLeaveDate(l.date)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Unassigned pool — kept above the party grid (the "who's
                 waiting" list, at a glance) so it's easy to drag/pick from

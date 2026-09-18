@@ -83,15 +83,20 @@ export function ActivityListItem({
           )}
         </p>
       </div>
-      <span
-        className="shrink-0 text-xs text-zinc-500"
-        title={new Date(event.createdAt).toLocaleString("th-TH", {
-          dateStyle: "medium",
-          timeStyle: "short",
-          timeZone: "Asia/Bangkok",
-        })}
-      >
-        {formatDistanceToNow(event.createdAt, { addSuffix: true })}
+      {/* Both the relative time (glanceable) and the absolute Thai
+          date/time (precise — matters when pinning down exactly when
+          something happened, e.g. checking whether a reset ran on schedule)
+          shown directly, not just on hover — a tooltip is unreachable on
+          touch devices, and this feed gets checked from phones. */}
+      <span className="flex shrink-0 flex-col items-end text-right text-xs text-zinc-500">
+        <span>{formatDistanceToNow(event.createdAt, { addSuffix: true })}</span>
+        <span className="text-[10px] text-zinc-600">
+          {new Date(event.createdAt).toLocaleString("th-TH", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: "Asia/Bangkok",
+          })}
+        </span>
       </span>
       {isAdmin && (
         <button
