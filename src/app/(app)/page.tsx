@@ -4,8 +4,38 @@ import { requireUser } from "@/lib/authz";
 import { StatCard } from "@/components/stat-card";
 import { ActivityListItem } from "@/components/activity-list-item";
 import { AttendanceTrendChart } from "@/components/attendance-trend-chart";
-import { GRADIENT_CLASS, type ColorKey } from "@/lib/job-class-colors";
+import { GRADIENT_CLASS, HEX_CLASS, type ColorKey } from "@/lib/job-class-colors";
 import { CHECKIN_EVENTS, getAttendanceTrend } from "@/lib/checkin-data";
+
+interface DonutSlice {
+  colorKey: ColorKey | null;
+  start: number;
+  end: number;
+}
+
+/** Turns the same class-distribution counts the bar rows below already
+ * render into cumulative-percent slices for the donut's `conic-gradient`.
+ * A plain module-level helper (not inlined in the component body) so the
+ * running percentage total is a local variable inside one function call,
+ * not a `let` mutated across the component's render. */
+function buildDonutSlices(
+  known: { count: number; colorKey: string }[],
+  unassignedCount: number,
+  total: number
+): DonutSlice[] {
+  const slices: DonutSlice[] = [];
+  let cursor = 0;
+  for (const c of known) {
+    const pct = total > 0 ? (c.count / total) * 100 : 0;
+    slices.push({ colorKey: c.colorKey as ColorKey, start: cursor, end: cursor + pct });
+    cursor += pct;
+  }
+  if (unassignedCount > 0) {
+    const pct = total > 0 ? (unassignedCount / total) * 100 : 0;
+    slices.push({ colorKey: null, start: cursor, end: cursor + pct });
+  }
+  return slices;
+}
 
 // Small, deliberately plain icon glyphs (simple strokes/arcs, not traced from
 // an external icon set) — just enough to give each stat tile's accent chip a
@@ -66,6 +96,15 @@ export default async function DashboardPage() {
   const totalClassed = classDistribution.known.reduce((sum, c) => sum + c.count, 0) + classDistribution.unassignedCount;
   const maxClassCount = Math.max(1, ...classDistribution.known.map((c) => c.count), classDistribution.unassignedCount);
 
+  // Same class-distribution numbers as the bar rows below, just also plotted
+  // as a ring — each slice's share of `totalClassed`, walked in the same
+  // order the rows render in so the ring and the legend under it always
+  // agree on which color is which class.
+  const donutSlices = buildDonutSlices(classDistribution.known, classDistribution.unassignedCount, totalClassed);
+  const donutGradient = donutSlices
+    .map((s) => `${s.colorKey ? (HEX_CLASS[s.colorKey] ?? HEX_CLASS.stone) : "#52525b"} ${s.start}% ${s.end}%`)
+    .join(", ");
+
   return (
     <div className="relative flex flex-col gap-8">
       {/* Faint dot-grid canvas behind the whole page — the one purely decorative
@@ -125,7 +164,17 @@ export default async function DashboardPage() {
         {totalClassed === 0 ? (
           <p className="text-sm text-zinc-500">No class data yet</p>
         ) : (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <div
+              className="relative mx-auto h-28 w-28 shrink-0 rounded-full sm:mx-0"
+              style={{ background: `conic-gradient(${donutGradient})` }}
+            >
+              <div className="absolute inset-[10px] flex flex-col items-center justify-center rounded-full bg-zinc-900">
+                <span className="text-lg font-semibold tabular-nums text-zinc-50">{totalClassed}</span>
+                <span className="text-[10px] text-zinc-500">Members</span>
+              </div>
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
             {classDistribution.known.map((c) => (
               <div key={c.name} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 transition hover:bg-zinc-800/40">
                 <span className="flex w-28 shrink-0 items-center gap-1.5 truncate text-sm text-zinc-300">
@@ -156,6 +205,7 @@ export default async function DashboardPage() {
                 </span>
               </div>
             )}
+            </div>
           </div>
         )}
       </div>

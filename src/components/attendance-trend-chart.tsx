@@ -31,14 +31,31 @@ const GRID_STEPS = [0, 1, 2, 3, 4];
 export function AttendanceTrendChart({ title, points }: AttendanceTrendChartProps) {
   const withData = points.filter((p) => p.rate !== null);
   const latest = points[points.length - 1];
+  // Change vs. the previous plotted point, in percentage points — purely a
+  // different view of the same `points` data already passed in, not a new
+  // data source. Needs at least 2 real points, so it's null (and hidden)
+  // for a brand-new event with only one check-in on record.
+  const prevRate = withData.length >= 2 ? withData[withData.length - 2].rate : null;
+  const deltaPct =
+    latest && latest.rate !== null && prevRate !== null ? Math.round((latest.rate - prevRate) * 100) : null;
 
   return (
     <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-5">
       <div className="mb-5 flex items-baseline justify-between">
         <h2 className="font-medium text-zinc-100">{title}</h2>
         {latest && latest.rate !== null && (
-          <span className="text-xs text-zinc-500">
+          <span className="flex items-center gap-2 text-xs text-zinc-500">
             Latest <span className="font-semibold tabular-nums text-amber-400">{Math.round(latest.rate * 100)}%</span>
+            {deltaPct !== null && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                  deltaPct >= 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                }`}
+              >
+                {deltaPct >= 0 ? "+" : ""}
+                {deltaPct}pp
+              </span>
+            )}
           </span>
         )}
       </div>

@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  ActivityIcon,
+  CalendarIcon,
+  ClockIcon,
+  HomeIcon,
+  MicIcon,
+  PartyIcon,
+  QueueIcon,
+  ShuffleIcon,
+  SlidersIcon,
+  SwordsIcon,
+  UsersIcon,
+} from "@/components/nav-icons";
 
 interface NavLink {
   href: string;
@@ -15,8 +28,10 @@ interface NavGroup {
 }
 
 // Always visible in the top bar / start of the mobile strip — the two pages
-// almost everyone opens first (an overview, and the roster itself).
-const primaryLinks: NavLink[] = [
+// almost everyone opens first (an overview, and the roster itself). Exported
+// so the sidebar (see sidebar.tsx) renders the exact same two links instead
+// of keeping a second, driftable copy of this list.
+export const primaryLinks: NavLink[] = [
   { href: "/", label: "Overview" },
   { href: "/members", label: "Members" },
 ];
@@ -25,8 +40,9 @@ const primaryLinks: NavLink[] = [
 // use to organize/run something now (party board, random picker, loot
 // queue), vs. pages you check to look something up (activity log, leave
 // stats, and the check-in report — that one's a record of who showed up,
-// not a tool for running the event itself).
-const groups: NavGroup[] = [
+// not a tool for running the event itself). Exported for the same reason as
+// primaryLinks above.
+export const groups: NavGroup[] = [
   {
     label: "Events",
     links: [
@@ -47,96 +63,82 @@ const groups: NavGroup[] = [
   },
 ];
 
-const linkClass =
-  "rounded-lg px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800/60 hover:text-zinc-100";
-const activeLinkClass = "rounded-lg px-3 py-1.5 text-sm font-medium bg-amber-600 text-white";
+// One icon per href, used by the sidebar's rows only — MobileNavLinks below
+// stays icon-free (exactly as it always has been) so its compact horizontal
+// strip doesn't get cramped.
+const ICONS: Record<string, ComponentType<{ className?: string }>> = {
+  "/": HomeIcon,
+  "/members": UsersIcon,
+  "/party": PartyIcon,
+  "/random": ShuffleIcon,
+  "/loot-queue": QueueIcon,
+  "/calendar": CalendarIcon,
+  "/activity": ActivityIcon,
+  "/attendance": ClockIcon,
+  "/checkin": MicIcon,
+  "/pvp-stats": SwordsIcon,
+  "/classes": SlidersIcon,
+};
 
 /** "/members" matches "/members" and "/members/123", but "/" only matches itself — otherwise every route would match the home link. */
-function isActive(pathname: string, href: string): boolean {
+export function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** One top-bar dropdown for a category of pages — desktop only. Its own open/close state so the two category menus don't interfere with each other. */
-function NavDropdown({ group, pathname }: { group: NavGroup; pathname: string }) {
-  const [open, setOpen] = useState(false);
-  const detailsRef = useRef<HTMLDetailsElement>(null);
-  const active = group.links.some((l) => isActive(pathname, l.href));
-
-  // Native <details> keeps its own "open" DOM state, which this layout never
-  // resets on navigation (it isn't remounted between pages) — without this,
-  // picking a link from the dropdown leaves it visually stuck open on the
-  // page you just navigated to. Each link closes it directly on click
-  // (below); this effect handles the other way to dismiss it, clicking
-  // outside.
-  useEffect(() => {
-    if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (detailsRef.current && !detailsRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
-
+/** One full-width row in the sidebar's link list — icon + label, highlighted when active. */
+function SidebarRow({ href, label, pathname }: { href: string; label: string; pathname: string }) {
+  const Icon = ICONS[href];
+  const active = isActive(pathname, href);
   return (
-    <details ref={detailsRef} open={open} className="relative">
-      <summary
-        onClick={(e) => {
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
-        className={`${active ? activeLinkClass : linkClass} flex list-none cursor-pointer items-center gap-1 [&::-webkit-details-marker]:hidden`}
-      >
-        {group.label}
-        <svg viewBox="0 0 20 20" fill="currentColor" className={`h-3.5 w-3.5 transition ${open ? "rotate-180" : ""}`}>
-          <path
-            fillRule="evenodd"
-            d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </summary>
-      <div className="absolute left-0 top-full z-20 mt-1 flex w-48 flex-col gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900 p-1.5 shadow-xl">
-        {group.links.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            onClick={() => setOpen(false)}
-            className={`block ${isActive(pathname, link.href) ? activeLinkClass : `${linkClass} hover:bg-zinc-800`}`}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </div>
-    </details>
+    <Link
+      href={href}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition ${
+        active ? "bg-amber-600 font-medium text-white" : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-100"
+      }`}
+    >
+      {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
+      <span className="truncate">{label}</span>
+    </Link>
   );
 }
 
-/** The top-bar nav: the 2 core pages inline, everything else grouped by type into two dropdowns. */
-export function DesktopNavLinks({ isAdmin }: { isAdmin: boolean }) {
+/**
+ * The desktop sidebar's full link list (see sidebar.tsx): primary links flat
+ * at the top, then every group under its own small heading, then "Manage
+ * Classes" under a "System" heading for admins — replaces the old
+ * dropdown-based DesktopNavLinks now that there's a full-height rail to lay
+ * links out top-to-bottom in, instead of a cramped top bar that needed
+ * dropdowns to fit everything.
+ */
+export function SidebarNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
 
   return (
-    <nav className="hidden items-center gap-1 sm:flex">
-      {primaryLinks.map((link) => (
-        <Link key={link.href} href={link.href} className={isActive(pathname, link.href) ? activeLinkClass : linkClass}>
-          {link.label}
-        </Link>
-      ))}
+    <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-3 py-4">
+      <div className="flex flex-col gap-0.5">
+        {primaryLinks.map((link) => (
+          <SidebarRow key={link.href} href={link.href} label={link.label} pathname={pathname} />
+        ))}
+      </div>
       {groups.map((group) => (
-        <NavDropdown key={group.label} group={group} pathname={pathname} />
+        <div key={group.label} className="flex flex-col gap-0.5">
+          <p className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">{group.label}</p>
+          {group.links.map((link) => (
+            <SidebarRow key={link.href} href={link.href} label={link.label} pathname={pathname} />
+          ))}
+        </div>
       ))}
       {isAdmin && (
-        <Link href="/classes" className={isActive(pathname, "/classes") ? activeLinkClass : linkClass}>
-          Manage Classes
-        </Link>
+        <div className="flex flex-col gap-0.5">
+          <p className="px-3 pb-1 text-[10px] font-medium uppercase tracking-wide text-zinc-500">System</p>
+          <SidebarRow href="/classes" label="Manage Classes" pathname={pathname} />
+        </div>
       )}
     </nav>
   );
 }
 
-/** Below the top bar on narrow screens: the 2 core pages stay visible, the rest (still split into the same two type-based categories, plus admin's class management) collapses behind a "···" button — flattening every link into one scrollable row got cluttered and made every page one uncertain scroll away. */
+/** Below the top bar on narrow screens: the 2 core pages stay visible, the rest (still split into the same two type-based categories, plus admin's class management) collapses behind a "···" button — flattening every link into one scrollable row got cluttered and made every page one uncertain scroll away. Unchanged from before — mobile keeps this exact bar; only the desktop nav (see sidebar.tsx) changed shape. */
 export function MobileNavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);

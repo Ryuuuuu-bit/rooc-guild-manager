@@ -57,6 +57,32 @@ export const GRADIENT_CLASS: Record<ColorKey, string> = {
   stone: "from-stone-400/40 to-stone-400",
 };
 
+/** Same solid shade as SWATCH_CLASS below, but as a literal hex value
+ * instead of a Tailwind class name — needed for the dashboard's class-
+ * distribution donut (src/app/(app)/page.tsx), which builds a CSS
+ * `conic-gradient()` in an inline style and can't consume a Tailwind
+ * utility class there (inline `style` isn't run through the CSS pipeline
+ * Tailwind classes rely on). Values are Tailwind's default palette hex for
+ * each shade named in SWATCH_CLASS, kept in sync with it by hand — if
+ * SWATCH_CLASS's shade for a key ever changes, update this to match. */
+export const HEX_CLASS: Record<ColorKey, string> = {
+  red: "#ef4444",
+  orange: "#fb923c",
+  amber: "#fbbf24",
+  yellow: "#facc15",
+  lime: "#a3e635",
+  emerald: "#34d399",
+  teal: "#2dd4bf",
+  sky: "#38bdf8",
+  indigo: "#818cf8",
+  violet: "#a78bfa",
+  purple: "#c084fc",
+  fuchsia: "#e879f9",
+  pink: "#f472b6",
+  rose: "#f43f5e",
+  stone: "#a8a29e",
+};
+
 /** Solid (full-opacity) swatch color per key — used only by the color-picker UI in /classes, where the translucent badge tints above would look washed out as small swatch dots. */
 export const SWATCH_CLASS: Record<ColorKey, string> = {
   red: "bg-red-500",
