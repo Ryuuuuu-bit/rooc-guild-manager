@@ -243,7 +243,14 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
  * but not currently playing) or clears that flag. Independent of `status`
  * — the bot's role sync never touches this, only an admin can. Benching
  * someone clears them from every party board (they'd otherwise vanish from
- * the unassigned pool but leave a dangling slot/busy-entry reference).
+ * the unassigned pool but leave a dangling slot/busy-entry reference) AND
+ * drops them from every loot-queue category — same reasoning as
+ * markMemberKicked/clearPartyAssignments (bot/sync.ts): a benched member
+ * isn't expected to be bidding on loot (see the loot-queue page's own
+ * "active, non-benched only" add-picker filter), so leaving their row
+ * there would just sit forever, needing an admin to notice and remove them
+ * by hand before running a round. Un-benching mirrors restoreMemberStatus
+ * below and re-adds them to the back of every category, same as a rejoin.
  */
 export async function setMemberBenched(memberId: string, benched: boolean): Promise<UpdateMemberResult> {
   const session = await requireAdmin();
@@ -264,14 +271,24 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
       await reconcilePendingLeaveEverywhere(tx, memberId, session.user.username);
       await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
     });
+    await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
+  }
+
+  // Guard mirrors restoreMemberStatus's `wasInactive` check below — someone
+  // benched while ACTIVE who then left/got kicked (their queue entries
+  // already cleared by that path) shouldn't get re-added to every queue
+  // just because an admin happens to also flip their now-moot bench flag.
+  const readdedToQueues = !benched && existing.status === "ACTIVE";
+  if (readdedToQueues) {
+    await addToAllLootQueues(memberId);
   }
 
   await db.insert(membershipEvents).values({
     memberId,
     type: "NOTE",
     detail: benched
-      ? `พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้) โดยแอดมิน ${session.user.username}`
-      : `เลิกพักการเล่น โดยแอดมิน ${session.user.username}`,
+      ? `พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้และคิวประมูล) โดยแอดมิน ${session.user.username}`
+      : `เลิกพักการเล่น${readdedToQueues ? " (กลับเข้าคิวประมูลทุกหมวดแล้ว)" : ""} โดยแอดมิน ${session.user.username}`,
     actor: session.user.username,
   });
 
@@ -279,6 +296,7 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
   revalidatePath("/members");
   revalidatePath("/");
   revalidatePath("/party");
+  revalidatePath("/loot-queue");
 
   return { ok: true };
 }
