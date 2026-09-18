@@ -416,10 +416,24 @@ export function PvpStatsTable({
           its 1500px min-width ALWAYS overflowed and needed a horizontal drag-scroll even on huge
           screens (the bug a member found and "fixed" by hand-editing the width in DevTools).
           Breaking out gives it the screen's real width instead. See globals overflow-x-hidden on
-          <body> in app/layout.tsx for the scrollbar-width safety net this relies on. */}
+          <body> in app/layout.tsx for the scrollbar-width safety net this relies on.
+
+          The plain `calc(50% - 50vw)` version of this trick only breaks out to the true viewport
+          edge when the content column it's escaping is centered on the FULL viewport — which
+          stopped being true once the app got a persistent left Sidebar (see sidebar.tsx, sm:w-64
+          = 16rem): at sm and up, `main` is centered in the space to the right of that rail, not
+          the whole window, so the untouched trick would land the table 8rem too far left (partly
+          under the sidebar) and 8rem past the right edge. The sm: overrides below compensate by
+          exactly half the sidebar's width (8rem) on each side and shrink the target width by the
+          full 16rem, so at sm+ this breaks out to "full width minus the sidebar" instead of "full
+          viewport" — and below sm, where Sidebar renders nothing, the base values are unchanged
+          from before. If Sidebar's width ever changes, these must change with it. */}
       <div
-        className={viewMode === "cards" ? "hidden" : "hidden w-screen 2xl:block"}
-        style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}
+        className={
+          viewMode === "cards"
+            ? "hidden"
+            : "hidden w-screen ml-[calc(50%_-_50vw)] mr-[calc(50%_-_50vw)] sm:w-[calc(100vw_-_16rem)] sm:ml-[calc(50%_-_50vw_+_8rem)] sm:mr-[calc(50%_-_50vw_+_8rem)] 2xl:block"
+        }
       >
         {/* Cap is a bit above the table's actual full width (~2260px measured with all
             columns + a realistic boss-card list) so a monitor with that much room shows
@@ -537,13 +551,14 @@ export function PvpStatsTable({
       {/* Cards are the default on anything narrower than 2xl (laptops included), and also show
           at 2xl+ when the toggle above is set to "การ์ด". Same sort/filter as the table above.
 
-          Same full-bleed breakout as the table (see the comment above it) — main's max-w-6xl
+          Same full-bleed breakout as the table (see the comment above it, including why the sm:
+          overrides that account for Sidebar's 16rem width are needed) — main's max-w-6xl
           otherwise caps this at ~1104px regardless of monitor size, fitting only ~2-3 cards per
           row even on a huge screen. It's applied unconditionally (not gated to 2xl+): the
           calc(50% - 50vw) margin trick is self-correcting — below ~1152px viewport, main isn't
           actually capped by max-w-6xl in the first place, so the computed extra margin comes out
           to ~0 and nothing changes there; it only does real work once the cap would otherwise bite. */}
-      <div className="w-screen" style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}>
+      <div className="w-screen ml-[calc(50%_-_50vw)] mr-[calc(50%_-_50vw)] sm:w-[calc(100vw_-_16rem)] sm:ml-[calc(50%_-_50vw_+_8rem)] sm:mr-[calc(50%_-_50vw_+_8rem)]">
         <div className="mx-auto max-w-[2400px] px-4 sm:px-6">
           {/* Grid (not a fixed column count) — `auto-fill`/`minmax` packs in as many ~300px-wide
               cards as the current width allows and reflows automatically as the window resizes,

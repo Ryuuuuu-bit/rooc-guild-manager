@@ -4,10 +4,13 @@ import { members } from "@/db/schema";
 import { requireUser } from "@/lib/authz";
 import { getLatestPvpStats, getMyLatestPvpStat, getPvpStatFieldDefs } from "@/lib/pvp-stats";
 import { memberDisplayName } from "@/lib/ui";
+import { fmtInt } from "@/lib/pvp-stat-fields";
+import { isReviewStatus } from "@/lib/pvp-stat-review";
 import { PvpStatForm } from "@/components/pvp-stat-form";
 import { PvpStatsTable } from "@/components/pvp-stats-table";
 import { AdminAddEntryButton } from "@/components/pvp-stat-admin-entry";
 import { PvpFieldManagerButton } from "@/components/pvp-field-manager";
+import { StatCard } from "@/components/stat-card";
 
 export default async function PvpStatsPage() {
   const session = await requireUser();
@@ -24,6 +27,20 @@ export default async function PvpStatsPage() {
   const submittedCount = rows.filter((r) => r.entry !== null).length;
   const memberOptions = rows.map(({ member }) => ({ id: member.id, name: memberDisplayName(member) }));
 
+  // Same "submitted"/review data the page already fetched, just also
+  // summarized as a few at-a-glance numbers above the table/cards — no new
+  // queries, just a different view of `rows`.
+  const pendingReviewCount = rows.filter((r) => r.entry !== null && !isReviewStatus(r.entry.reviewStatus)).length;
+  const cpValues = rows
+    .map((r) => r.entry?.cp)
+    .filter((cp): cp is number => cp !== null && cp !== undefined);
+  const avgCp = cpValues.length > 0 ? Math.round(cpValues.reduce((sum, v) => sum + v, 0) / cpValues.length) : null;
+  const topRow = rows.reduce<(typeof rows)[number] | null>((top, r) => {
+    if (r.entry?.cp == null) return top;
+    if (!top || (top.entry?.cp ?? -Infinity) < r.entry.cp) return r;
+    return top;
+  }, null);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -39,6 +56,16 @@ export default async function PvpStatsPage() {
             <AdminAddEntryButton members={memberOptions} customFieldDefs={activeFieldDefs} />
           </div>
         )}
+      </div>
+
+      {/* At-a-glance summary before the update form / full roster below — same numbers already
+          in the page copy and the table's own filter counts, just pulled up front so an admin
+          checking in on review progress doesn't have to scroll the whole list first. */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Submitted" value={`${submittedCount}/${rows.length}`} accent="positive" />
+        <StatCard label="Pending Review" value={pendingReviewCount} accent={pendingReviewCount > 0 ? "warning" : "positive"} />
+        <StatCard label="Average CP" value={fmtInt(avgCp)} />
+        <StatCard label="Top CP" value={fmtInt(topRow?.entry?.cp ?? null)} hint={topRow ? memberDisplayName(topRow.member) : undefined} />
       </div>
 
       {/* Surfaced right above the update button — a member who got reviewed shouldn't have to
