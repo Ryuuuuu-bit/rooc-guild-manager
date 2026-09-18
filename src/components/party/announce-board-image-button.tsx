@@ -34,33 +34,50 @@ export function AnnounceBoardImageButton({
   const [posting, setPosting] = useState(false);
   const [posted, setPosted] = useState(false);
 
+  // try/catch/finally here for the same reason as PostAttendanceButton — a
+  // thrown rejection (not just an {ok:false} result) would otherwise skip
+  // setLoading/setPosting(false), leaving the button stuck on "Loading..."
+  // or "Generating image..." forever with no error shown.
+
   async function handleOpen() {
     setOpen(true);
     setLoading(true);
     setError(null);
     setPosted(false);
-    const res = await listDiscordChannels();
-    setLoading(false);
-    if (!res.ok || !res.channels) {
-      setError(res.error ?? "Failed to fetch channel list.");
-      return;
+    try {
+      const res = await listDiscordChannels();
+      if (!res.ok || !res.channels) {
+        setError(res.error ?? "Failed to fetch channel list.");
+        return;
+      }
+      setChannels(res.channels);
+      const remembered = lastChannelId && res.channels.some((c) => c.id === lastChannelId) ? lastChannelId : null;
+      setChannelId(remembered ?? res.channels[0]?.id ?? "");
+    } catch (err) {
+      console.error("Failed to load channel list", err);
+      setError("Failed to load. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setChannels(res.channels);
-    const remembered = lastChannelId && res.channels.some((c) => c.id === lastChannelId) ? lastChannelId : null;
-    setChannelId(remembered ?? res.channels[0]?.id ?? "");
   }
 
   async function handlePost() {
     if (!channelId) return;
     setPosting(true);
     setError(null);
-    const res = await announcePartyBoardImage(boardId, channelId);
-    setPosting(false);
-    if (!res.ok) {
-      setError(res.error ?? "Failed to post.");
-      return;
+    try {
+      const res = await announcePartyBoardImage(boardId, channelId);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to post.");
+        return;
+      }
+      setPosted(true);
+    } catch (err) {
+      console.error("Failed to post board image", err);
+      setError("Failed to post. Please try again.");
+    } finally {
+      setPosting(false);
     }
-    setPosted(true);
   }
 
   return (

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { MemberAvatar } from "@/components/member-avatar";
-import { listDiscordChannels } from "@/app/actions/bot-messages";
 import {
   addToLootQueue,
   createLootCategory,
@@ -13,7 +12,6 @@ import {
   moveLootCategory,
   moveLootQueueEntry,
   moveLootQueueEntryToPosition,
-  postLootRoundMessage,
   removeFromLootQueue,
   renameLootCategory,
   runLootRound,
@@ -21,7 +19,6 @@ import {
   undoLootRound,
   type RunRoundResult,
 } from "@/app/actions/loot-queue";
-import type { DiscordChannel } from "@/lib/discord";
 import type { LootCategoryView, LootQueueMemberRef, LootRoundView } from "@/lib/loot-queue-data";
 
 function fmtTime(d: Date) {
@@ -79,106 +76,6 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
-// --- Discord post modal ----------------------------------------------------
-
-function PostToDiscordModal({ initialText, onClose }: { initialText: string; onClose: () => void }) {
-  const [channels, setChannels] = useState<DiscordChannel[] | null>(null);
-  const [channelId, setChannelId] = useState("");
-  const [text, setText] = useState(initialText);
-  const [loading, setLoading] = useState(true);
-  const [posting, setPosting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [posted, setPosted] = useState(false);
-
-  // useEffect, not useState(() => ...) — this modal only ever mounts once
-  // per open (see showPost in RunRoundPanel), so the two behave the same
-  // in practice, but useState's lazy initializer isn't meant for side
-  // effects and gets invoked twice under React's dev-mode Strict Mode,
-  // firing this fetch redundantly.
-  useEffect(() => {
-    listDiscordChannels().then((res) => {
-      setLoading(false);
-      if (!res.ok || !res.channels) {
-        setError(res.error ?? "Failed to fetch channels");
-        return;
-      }
-      setChannels(res.channels);
-      setChannelId(res.channels[0]?.id ?? "");
-    });
-  }, []);
-
-  async function handlePost() {
-    if (!channelId) return;
-    setPosting(true);
-    setError(null);
-    const res = await postLootRoundMessage(channelId, text);
-    setPosting(false);
-    if (!res.ok) {
-      setError(res.error ?? "Failed to post");
-      return;
-    }
-    setPosted(true);
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-16">
-      <div className="w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-100">Post Round Results to Discord</h2>
-          <button type="button" onClick={onClose} className="rounded px-2 py-1 text-xs text-zinc-500 hover:text-zinc-200">
-            Close ✕
-          </button>
-        </div>
-
-        {loading && <p className="py-6 text-center text-sm text-zinc-500">Loading...</p>}
-
-        {!loading && !posted && (
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-zinc-500">You can edit the message before posting (e.g. add @Rooc yourself)</p>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              rows={5}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-            />
-            {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}
-            <select
-              value={channelId}
-              onChange={(e) => setChannelId(e.target.value)}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-            >
-              {(channels ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  #{c.name}
-                </option>
-              ))}
-            </select>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                disabled={!channelId || posting || !text.trim()}
-                onClick={handlePost}
-                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {posting ? "Posting..." : "Post Message"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {posted && (
-          <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="text-sm text-emerald-300">Posted ✓</p>
-            <button type="button" onClick={onClose} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800">
-              Close this window
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // --- Run-round panel ---------------------------------------------------
 
 /** "เลขเริ่มต่อจาก" — lets an admin link this category's round numbering to
@@ -229,7 +126,6 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RunRoundResult | null>(null);
-  const [showPost, setShowPost] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
 
   const n = Number(count);
@@ -290,13 +186,6 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
           </button>
           <button
             type="button"
-            onClick={() => setShowPost(true)}
-            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-          >
-            Post to Discord
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setResult(null);
               setCount("");
@@ -308,7 +197,6 @@ function RunRoundPanel({ category, categories }: { category: LootCategoryView; c
             Run Another Round
           </button>
         </div>
-        {showPost && <PostToDiscordModal initialText={text} onClose={() => setShowPost(false)} />}
       </div>
     );
   }
@@ -604,9 +492,34 @@ function QueueList({
 
 // --- History ---------------------------------------------------------------
 
-function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: boolean }) {
+function RoundHistory({
+  rounds,
+  isAdmin,
+  categoryName,
+}: {
+  rounds: LootRoundView[];
+  isAdmin: boolean;
+  categoryName: string;
+}) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Deliberately NOT the numbered "1.name\n2.name..." format
+  // buildAnnouncementText produces for a just-run round — this round's
+  // original starting number isn't stored anywhere (it's derived at run
+  // time from other categories' round history, see computeNumberingStart in
+  // loot-queue-data.ts), so reconstructing it here for an arbitrary PAST
+  // round could silently produce the WRONG numbers if anything about the
+  // category's numbering link changed since. A plain name list carries no
+  // such risk — the same names shown in this row, just easy to paste.
+  async function handleCopy(round: LootRoundView) {
+    const header = [round.label, categoryName].filter(Boolean).join(" ");
+    const text = `**${header}**\n\n${round.members.map((m) => m.displayName).join(", ")}`;
+    const ok = await copyToClipboard(text);
+    setCopiedId(ok ? round.id : null);
+    setTimeout(() => setCopiedId((prev) => (prev === round.id ? null : prev)), 2000);
+  }
 
   function handleUndo(id: string) {
     if (!confirm("Undo this round? People served in this round will return to their previous positions in the queue")) return;
@@ -644,28 +557,39 @@ function RoundHistory({ rounds, isAdmin }: { rounds: LootRoundView[]; isAdmin: b
                 {r.actor ?? "—"} · {fmtTime(r.createdAt)}
               </p>
             </div>
-            {isAdmin && (
-              <div className="flex shrink-0 gap-2">
-                {i === 0 && (
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopy(r)}
+                className={`transition ${
+                  copiedId === r.id ? "text-emerald-400" : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {copiedId === r.id ? "Copied ✓" : "Copy"}
+              </button>
+              {isAdmin && (
+                <>
+                  {i === 0 && (
+                    <button
+                      type="button"
+                      disabled={busyId === r.id}
+                      onClick={() => handleUndo(r.id)}
+                      className="text-amber-400 transition hover:text-amber-300 disabled:opacity-40"
+                    >
+                      Undo
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={busyId === r.id}
-                    onClick={() => handleUndo(r.id)}
-                    className="text-amber-400 transition hover:text-amber-300 disabled:opacity-40"
+                    onClick={() => handleDelete(r.id)}
+                    className="text-rose-400 transition hover:text-rose-300 disabled:opacity-40"
                   >
-                    Undo
+                    Delete History
                   </button>
-                )}
-                <button
-                  type="button"
-                  disabled={busyId === r.id}
-                  onClick={() => handleDelete(r.id)}
-                  className="text-rose-400 transition hover:text-rose-300 disabled:opacity-40"
-                >
-                  Delete History
-                </button>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
         </li>
       ))}
@@ -897,7 +821,7 @@ export function LootQueueManager({
             {isAdmin && <RunRoundPanel key={selected.id} category={selected} categories={categories} />}
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-medium text-zinc-300">Recent History</h2>
-              <RoundHistory rounds={initialRounds} isAdmin={isAdmin} />
+              <RoundHistory rounds={initialRounds} isAdmin={isAdmin} categoryName={selected.name} />
             </div>
           </div>
         </div>

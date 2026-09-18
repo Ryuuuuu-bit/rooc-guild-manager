@@ -33,11 +33,22 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
   const [open, setOpen] = useState(false);
   const [templates, setTemplates] = useState<PartyTemplateListItem[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Distinct from `templates === null` ("still loading") — a thrown
+  // rejection (DB blip, expired session) would otherwise leave templates
+  // null forever and the panel stuck showing "Loading..." with no way to
+  // tell the difference from a slow network vs. an actual failure.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function openPanel() {
     setOpen(true);
     setTemplates(null);
-    setTemplates(await listPartyTemplates());
+    setLoadError(null);
+    try {
+      setTemplates(await listPartyTemplates());
+    } catch (err) {
+      console.error("Failed to load templates", err);
+      setLoadError("Failed to load templates. Please try again.");
+    }
   }
 
   async function handleApply(t: PartyTemplateListItem) {
@@ -48,26 +59,39 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
     )
       return;
     setBusyId(t.id);
-    const result = await applyPartyTemplate(boardId, t.id);
-    setBusyId(null);
-    if (result.ok) {
-      setOpen(false);
-      onApplied();
-      // ok can still carry a warning (e.g. some slots were left empty
-      // because that member is currently on leave) — surface it rather than
-      // silently discarding it, same pattern as the class-select panel.
-      if (result.error) alert(result.error);
-    } else {
-      alert(result.error ?? "Failed to load template. Please try again.");
+    try {
+      const result = await applyPartyTemplate(boardId, t.id);
+      if (result.ok) {
+        setOpen(false);
+        onApplied();
+        // ok can still carry a warning (e.g. some slots were left empty
+        // because that member is currently on leave) — surface it rather than
+        // silently discarding it, same pattern as the class-select panel.
+        if (result.error) alert(result.error);
+      } else {
+        alert(result.error ?? "Failed to load template. Please try again.");
+      }
+    } catch (err) {
+      console.error("Failed to apply template", err);
+      alert("Failed to apply template. Please try again.");
+    } finally {
+      setBusyId(null);
     }
   }
 
   async function handleDelete(t: PartyTemplateListItem) {
     if (!confirm(`Delete template "${t.name}"? This cannot be undone.`)) return;
     setBusyId(t.id);
-    const result = await deletePartyTemplate(t.id);
-    setBusyId(null);
-    if (result.ok) setTemplates((prev) => prev?.filter((x) => x.id !== t.id) ?? null);
+    try {
+      const result = await deletePartyTemplate(t.id);
+      if (result.ok) setTemplates((prev) => prev?.filter((x) => x.id !== t.id) ?? null);
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to delete template", err);
+      alert("Failed to delete template. Please try again.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   return (
@@ -100,7 +124,9 @@ export function PartyTemplatePanel({ boardId, boardName, onApplied }: PartyTempl
               </button>
             </div>
 
-            {templates === null ? (
+            {loadError ? (
+              <p className="py-4 text-center text-sm text-rose-400">{loadError}</p>
+            ) : templates === null ? (
               <p className="py-4 text-center text-sm text-zinc-500">Loading...</p>
             ) : templates.length === 0 ? (
               <p className="py-4 text-center text-sm text-zinc-500">No templates saved yet.</p>

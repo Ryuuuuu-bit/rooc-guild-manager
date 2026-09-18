@@ -421,30 +421,58 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     placeMember(member, { type: "unassigned" });
   }
 
+  // Every handler below talks to a server action that can THROW (not just
+  // return {ok:false}) — requireAdmin() rejecting a stale session, or a DB
+  // connection blip (this project's Railway deploys routinely interrupt
+  // in-flight requests, see bot/index.ts's restart-safety fixes) all surface
+  // as a rejected promise, not an ActionResult. Without a catch, that
+  // rejection is just an unhandled promise rejection in the console — the
+  // button silently does nothing, with no error and no state change, and an
+  // admin who doesn't notice may click again thinking the first click didn't
+  // register. Same class of bug moveMember/setMemberClass below were
+  // already hardened against; these structural actions (board/group/party
+  // create/rename/delete) had the exact same gap.
+
   async function handleReset() {
     if (!selectedBoardId) return;
     if (!confirm("Clear this entire board back to empty? This cannot be undone.")) return;
-    const result = await resetPartyBoard(selectedBoardId);
-    if (result.ok) router.refresh();
+    try {
+      const result = await resetPartyBoard(selectedBoardId);
+      if (result.ok) router.refresh();
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to reset board", err);
+      alert("Failed to reset board. Please try again.");
+    }
   }
 
   async function handleRenameBoard() {
     if (!board || !selectedBoardId) return;
     const name = window.prompt("Rename board:", board.name);
     if (!name) return;
-    const result = await renameBoard(selectedBoardId, name);
-    if (result.ok) router.refresh();
-    else if (result.error) alert(result.error);
+    try {
+      const result = await renameBoard(selectedBoardId, name);
+      if (result.ok) router.refresh();
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to rename board", err);
+      alert("Failed to rename board. Please try again.");
+    }
   }
 
   async function handleDeleteBoard() {
     if (!board || !selectedBoardId) return;
     if (!confirm(`Delete the entire "${board.name}" board? This cannot be undone.`)) return;
-    const result = await deleteBoard(selectedBoardId);
-    if (result.ok) {
-      const remaining = boards.filter((b) => b.id !== selectedBoardId);
-      router.push(remaining[0] ? `/party?board=${remaining[0].id}` : "/party");
-      router.refresh();
+    try {
+      const result = await deleteBoard(selectedBoardId);
+      if (result.ok) {
+        const remaining = boards.filter((b) => b.id !== selectedBoardId);
+        router.push(remaining[0] ? `/party?board=${remaining[0].id}` : "/party");
+        router.refresh();
+      }
+    } catch (err) {
+      console.error("Failed to delete board", err);
+      alert("Failed to delete board. Please try again.");
     }
   }
 
@@ -452,35 +480,60 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (!selectedBoardId) return;
     const name = window.prompt("New group name (e.g. Main Stage, Party A, team leader's name):");
     if (!name) return;
-    const result = await createGroup(selectedBoardId, name);
-    if (result.ok) router.refresh();
-    else if (result.error) alert(result.error);
+    try {
+      const result = await createGroup(selectedBoardId, name);
+      if (result.ok) router.refresh();
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to create group", err);
+      alert("Failed to create group. Please try again.");
+    }
   }
 
   async function handleRenameGroup(groupId: string, currentName: string) {
     const name = window.prompt("Rename group:", currentName);
     if (!name) return;
-    const result = await renameGroup(groupId, name);
-    if (result.ok) router.refresh();
-    else if (result.error) alert(result.error);
+    try {
+      const result = await renameGroup(groupId, name);
+      if (result.ok) router.refresh();
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to rename group", err);
+      alert("Failed to rename group. Please try again.");
+    }
   }
 
   async function handleDeleteGroup(groupId: string, name: string) {
     if (!confirm(`Delete the entire "${name}" group (including every party inside it)? This cannot be undone.`)) return;
-    const result = await deleteGroup(groupId);
-    if (result.ok) router.refresh();
+    try {
+      const result = await deleteGroup(groupId);
+      if (result.ok) router.refresh();
+    } catch (err) {
+      console.error("Failed to delete group", err);
+      alert("Failed to delete group. Please try again.");
+    }
   }
 
   async function handleCreateParty(groupId: string) {
-    const result = await createParty(groupId);
-    if (result.ok) router.refresh();
-    else if (result.error) alert(result.error);
+    try {
+      const result = await createParty(groupId);
+      if (result.ok) router.refresh();
+      else if (result.error) alert(result.error);
+    } catch (err) {
+      console.error("Failed to create party", err);
+      alert("Failed to create party. Please try again.");
+    }
   }
 
   async function handleDeleteParty(partyId: string, label: string) {
     if (!confirm(`Delete ${label}?`)) return;
-    const result = await deleteParty(partyId);
-    if (result.ok) router.refresh();
+    try {
+      const result = await deleteParty(partyId);
+      if (result.ok) router.refresh();
+    } catch (err) {
+      console.error("Failed to delete party", err);
+      alert("Failed to delete party. Please try again.");
+    }
   }
 
   const placedCount = useMemo(() => {

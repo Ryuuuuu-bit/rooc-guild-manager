@@ -32,55 +32,81 @@ export function PostAttendanceButton({ boardId, boardName }: { boardId: string; 
   const [error, setError] = useState<string | null>(null);
   const [posting, setPosting] = useState(false);
 
+  // Every branch below is wrapped in try/catch/finally rather than just
+  // reading the ActionResult — a thrown rejection (a dropped DB connection
+  // mid-request, a session that expired between opening this panel and
+  // clicking Post) would otherwise skip the setLoading/setPosting/
+  // setLinkSaving(false) call that follows it, leaving the button stuck
+  // showing "Loading..."/"Posting..." forever with no error shown — the
+  // finally block is what guarantees that reset happens either way.
+
   async function handleOpen() {
     setOpen(true);
     setLoading(true);
     setError(null);
     setLinkError(null);
-    const [chRes, currentStatus, currentEmoji, currentEventKey] = await Promise.all([
-      listDiscordChannels(),
-      getAttendanceStatus(boardId),
-      getBoardEmoji(boardId),
-      getBoardCheckinEventKey(boardId),
-    ]);
-    setLoading(false);
-    if (!chRes.ok || !chRes.channels) {
-      setError(chRes.error ?? "Failed to fetch channel list.");
-      return;
+    try {
+      const [chRes, currentStatus, currentEmoji, currentEventKey] = await Promise.all([
+        listDiscordChannels(),
+        getAttendanceStatus(boardId),
+        getBoardEmoji(boardId),
+        getBoardCheckinEventKey(boardId),
+      ]);
+      if (!chRes.ok || !chRes.channels) {
+        setError(chRes.error ?? "Failed to fetch channel list.");
+        return;
+      }
+      setChannels(chRes.channels);
+      setStatus(currentStatus);
+      setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
+      setEmoji(currentEmoji);
+      setCheckinEventKey(currentEventKey);
+    } catch (err) {
+      console.error("Failed to load attendance-post panel", err);
+      setError("Failed to load. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setChannels(chRes.channels);
-    setStatus(currentStatus);
-    setChannelId(currentStatus?.channelId ?? chRes.channels[0]?.id ?? "");
-    setEmoji(currentEmoji);
-    setCheckinEventKey(currentEventKey);
   }
 
   async function handleLinkChange(nextKey: string) {
     const resolved = nextKey || null;
     setLinkSaving(true);
     setLinkError(null);
-    const res = await setBoardCheckinEventKey(boardId, resolved);
-    setLinkSaving(false);
-    if (!res.ok) {
-      setLinkError(res.error ?? "Failed to update the link.");
-      return;
+    try {
+      const res = await setBoardCheckinEventKey(boardId, resolved);
+      if (!res.ok) {
+        setLinkError(res.error ?? "Failed to update the link.");
+        return;
+      }
+      setCheckinEventKey(resolved);
+    } catch (err) {
+      console.error("Failed to update check-in event link", err);
+      setLinkError("Failed to update the link. Please try again.");
+    } finally {
+      setLinkSaving(false);
     }
-    setCheckinEventKey(resolved);
   }
 
   async function handlePost() {
     if (!channelId) return;
     setPosting(true);
     setError(null);
-    const res = await postAttendanceMessage(boardId, channelId, emoji);
-    setPosting(false);
-    if (!res.ok) {
-      setError(res.error ?? "Failed to post.");
-      return;
+    try {
+      const res = await postAttendanceMessage(boardId, channelId, emoji);
+      if (!res.ok) {
+        setError(res.error ?? "Failed to post.");
+        return;
+      }
+      if (res.error) setError(res.error);
+      const fresh = await getAttendanceStatus(boardId);
+      setStatus(fresh);
+    } catch (err) {
+      console.error("Failed to post attendance message", err);
+      setError("Failed to post. Please try again.");
+    } finally {
+      setPosting(false);
     }
-    if (res.error) setError(res.error);
-    const fresh = await getAttendanceStatus(boardId);
-    setStatus(fresh);
   }
 
   return (
