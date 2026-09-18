@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { lootCategories, lootQueueEntries, lootRounds, members } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
@@ -378,10 +378,26 @@ export async function setLootCategoryNumberingBase(
 
 /**
  * Reverses a round — but ONLY if it's still the most recent round run for
- * that category (checked here, not just trusted from the client), since
- * restoring saved `previousPositions` is only safe when nothing has moved
- * since. Anything served in that round moves back exactly where it was;
- * the round's history row is deleted.
+ * that category (checked here, not just trusted from the client). Anything
+ * served in that round is merged back into the CURRENT queue by rank,
+ * rather than by overwriting its remembered absolute `position` number.
+ *
+ * `position` has no uniqueness constraint, and if something else
+ * renumbered this category in the meantime — most commonly
+ * moveLootQueueEntryToPosition's "jump to rank", which re-stamps EVERY
+ * member's position to 0..n-1 — the served members' old absolute numbers
+ * (e.g. 0, 1, 2) can already belong to different members by the time
+ * Undo runs. Writing those numbers back verbatim used to create a
+ * duplicate `position`, and the old renormalization pass broke that tie by
+ * sorting on the queue entry's db id — arbitrary, unrelated to real queue
+ * order — so the queue came back visibly scrambled instead of undone.
+ *
+ * Merging by rank (how many still-queued, not-served members originally
+ * sat ahead of each served member) instead can never produce a duplicate
+ * position, so there's nothing left for an arbitrary tiebreak to resolve.
+ * It's also exactly equivalent to the old restore-by-number behavior when
+ * nothing else changed in between, since everyone else's position is then
+ * unchanged from what it was when this round ran.
  */
 export async function undoLootRound(roundId: string): Promise<ActionResult> {
   await requireAdmin();
@@ -405,30 +421,46 @@ export async function undoLootRound(roundId: string): Promise<ActionResult> {
       return { ok: false, error: "Only the most recent round for this category can be undone — a newer round has already been run" };
     }
 
-    for (let i = 0; i < round.memberIds.length; i++) {
-      await tx
-        .update(lootQueueEntries)
-        .set({ position: round.previousPositions[i] })
-        .where(and(eq(lootQueueEntries.categoryId, round.categoryId), eq(lootQueueEntries.memberId, round.memberIds[i])));
-    }
-
-    // Re-normalize every position in this category to 0..n-1, in whatever
-    // order the restored values now sort into. Restoring the raw saved
-    // `previousPositions` is only exactly right if nothing else moved since
-    // this round ran — if someone was manually reordered in the meantime
-    // (moveLootQueueEntry / moveLootQueueEntryToPosition), a restored value
-    // can collide with a position someone else now occupies, leaving two
-    // members tied on the same position (ambiguous queue order) instead of
-    // undoing cleanly. Same normalization moveLootQueueEntryToPosition
-    // already does after its own reorder.
-    const all = await tx
+    // Everyone else in this category's queue right now, in their current
+    // order — untouched here except for where the served members below get
+    // merged back in among them.
+    const others = await tx
       .select()
       .from(lootQueueEntries)
-      .where(eq(lootQueueEntries.categoryId, round.categoryId))
+      .where(and(eq(lootQueueEntries.categoryId, round.categoryId), notInArray(lootQueueEntries.memberId, round.memberIds)))
       .orderBy(asc(lootQueueEntries.position), asc(lootQueueEntries.id));
-    for (let i = 0; i < all.length; i++) {
-      if (all[i].position !== i) {
-        await tx.update(lootQueueEntries).set({ position: i }).where(eq(lootQueueEntries.id, all[i].id));
+
+    const servedRows = await tx
+      .select()
+      .from(lootQueueEntries)
+      .where(and(eq(lootQueueEntries.categoryId, round.categoryId), inArray(lootQueueEntries.memberId, round.memberIds)));
+    const servedByMemberId = new Map(servedRows.map((r) => [r.memberId, r]));
+
+    // round.memberIds / previousPositions are index-aligned and already in
+    // ascending original-position order (see runLootRound) — a standard
+    // sorted merge: walk `others` and the served members together, taking
+    // whichever came first originally, so served members land back among
+    // the same neighbors they had before, in their original relative order.
+    const merged: (typeof others)[number][] = [];
+    let j = 0;
+    for (let i = 0; i < round.memberIds.length; i++) {
+      const row = servedByMemberId.get(round.memberIds[i]);
+      if (!row) continue; // no longer in this category's queue at all (e.g. removed since) — nothing to restore
+      const threshold = round.previousPositions[i];
+      while (j < others.length && others[j].position < threshold) {
+        merged.push(others[j]);
+        j++;
+      }
+      merged.push(row);
+    }
+    while (j < others.length) {
+      merged.push(others[j]);
+      j++;
+    }
+
+    for (let i = 0; i < merged.length; i++) {
+      if (merged[i].position !== i) {
+        await tx.update(lootQueueEntries).set({ position: i }).where(eq(lootQueueEntries.id, merged[i].id));
       }
     }
 
