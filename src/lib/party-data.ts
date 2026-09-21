@@ -64,6 +64,9 @@ export interface UpcomingBoardLeave {
   memberId: string;
   name: string;
   discordAvatar: string | null;
+  /** The member's class — lets the board suggest same-class substitutes
+   * from the unassigned pool next to the warning (see party-board.tsx). */
+  className: string | null;
   date: string; // "YYYY-MM-DD"
 }
 
@@ -190,7 +193,13 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     .map((row) => {
       const member = membersById.get(row.memberId);
       if (!member) return null;
-      return { memberId: member.id, name: memberDisplayName(member), discordAvatar: member.discordAvatar, date: row.date };
+      return {
+        memberId: member.id,
+        name: memberDisplayName(member),
+        discordAvatar: member.discordAvatar,
+        className: member.characterClass,
+        date: row.date,
+      };
     })
     .filter((v): v is UpcomingBoardLeave => v !== null)
     .sort((a, b) => (a.date === b.date ? a.name.localeCompare(b.name, "th") : a.date.localeCompare(b.date)));

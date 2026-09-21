@@ -554,6 +554,42 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     });
   }, [board, poolQuery, poolClassFilter]);
 
+  // One row per member who's out (busy now, or with an upcoming leave on
+  // file), each with the open members sharing their class. A member both
+  // busy today and on file for a later date appears once, tagged with the
+  // later date. Members with no class set get no row — there's nothing to
+  // match on, and the plain pool list already covers "anyone free".
+  const substituteHints = useMemo(() => {
+    type Hint = { memberId: string; name: string; className: string | null; when: string | null; candidates: PartyBoardMemberRef[] };
+    const rows = new Map<string, Hint>();
+    if (!board) return [] as Hint[];
+    const openByClass = new Map<string, PartyBoardMemberRef[]>();
+    for (const m of board.unassigned) {
+      if (!m.className) continue;
+      openByClass.set(m.className, [...(openByClass.get(m.className) ?? []), m]);
+    }
+    for (const m of board.busy) {
+      if (!m.className) continue;
+      rows.set(m.id, { memberId: m.id, name: m.displayName, className: m.className, when: null, candidates: openByClass.get(m.className) ?? [] });
+    }
+    for (const l of board.upcomingLeaves) {
+      if (!l.className) continue;
+      const existing = rows.get(l.memberId);
+      if (existing) {
+        if (!existing.when) existing.when = fmtLeaveDate(l.date);
+        continue;
+      }
+      rows.set(l.memberId, {
+        memberId: l.memberId,
+        name: l.name,
+        className: l.className,
+        when: fmtLeaveDate(l.date),
+        candidates: openByClass.get(l.className) ?? [],
+      });
+    }
+    return [...rows.values()];
+  }, [board]);
+
   const activeGroup = board?.groups.find((g) => g.id === activeGroupId) ?? null;
 
   return (
@@ -663,6 +699,42 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Substitute suggestions — for everyone out (on the Busy/Leave
+                list right now, or with an upcoming leave on file), the
+                open members with the SAME class, so an organizer doesn't
+                have to scan the whole pool to find a like-for-like swap.
+                Purely a hint: placing them still goes through the normal
+                drag / tap-to-place flow below. Hidden in screenshot mode
+                for the same reason as the banner above. */}
+            {!screenshotMode && substituteHints.length > 0 && (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5 text-xs text-zinc-300">
+                <span className="font-medium text-emerald-300">🔁 Substitutes with the same class:</span>
+                <ul className="mt-1.5 flex flex-col gap-1">
+                  {substituteHints.map((h) => (
+                    <li key={h.memberId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="text-zinc-400">
+                        {h.name}
+                        {h.className ? <span className="text-zinc-500"> ({h.className})</span> : null}
+                        {h.when ? <span className="text-amber-300/80"> · {h.when}</span> : null}
+                        {" →"}
+                      </span>
+                      {h.candidates.length > 0 ? (
+                        <span className="flex flex-wrap gap-1">
+                          {h.candidates.map((c) => (
+                            <span key={c.id} className="rounded-full bg-emerald-500/10 px-2 py-0.5 ring-1 ring-inset ring-emerald-500/30">
+                              {c.displayName}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500">no one open with this class</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 

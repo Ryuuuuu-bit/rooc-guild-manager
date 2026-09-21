@@ -118,6 +118,43 @@ export function nextOccurrenceEnd(event: CheckinEventConfig, now: Date): Date {
   return now;
 }
 
+/**
+ * "YYYY-MM-DD" (Thai calendar date) of the occurrence nextOccurrenceEnd
+ * above would land on — the same search, returning the date instead of the
+ * end instant, for callers that key things by date (scheduledLeaves rows,
+ * digest headers). Falls back to today if nothing is found within the
+ * 14-day search, mirroring nextOccurrenceEnd's own safety net.
+ */
+export function nextOccurrenceDate(event: CheckinEventConfig, now: Date): string {
+  const today = thaiDateString(now);
+  for (let i = 0; i <= 14; i++) {
+    const date = addDays(today, i);
+    if (!event.weekdays.includes(weekdayOf(date))) continue;
+    if (windowFor(event, date).end > now) return date;
+  }
+  return today;
+}
+
+/**
+ * The end instant of this event's MOST RECENT occurrence that has already
+ * finished (at or before `now`) — the mirror image of nextOccurrenceEnd.
+ * Used by the nightly reset (bot/midnight-reset.ts) to tell a "ลา" that was
+ * for the occurrence that just ended (clear it) apart from one marked early
+ * for the NEXT occurrence (keep it). Searches back 14 days for the same
+ * reason nextOccurrenceEnd searches forward 14; null if nothing has ended
+ * in that span (a brand-new event config).
+ */
+export function lastOccurrenceEnd(event: CheckinEventConfig, now: Date): Date | null {
+  const today = thaiDateString(now);
+  for (let i = 0; i <= 14; i++) {
+    const date = addDays(today, -i);
+    if (!event.weekdays.includes(weekdayOf(date))) continue;
+    const { end } = windowFor(event, date);
+    if (end <= now) return end;
+  }
+  return null;
+}
+
 /** Every channel ID watched by any check-in event — what the bot subscribes to. */
 export function allWatchedChannelIds(): string[] {
   return CHECKIN_EVENTS.flatMap((e) => e.channelIds);

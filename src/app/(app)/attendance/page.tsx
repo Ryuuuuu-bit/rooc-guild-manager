@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { getAttendanceBoardBreakdown, getAttendanceStats } from "@/lib/data";
+import { getAttendanceBoardBreakdown, getAttendanceStats, getOverQuotaThisMonth } from "@/lib/data";
+import { MONTHLY_LEAVE_LIMIT } from "@/lib/leave-quota";
 import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
@@ -71,13 +72,15 @@ export default async function AttendancePage({
   // silently reset the other.
   const rangeQuery = isCustomRange ? `from=${fromValid}&to=${toValid}` : `days=${daysParam}`;
 
-  const [{ stats, totalLeaveEvents }, breakdown] = await Promise.all([
+  const [{ stats, totalLeaveEvents }, breakdown, overQuota] = await Promise.all([
     getAttendanceStats({ ...rangeFilter, boardId }),
     // Only needed for the "All Boards" view's summary pills — skip the extra
     // query when a specific board is already selected (its total is already
     // shown above the table).
     boardId ? Promise.resolve(null) : getAttendanceBoardBreakdown(rangeFilter),
+    getOverQuotaThisMonth(),
   ]);
+  const overQuotaById = new Map(overQuota.map((o) => [o.member.id, o]));
   const maxLeaveCount = Math.max(1, ...stats.map((s) => s.leaveCount));
   const selectedBoardName = boardId ? boards.find((b) => b.id === boardId)?.name : null;
 
@@ -214,6 +217,32 @@ export default async function AttendancePage({
         </div>
       )}
 
+      {/* Over the monthly rule THIS month — independent of the range/board
+          filter above (the rule is per calendar month, whatever period the
+          table is showing). Counts pending leaves too, matching what the
+          bot tells the member and the admin notification, so a 3rd leave
+          shows up here the moment it's marked. */}
+      {overQuota.length > 0 && (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm">
+          <p className="font-medium text-rose-200">
+            ⚠️ Over the monthly leave limit ({MONTHLY_LEAVE_LIMIT} per board) this month — {overQuota.length} member
+            {overQuota.length === 1 ? "" : "s"}
+          </p>
+          <ul className="mt-2 flex flex-col gap-1 text-xs text-rose-100/90">
+            {overQuota.map((o) => (
+              <li key={o.member.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <Link href={`/members/${o.member.id}`} className="font-medium underline-offset-2 hover:underline">
+                  {memberDisplayName(o.member)}
+                </Link>
+                <span className="text-rose-200/70">
+                  {o.boards.map((b) => `${b.boardName}: ${b.leaveCount}/${MONTHLY_LEAVE_LIMIT}`).join(" · ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
@@ -245,6 +274,17 @@ export default async function AttendancePage({
                       className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
                     />
                     <span className="truncate font-medium text-zinc-100">{memberDisplayName(row.member)}</span>
+                    {overQuotaById.has(row.member.id) && (
+                      <span
+                        title={`Over the monthly limit this month: ${overQuotaById
+                          .get(row.member.id)!
+                          .boards.map((b) => `${b.boardName} ${b.leaveCount}/${MONTHLY_LEAVE_LIMIT}`)
+                          .join(", ")}`}
+                        className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-300 ring-1 ring-inset ring-rose-500/40"
+                      >
+                        over quota
+                      </span>
+                    )}
                   </Link>
                 </td>
                 <td className="px-5 py-3">

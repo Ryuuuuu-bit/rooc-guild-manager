@@ -12,6 +12,7 @@ import {
   partySlots,
 } from "../src/db/schema";
 import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
+import { MONTHLY_LEAVE_LIMIT } from "../src/lib/leave-quota";
 import { removeMemberReaction, sendDirectMessage } from "../src/lib/discord";
 import { getEmojiToClassMap } from "./job-classes";
 import { getCheckinEvent, nextOccurrenceEnd } from "../src/lib/checkin-events";
@@ -74,10 +75,8 @@ async function logEvent(
 }
 
 // Purely informational display hint next to the temporary leave
-// confirmation below — NOT enforced anywhere (nothing blocks a member from
-// leaving more than this). Guild rule is roughly 2/month per the admin as
-// of Aug 2026; bump this if that changes.
-const MONTHLY_LEAVE_LIMIT = 2;
+// confirmation below — see src/lib/leave-quota.ts (shared with the admin
+// notification and the /attendance page).
 
 /** Start of the current calendar month at Thai-local midnight, as a UTC instant (mirrors the noon-Thailand pin used for manual leave entries). */
 function startOfThaiMonth(): Date {

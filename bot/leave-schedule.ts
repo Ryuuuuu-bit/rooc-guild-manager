@@ -9,9 +9,9 @@
 import { and, asc, desc, eq, isNull, lte } from "drizzle-orm";
 import { db } from "../src/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries, scheduledLeaves } from "../src/db/schema";
-import { CHECKIN_EVENTS } from "../src/lib/checkin-events";
+import { CHECKIN_EVENTS, windowFor } from "../src/lib/checkin-events";
 import { clearMemberSlotOnBoard, countLeavesThisMonth, dmMemberLeaveStatus } from "./reactions";
-import { notifyAdminsOfLeave } from "./attendance-confirm";
+import { notifyAdminsOfLeaves, type AdminLeaveNotice } from "./attendance-confirm";
 
 /** "YYYY-MM-DD" for now in Thailand's local time — a local copy rather than
  * an import from midnight-reset.ts, since that module calls into this one
@@ -74,7 +74,8 @@ async function resolveEventBoards(): Promise<Map<string, { id: string; name: str
  */
 export async function listUpcomingLeaveOptions(): Promise<LeaveOption[]> {
   const boardByEventKey = await resolveEventBoards();
-  const today = thaiDateString();
+  const now = new Date();
+  const today = thaiDateString(now);
   const options: LeaveOption[] = [];
 
   for (const event of CHECKIN_EVENTS) {
@@ -83,6 +84,11 @@ export async function listUpcomingLeaveOptions(): Promise<LeaveOption[]> {
     for (let i = 0; i <= LOOKAHEAD_DAYS; i++) {
       const date = addDays(today, i);
       if (!event.weekdays.includes(weekdayOf(date))) continue;
+      // Today's occurrence is only worth offering while it hasn't ended yet
+      // — once the window is over there's nothing left to be excused from,
+      // and a leave "scheduled" for it would just get applied at the next
+      // midnight as a bogus leave on the following day.
+      if (i === 0 && windowFor(event, date).end <= now) continue;
       options.push({ boardId: board.id, boardName: board.name, date, eventKey: event.key, eventLabel: event.label });
     }
   }
@@ -235,6 +241,7 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
   const today = thaiDateString();
   const due = await db.select().from(scheduledLeaves).where(lte(scheduledLeaves.date, today));
   let applied = 0;
+  const adminNotices: AdminLeaveNotice[] = [];
 
   for (const row of due) {
     const member = await db.query.members.findFirst({ where: eq(members.id, row.memberId) });
@@ -333,8 +340,13 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
       // both).
       if (insertedLeaveLog) {
         const leaveCount = await countLeavesThisMonth(row.memberId, row.boardId);
-        void dmMemberLeaveStatus(member.discordId, board?.name ?? row.boardId, leaveCount, "schedule", row.eventKey);
-        void notifyAdminsOfLeave(row.memberId, row.boardId, row.date);
+        // Awaited (not fire-and-forget like the live-reaction path) so the
+        // member DMs go out one at a time — dmMemberLeaveStatus never
+        // throws (it catches and logs), and a whole night's worth of DMs
+        // opening channels simultaneously is exactly what tripped Discord's
+        // "opening direct messages too fast" limit (see notifyAdminsOfLeaves).
+        await dmMemberLeaveStatus(member.discordId, board?.name ?? row.boardId, leaveCount, "schedule", row.eventKey);
+        adminNotices.push({ memberId: row.memberId, boardId: row.boardId, date: row.date });
       }
     } else {
       // Row's job is done either way — a member who left/got benched between
@@ -343,6 +355,12 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
       await db.delete(scheduledLeaves).where(eq(scheduledLeaves.id, row.id));
     }
   }
+
+  // One combined DM per admin for everything applied this pass, sent after
+  // the loop — a per-leave DM here used to rate-limit out with only a
+  // handful of leaves (see notifyAdminsOfLeaves). Fire-and-forget: it's a
+  // Discord call, not part of applying anything.
+  if (adminNotices.length > 0) void notifyAdminsOfLeaves(adminNotices);
 
   return { applied };
 }

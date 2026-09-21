@@ -1,8 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { db } from "../src/db";
 import { members, membershipEvents, partyBoards, partyBusyEntries } from "../src/db/schema";
-import { sendDirectMessage } from "../src/lib/discord";
 import { getCheckinEvent, nextOccurrenceEnd } from "../src/lib/checkin-events";
+import { MONTHLY_LEAVE_LIMIT } from "../src/lib/leave-quota";
+import { adminNotifyConfigured, notifyAdmins } from "./admin-notify";
 
 // Fallback for a board with no linked CHECKIN_EVENTS entry (partyBoards.
 // checkinEventKey is null or points at an unknown key) — such a board has no
@@ -46,19 +47,6 @@ function lockInTimingPhrase(checkinEventKey: string | null): string {
   return `จนกว่ากิจกรรมจะจบวันที่ ${dateLabel} (${timeLabel} น.)`;
 }
 
-/** Comma-separated Discord user IDs to DM the moment a "ลา" survives
- * confirmation — lets admins rework the party board well ahead of the event
- * instead of only noticing on their next visit to /attendance. Read
- * directly off the env var (bot convention — see DISCORD_TRACKED_ROLE_NAME
- * in sync.ts) rather than importing src/lib/env, which throws on missing
- * required vars this bot doesn't need. Empty/unset = no one gets DMed. */
-function leaveNotifyUserIds(): string[] {
-  return (process.env.DISCORD_LEAVE_NOTIFY_USER_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 /**
  * Best-effort DM to every configured admin the moment a member is marked
  * "ลา" — from a live reaction (reactions.ts's handleReactionAdd) or an
@@ -91,36 +79,97 @@ function formatLeaveDateLabel(dateStr: string): string {
 }
 
 export async function notifyAdminsOfLeave(memberId: string, boardId: string, date?: string) {
-  const notifyIds = leaveNotifyUserIds();
-  if (notifyIds.length === 0) return;
+  await notifyAdminsOfLeaves([{ memberId, boardId, date }]);
+}
 
-  const member = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  if (!member) return;
-  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-  const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
-  // Which occurrence this leave is actually FOR, not just when it was
-  // marked — a member reacting today for a board whose next occurrence
-  // isn't until later (e.g. reacting Monday for GL, which only runs
-  // Tue/Thu) used to leave admins to guess the date themselves from the
-  // board name alone. Callers resolve this themselves (the live-reaction
-  // path in reactions.ts computes it from the linked event's next
-  // occurrence; the advance-/leave path in leave-schedule.ts already has
-  // the exact requested date on hand) — omitted entirely for a board with
-  // no linked event, where there's no specific occurrence to name.
-  const dateClause = date ? ` วันที่ ${formatLeaveDateLabel(date)}` : "";
+export interface AdminLeaveNotice {
+  memberId: string;
+  boardId: string;
+  /** "YYYY-MM-DD" the leave is for, when known — see the comment inside. */
+  date?: string;
+}
 
-  const text =
-    `📋 แจ้งลา: ${displayName} ลาในกระดาน "${board?.name ?? boardId}"${dateClause} ` +
-    `(ยังไม่ล็อก${lockInTimingPhrase(board?.checkinEventKey ?? null)} — อาจถูกยกเลิกได้ก่อนหน้านั้น เช็ค /party ก่อนเริ่มงานอีกทีถ้าจะย้ายคนแทนที่)\n` +
-    "เตรียมจัดปาร์ตี้ทดแทนได้เลยครับ";
+/**
+ * Batched form of notifyAdminsOfLeave — ONE DM per admin covering every
+ * leave in `items`, instead of one DM per leave. Needed because
+ * applyTodaysScheduledLeaves (leave-schedule.ts) applies every leave due
+ * that day in one pass at midnight, and firing a separate DM per leave per
+ * admin all at once tripped Discord's "You are opening direct messages too
+ * fast" limit (code 40003) — seen live with just 4 leaves × 2 admins, so
+ * admins silently got NO notification at all for most of that night's
+ * leaves. Each sendDirectMessage opens a DM channel first, and that open is
+ * what's rate-limited; batching means one open per admin per pass.
+ */
+export async function notifyAdminsOfLeaves(items: AdminLeaveNotice[]) {
+  if (!adminNotifyConfigured() || items.length === 0) return;
 
-  for (const userId of notifyIds) {
-    try {
-      await sendDirectMessage(userId, text);
-    } catch (err) {
-      console.error(`[bot] failed to DM admin ${userId} about a new leave`, err);
-    }
+  const lines: string[] = [];
+  let overQuota = 0;
+  for (const item of items) {
+    const member = await db.query.members.findFirst({ where: eq(members.id, item.memberId) });
+    if (!member) continue;
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, item.boardId) });
+    const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
+    // Which occurrence this leave is actually FOR, not just when it was
+    // marked — a member reacting today for a board whose next occurrence
+    // isn't until later (e.g. reacting Monday for GL, which only runs
+    // Tue/Thu) used to leave admins to guess the date themselves from the
+    // board name alone. Callers resolve this themselves (the live-reaction
+    // path in reactions.ts computes it from the linked event's next
+    // occurrence; the advance-/leave path in leave-schedule.ts already has
+    // the exact requested date on hand) — omitted entirely for a board with
+    // no linked event, where there's no specific occurrence to name.
+    const dateClause = item.date ? ` วันที่ ${formatLeaveDateLabel(item.date)}` : "";
+    // Monthly count on this board (confirmed + still-pending, same as the
+    // member's own DM shows them) — flagged inline when it's past the guild
+    // rule so an admin sees a repeat offender without opening /attendance.
+    const monthCount = await countLeavesThisMonth(item.memberId, item.boardId);
+    const quotaClause =
+      monthCount > MONTHLY_LEAVE_LIMIT ? ` ⚠️ **เกินโควต้า — ครั้งที่ ${monthCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้**` : ` (ครั้งที่ ${monthCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้)`;
+    if (monthCount > MONTHLY_LEAVE_LIMIT) overQuota++;
+    lines.push(
+      `• ${displayName} ลาในกระดาน "${board?.name ?? item.boardId}"${dateClause}${quotaClause} ` +
+        `— ยังไม่ล็อก${lockInTimingPhrase(board?.checkinEventKey ?? null)}`
+    );
   }
+  if (lines.length === 0) return;
+
+  const header = lines.length === 1 ? "📋 แจ้งลา:" : `📋 แจ้งลา ${lines.length} รายการ:`;
+  const quotaFooter = overQuota > 0 ? `\n⚠️ มี ${overQuota} คนที่ลาเกินโควต้าเดือนนี้ — ดูรายละเอียดที่หน้า /attendance` : "";
+  const text =
+    `${header}\n${lines.join("\n")}\n` +
+    "อาจถูกยกเลิกได้ก่อนล็อก — เช็ค /party ก่อนเริ่มงานอีกทีถ้าจะย้ายคนแทนที่\n" +
+    "เตรียมจัดปาร์ตี้ทดแทนได้เลยครับ" +
+    quotaFooter;
+
+  await notifyAdmins(text);
+}
+
+/** Start of the current calendar month at Thai-local midnight, as a UTC
+ * instant — local copy of the same helper in bot/reactions.ts (which
+ * imports this file, so importing back would create a cycle). */
+function startOfThaiMonth(): Date {
+  const nowThai = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  return new Date(Date.UTC(nowThai.getUTCFullYear(), nowThai.getUTCMonth(), 1, 0, 0, 0) - 7 * 60 * 60 * 1000);
+}
+
+/** ATTENDANCE_LEAVE rows (confirmed or still-pending) for this member on
+ * this board since the start of the current Thai month — same definition
+ * bot/reactions.ts's countLeavesThisMonth uses for the member-facing DM,
+ * duplicated here for the cycle reason above. */
+export async function countLeavesThisMonth(memberId: string, boardId: string): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(membershipEvents)
+    .where(
+      and(
+        eq(membershipEvents.memberId, memberId),
+        eq(membershipEvents.boardId, boardId),
+        eq(membershipEvents.type, "ATTENDANCE_LEAVE"),
+        gte(membershipEvents.createdAt, startOfThaiMonth())
+      )
+    );
+  return row?.count ?? 0;
 }
 
 /**

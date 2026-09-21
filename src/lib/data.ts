@@ -3,6 +3,7 @@ import { discordRoles, members, membershipEvents, memberNotes, partyBoards, type
 import { and, arrayContains, desc, eq, gte, ilike, isNotNull, lte, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
+import { MONTHLY_LEAVE_LIMIT } from "@/lib/leave-quota";
 
 export interface MemberFilters {
   search?: string;
@@ -215,6 +216,69 @@ export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
   const totalLeaveEvents = rows.reduce((sum, r) => sum + r.leaveCount, 0);
 
   return { stats, totalLeaveEvents };
+}
+
+export interface OverQuotaEntry {
+  member: typeof members.$inferSelect;
+  /** Per-board counts this month, only boards where the count is over the limit. */
+  boards: { boardId: string | null; boardName: string; leaveCount: number }[];
+}
+
+/** Start of the current calendar month at Thai-local midnight, as a UTC
+ * instant — same helper the bot keeps its own copies of. */
+function startOfThaiMonth(): Date {
+  const nowThai = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  return new Date(Date.UTC(nowThai.getUTCFullYear(), nowThai.getUTCMonth(), 1, 0, 0, 0) - 7 * 60 * 60 * 1000);
+}
+
+/**
+ * Active, non-benched members who are OVER the monthly leave rule
+ * (MONTHLY_LEAVE_LIMIT, per board) in the current Thai calendar month —
+ * the "⚠️ เกินโควต้าเดือนนี้" panel on /attendance. Counts confirmed AND
+ * still-pending ATTENDANCE_LEAVE rows, deliberately matching what the bot
+ * tells the member ("ครั้งที่ N/2") and the admin notification, rather than
+ * getAttendanceStats's confirmed-only view — a member on their 3rd leave
+ * this month should be flagged the moment it's marked, not only after the
+ * event ends. Independent of the page's range/board filter: the rule is a
+ * per-month thing regardless of what period the table is showing.
+ */
+export async function getOverQuotaThisMonth(): Promise<OverQuotaEntry[]> {
+  const rows = await db
+    .select({
+      memberId: membershipEvents.memberId,
+      boardId: membershipEvents.boardId,
+      leaveCount: sql<number>`count(*)::int`,
+    })
+    .from(membershipEvents)
+    .where(and(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), gte(membershipEvents.createdAt, startOfThaiMonth())))
+    .groupBy(membershipEvents.memberId, membershipEvents.boardId)
+    .having(sql`count(*) > ${MONTHLY_LEAVE_LIMIT}`);
+  if (rows.length === 0) return [];
+
+  const [activeMembers, boards] = await Promise.all([
+    db.select().from(members).where(and(eq(members.status, "ACTIVE"), eq(members.benched, false))),
+    db.select({ id: partyBoards.id, name: partyBoards.name }).from(partyBoards),
+  ]);
+  const memberById = new Map(activeMembers.map((m) => [m.id, m]));
+  const boardNameById = new Map(boards.map((b) => [b.id, b.name]));
+
+  const byMember = new Map<string, OverQuotaEntry>();
+  for (const r of rows) {
+    const member = memberById.get(r.memberId);
+    if (!member) continue;
+    const entry = byMember.get(r.memberId) ?? { member, boards: [] };
+    entry.boards.push({
+      boardId: r.boardId,
+      boardName: r.boardId ? boardNameById.get(r.boardId) ?? "Deleted board" : "Unspecified board",
+      leaveCount: r.leaveCount,
+    });
+    byMember.set(r.memberId, entry);
+  }
+  return [...byMember.values()].sort(
+    (a, b) =>
+      Math.max(...b.boards.map((x) => x.leaveCount)) - Math.max(...a.boards.map((x) => x.leaveCount)) ||
+      a.member.discordUsername.localeCompare(b.member.discordUsername)
+  );
 }
 
 /**
