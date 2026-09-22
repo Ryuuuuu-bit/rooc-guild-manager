@@ -14,7 +14,6 @@ import { confirmDueLeaves } from "./attendance-confirm";
 import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
 import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
 import { sendPvpStatsReminders } from "./pvp-stats-reminder";
-import { runPreEventDigestCheck } from "./pre-event-digest";
 import { commands } from "./commands";
 import { handleInteractionCreate } from "./interactions";
 
@@ -22,7 +21,6 @@ const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
 const LEAVE_CONFIRM_INTERVAL_MS = 5 * 60 * 1000; // sweep for ลา events due to confirm/discard
 const MIDNIGHT_CHECK_INTERVAL_MS = 60 * 1000; // check for a Thai-date rollover once a minute
-const PRE_EVENT_DIGEST_CHECK_INTERVAL_MS = 60 * 1000; // admin party digest triggers (see bot/pre-event-digest.ts)
 // 3-week staleness only matters at day granularity, so checking every few
 // hours is more than enough precision — mirrors the "safety-net" cadence of
 // the other periodic sweeps above, just much less frequent.
@@ -87,22 +85,6 @@ client.once(Events.ClientReady, async (readyClient) => {
       console.error("[bot] full sync failed", err);
     }
   };
-
-  // Admin "party health" digests the evening before and an hour before each
-  // event — the check itself decides whether anything is due right now.
-  // Started FIRST (before the sync / voice reconcile / sweeps below, which
-  // can take a while on startup) so a redeploy landing on a trigger time
-  // doesn't push the first check past the digest's fire window.
-  const runDigestCheck = async () => {
-    try {
-      const fired = await runPreEventDigestCheck();
-      if (fired) console.log(`[bot] pre-event digest: sent ${fired}`);
-    } catch (err) {
-      console.error("[bot] pre-event digest check failed", err);
-    }
-  };
-  void runDigestCheck();
-  setInterval(runDigestCheck, PRE_EVENT_DIGEST_CHECK_INTERVAL_MS);
 
   await runSync("startup");
   setInterval(() => runSync("periodic safety-net"), FULL_SYNC_INTERVAL_MS);
