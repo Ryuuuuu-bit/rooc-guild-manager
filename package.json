@@ -13,8 +13,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:backfill-stale-leaves": "tsx scripts/backfill-stale-leaves.ts",
-    "db:repair-late-leaves": "tsx scripts/repair-late-applied-leaves.ts"
+    "db:migrate-leaves-v2": "tsx scripts/migrate-leaves-v2.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -6,7 +6,6 @@ import { db } from "@/db";
 import {
   members,
   partyBoards,
-  partyBusyEntries,
   partyGroupParties,
   partyGroups,
   partySlots,
@@ -105,18 +104,13 @@ export async function deletePartyTemplate(templateId: string): Promise<ActionRes
  * Replaces a board's entire group/party/slot structure with a saved
  * template's — the board's own groups are deleted first (cascades to their
  * parties and slots via the FKs in schema.ts) and rebuilt from the
- * template, in order. A member currently marked Busy/ลา on THIS board is
- * deliberately left out of their template slot (which comes back empty)
- * instead of being pulled back in — a saved template has no idea today's ลา
- * list even exists (it might be a completely different day/event from
- * whenever it was saved), so silently un-ลาing someone by loading an old
- * layout would be a real footgun for whoever's arranging parties. Their
- * busy entry itself is left untouched either way. A memberId the template
- * names who no longer resolves to an active, non-benched member (left the
- * guild, got benched, etc. — or the member row is gone entirely) is
- * likewise skipped — and, same as the busy case, reported back by name so
- * the admin isn't left wondering why a slot came back empty (previously
- * this second category was dropped silently with no warning at all). Runs
+ * template, in order. Leave v2: a member on leave keeps their slot (shown
+ * faded) and their leave row is untouched by a template load, so nothing
+ * is skipped for leave anymore. A memberId the template names who no
+ * longer resolves to an active, non-benched member (left the guild, got
+ * benched, etc. — or the member row is gone entirely) is skipped and
+ * reported back by name so the admin isn't left wondering why a slot came
+ * back empty. Runs
  * as one transaction so a failure partway through can't leave the board
  * half-rebuilt.
  */
@@ -146,19 +140,9 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
   );
   const memberById = new Map(referencedMembers.map((m) => [m.id, m]));
 
-  const skippedForLeave = new Set<string>();
   const skippedForDeparted = new Set<string>();
 
   await db.transaction(async (tx) => {
-    // Members currently marked Busy/ลา on THIS board — checked so the slot
-    // loop below can leave their template slot empty instead of placing
-    // them (see the doc comment above for why).
-    const busyRows = await tx
-      .select({ memberId: partyBusyEntries.memberId })
-      .from(partyBusyEntries)
-      .where(eq(partyBusyEntries.boardId, boardId));
-    const busyMemberIds = new Set(busyRows.map((b) => b.memberId));
-
     // Wipe the board's current structure — cascades to parties and slots.
     await tx.delete(partyGroups).where(eq(partyGroups.boardId, boardId));
 
@@ -184,10 +168,6 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
             skippedForDeparted.add(memberId);
             continue;
           }
-          if (busyMemberIds.has(memberId)) {
-            skippedForLeave.add(memberId);
-            continue;
-          }
           placedMemberIds.add(memberId);
           await tx.insert(partySlots).values({ partyId: insertedParty.id, slotIndex, memberId });
         }
@@ -205,9 +185,6 @@ export async function applyPartyTemplate(boardId: string, templateId: string): P
       .join(", ");
 
   const warnings: string[] = [];
-  if (skippedForLeave.size > 0) {
-    warnings.push(`เว้นว่าง ${skippedForLeave.size} ช่องเพราะคนละลาอยู่ตอนนี้: ${namesOf(skippedForLeave)}`);
-  }
   if (skippedForDeparted.size > 0) {
     const names = namesOf(skippedForDeparted) || `${skippedForDeparted.size} คน (ไม่พบข้อมูลแล้ว)`;
     warnings.push(`เว้นว่าง ${skippedForDeparted.size} ช่องเพราะคนออกจากกิลด์/ถูกเตะ/พักการเล่นไปแล้ว: ${names}`);

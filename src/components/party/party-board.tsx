@@ -15,7 +15,7 @@ import {
 import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
-import { PostAttendanceButton } from "./post-attendance-button";
+import { BoardEventLink } from "./board-event-link";
 import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
@@ -52,18 +52,52 @@ export function parseDestination(id: string): PartyDestination | null {
   return null;
 }
 
-/** Moves a member (in local optimistic state) to a new place on the board. */
+function isInAnySlot(groups: PartyBoardDetail["groups"], memberId: string): boolean {
+  return groups.some((g) => g.parties.some((p) => p.slots.some((s) => s.member?.id === memberId)));
+}
+
+/** Moves a member (in local optimistic state) — mirrors moveMember's
+ * semantics (src/app/actions/party.ts): "busy" files a leave (slot kept,
+ * shown faded), "return" cancels it, "slot"/"unassigned" move the slot only
+ * unless the slot move also carries cancelLeave. */
 function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destination: PartyDestination): PartyBoardDetail {
-  let groups = prev.groups.map((g) => ({
+  const wasOnLeave = prev.busy.some((b) => b.id === member.id);
+  let busy = prev.busy;
+  let unassigned = prev.unassigned;
+  let groups = prev.groups;
+
+  if (destination.type === "busy") {
+    if (!wasOnLeave) busy = [...busy, member].sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
+    unassigned = unassigned.filter((u) => u.id !== member.id);
+    groups = groups.map((g) => ({
+      ...g,
+      parties: g.parties.map((p) => ({ ...p, slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, onLeave: true } : s)) })),
+    }));
+    return { ...prev, groups, busy, unassigned };
+  }
+
+  if (destination.type === "return") {
+    busy = busy.filter((b) => b.id !== member.id);
+    groups = groups.map((g) => ({
+      ...g,
+      parties: g.parties.map((p) => ({ ...p, slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, onLeave: false } : s)) })),
+    }));
+    if (!isInAnySlot(groups, member.id) && !unassigned.some((u) => u.id === member.id)) {
+      unassigned = [...unassigned, member].sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
+    }
+    return { ...prev, groups, busy, unassigned };
+  }
+
+  const stillOnLeave = wasOnLeave && !(destination.type === "slot" && destination.cancelLeave);
+  groups = groups.map((g) => ({
     ...g,
     parties: g.parties.map((p) => ({
       ...p,
-      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null } : s)),
+      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null, onLeave: false } : s)),
     })),
   }));
-
-  let busy = prev.busy.filter((b) => b.id !== member.id);
-  let unassigned = prev.unassigned.filter((u) => u.id !== member.id);
+  unassigned = unassigned.filter((u) => u.id !== member.id);
+  if (!stillOnLeave) busy = busy.filter((b) => b.id !== member.id);
 
   if (destination.type === "slot") {
     let bumpedOccupant: PartyBoardMemberRef | null = null;
@@ -76,15 +110,14 @@ function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destin
           slots: p.slots.map((s) => {
             if (s.slotIndex !== destination.slotIndex) return s;
             if (s.member && s.member.id !== member.id) bumpedOccupant = s.member;
-            return { slotIndex: s.slotIndex, member };
+            return { slotIndex: s.slotIndex, member, onLeave: stillOnLeave };
           }),
         };
       }),
     }));
-    if (bumpedOccupant) unassigned = [...unassigned, bumpedOccupant];
-  } else if (destination.type === "busy") {
-    busy = [...busy, member];
-  } else {
+    // A bumped occupant who's on leave stays in the ลา zone, not the pool.
+    if (bumpedOccupant && !busy.some((b) => b.id === bumpedOccupant!.id)) unassigned = [...unassigned, bumpedOccupant];
+  } else if (!stillOnLeave) {
     unassigned = [...unassigned, member];
   }
 
@@ -157,6 +190,7 @@ interface PartyCardProps {
   onClear: (partyId: string, slotIndex: number) => void;
   onAssign: (partyId: string, slotIndex: number, memberId: string) => void;
   onSendBusy: (partyId: string, slotIndex: number) => void;
+  onReturn: (partyId: string, slotIndex: number) => void;
   onDelete: (partyId: string, label: string) => void;
   /** Passed through to each slot's MemberChip — see MemberChip's `stacked` prop. */
   stacked?: boolean;
@@ -177,6 +211,7 @@ function PartyCard({
   onClear,
   onAssign,
   onSendBusy,
+  onReturn,
   onDelete,
   stacked = false,
   selectedMember = null,
@@ -187,7 +222,7 @@ function PartyCard({
   // than left uncontrolled inside each PartySlot) so a successful pick can
   // auto-advance straight to the next empty slot for fast sequential filling.
   const [openSlotIndex, setOpenSlotIndex] = useState<number | null>(null);
-  const filledCount = party.slots.filter((s) => s.member).length;
+  const filledCount = party.slots.filter((s) => s.member && !s.onLeave).length;
 
   function handleAssign(slotIndex: number, memberId: string) {
     onAssign(party.id, slotIndex, memberId);
@@ -217,17 +252,19 @@ function PartyCard({
       </div>
       <div className="flex flex-col gap-1.5 p-1.5">
         {[0, 1, 2, 3, 4].map((slotIndex) => {
-          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null };
+          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null, onLeave: false };
           const memberId = slot.member?.id;
           return (
             <PartySlot
               key={slotIndex}
               id={`slot:${party.id}:${slotIndex}`}
               member={slot.member}
+              onLeave={slot.onLeave}
               isAdmin={isAdmin}
               onClassChange={(value) => memberId && onClassChange(memberId, value)}
               onClear={() => onClear(party.id, slotIndex)}
               onSendBusy={memberId ? () => onSendBusy(party.id, slotIndex) : undefined}
+              onReturn={memberId ? () => onReturn(party.id, slotIndex) : undefined}
               pickableMembers={pickableMembers}
               onAssign={(selectedMemberId) => handleAssign(slotIndex, selectedMemberId)}
               pickerOpen={openSlotIndex === slotIndex}
@@ -338,10 +375,18 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     const { active, over } = event;
     if (!over || !board) return;
 
-    const data = active.data.current as { member: PartyBoardMemberRef } | undefined;
+    const data = active.data.current as { member: PartyBoardMemberRef; fromBusy?: boolean } | undefined;
     if (!data) return;
-    const destination = parseDestination(String(over.id));
+    let destination = parseDestination(String(over.id));
     if (!destination) return;
+
+    // Dragging a chip OUT of the ลา zone means "they're back": into a slot
+    // cancels the leave and seats them; into the pool just cancels it
+    // (their slot, if any, is untouched).
+    if (data.fromBusy) {
+      if (destination.type === "busy") return;
+      destination = destination.type === "slot" ? { ...destination, cancelLeave: true } : { type: "return" };
+    }
 
     placeMember(data.member, destination);
   }
@@ -419,7 +464,21 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (!board) return;
     const member = board.busy.find((b) => b.id === memberId);
     if (!member) return;
-    placeMember(member, { type: "unassigned" });
+    placeMember(member, { type: "return" });
+  }
+
+  function handleReturnFromSlot(partyId: string, slotIndex: number) {
+    if (!board) return;
+    let member: PartyBoardMemberRef | null = null;
+    for (const g of board.groups) {
+      for (const p of g.parties) {
+        if (p.id !== partyId) continue;
+        const slot = p.slots.find((s) => s.slotIndex === slotIndex);
+        if (slot?.member) member = slot.member;
+      }
+    }
+    if (!member) return;
+    placeMember(member, { type: "return" });
   }
 
   // Every handler below talks to a server action that can THROW (not just
@@ -540,7 +599,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   const placedCount = useMemo(() => {
     if (!board) return 0;
     return board.groups.reduce(
-      (sum, g) => sum + g.parties.reduce((s, p) => s + p.slots.filter((sl) => sl.member).length, 0),
+      (sum, g) => sum + g.parties.reduce((s, p) => s + p.slots.filter((sl) => sl.member && !sl.onLeave).length, 0),
       0
     );
   }, [board]);
@@ -627,7 +686,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
               <span>
                 Board <span className="font-medium text-zinc-200">{board.name}</span> · {placedCount} placed
-                {" "}· {board.unassigned.length} open · Busy / Leave {board.busy.length}
+                {" "}· {board.unassigned.length} open · ลา {fmtLeaveDate(board.occurrenceDate)}: {board.busy.length}
               </span>
               {isAdmin && (
                 <div className="flex items-center gap-2">
@@ -645,7 +704,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   </button>
                   {effectiveAdmin && selectedBoardId && (
                     <>
-                      <PostAttendanceButton boardId={selectedBoardId} boardName={board.name} />
+                      <BoardEventLink boardId={selectedBoardId} checkinEventKey={board.checkinEventKey} onChanged={() => router.refresh()} />
                       <AnnounceBoardImageButton
                         boardId={selectedBoardId}
                         boardName={board.name}
@@ -684,13 +743,11 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
             </div>
 
             {/* Warns an organizer, before they start dragging people into
-                slots, that someone already has an advance /leave request on
-                file for this board on a date at or after today — this board
-                has no date dimension of its own (partyBusyEntries carries no
-                date), so without this a member scheduled out for e.g. the
-                20th looks perfectly available while composing parties on the
-                19th. Hidden in screenshot mode — this is a heads-up for
-                whoever's organizing, not something to broadcast. */}
+                slots, that someone already has a leave on file for this
+                board on a date AFTER the current round — the ลา zone only
+                shows the current round. Hidden in screenshot mode — this is
+                a heads-up for whoever's organizing, not something to
+                broadcast. */}
             {!screenshotMode && board.upcomingLeaves.length > 0 && (
               <div className="flex flex-wrap items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
                 <span className="mt-0.5 shrink-0 font-medium">⚠ Upcoming leave on file:</span>
@@ -895,6 +952,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         onClear={handleClearSlot}
                         onAssign={handleAssignToSlot}
                         onSendBusy={handleSendBusy}
+                        onReturn={handleReturnFromSlot}
                         onDelete={handleDeleteParty}
                         stacked={screenshotMode}
                         selectedMember={selectedMember}
@@ -919,7 +977,10 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 has no way to tell WHO is busy/on leave vs. just missing. */}
             <section>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-medium text-zinc-300">Busy / Leave ({board.busy.length})</h2>
+                <h2 className="text-sm font-medium text-zinc-300">
+                  ลา {fmtLeaveDate(board.occurrenceDate)} ({board.busy.length})
+                  <span className="ml-2 font-normal text-zinc-500">same list as ห้องลา / /checkin / /calendar</span>
+                </h2>
                 {effectiveAdmin && (
                   <MemberPicker
                     members={board.unassigned}
@@ -928,7 +989,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                     align="right"
                     trigger={
                       <span className="cursor-pointer select-none rounded-lg border border-dashed border-zinc-700 px-2 py-1 text-xs text-zinc-400 transition hover:border-amber-500 hover:text-amber-300">
-                        + Add to Busy/Leave
+                        + Mark on leave
                       </span>
                     }
                   />
@@ -937,7 +998,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               {screenshotMode ? (
                 <div className="flex flex-wrap gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
                   {board.busy.length === 0 ? (
-                    <span className="px-1 py-1 text-xs text-zinc-600">No one is Busy/Leave this round</span>
+                    <span className="px-1 py-1 text-xs text-zinc-600">No one on leave this round</span>
                   ) : (
                     board.busy.map((member) => (
                       <MemberChip key={member.id} member={member} draggable={false} compact showClassBadge />
@@ -947,7 +1008,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               ) : (
                 <DroppableZone
                   id="busy"
-                  label="Busy / Leave"
+                  label="On leave this round"
                   tapTarget={effectiveAdmin && !!selectedMember}
                   onBackgroundClick={
                     effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "busy" }) : undefined
@@ -955,8 +1016,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 >
                   {board.busy.length === 0 && (
                     <span className="px-1 py-1 text-xs text-zinc-600">
-                      Drag a name here, or click &quot;+ Add to Busy/Leave&quot; to mark someone unavailable/on leave
-                      this round (or tap a name, then tap here)
+                      Drag a name here, or click &quot;+ Mark on leave&quot; to mark someone on leave for this round —
+                      they keep their party slot (shown faded). Drag them back out to cancel the leave.
                     </span>
                   )}
                   {board.busy.map((member) => (
@@ -964,6 +1025,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       <MemberChip
                         member={member}
                         draggable={effectiveAdmin}
+                        dragContext="busy"
                         compact
                         showClassBadge={!effectiveAdmin}
                         selected={selectedMember?.id === member.id}
@@ -986,7 +1048,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                           <button
                             type="button"
                             onClick={() => handleBusyRemove(member.id)}
-                            title="Remove from Busy/Leave list"
+                            title="Cancel this round's leave"
                             className="rounded px-1 text-xs text-zinc-500 transition hover:text-rose-400"
                           >
                             ✕

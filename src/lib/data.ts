@@ -1,9 +1,10 @@
 import { db } from "@/db";
-import { discordRoles, members, membershipEvents, memberNotes, partyBoards, type MembershipEvent } from "@/db/schema";
-import { and, arrayContains, desc, eq, gte, ilike, isNotNull, lte, or, sql } from "drizzle-orm";
+import { discordRoles, leaves, members, membershipEvents, memberNotes, partyBoards, type MembershipEvent } from "@/db/schema";
+import { and, arrayContains, asc, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
 import { MONTHLY_LEAVE_LIMIT } from "@/lib/leave-quota";
+import { isConfirmed, roundEnd, thaiDateString, thaiMonthRange } from "@/lib/leaves";
 
 export interface MemberFilters {
   search?: string;
@@ -156,13 +157,29 @@ export interface AttendanceRangeFilter {
   boardId?: string;
 }
 
-function attendanceConditions(filter: AttendanceRangeFilter) {
-  const conditions = [eq(membershipEvents.type, "ATTENDANCE_LEAVE"), isNotNull(membershipEvents.confirmedAt)];
-  const from = filter.from ?? (filter.days ? new Date(Date.now() - filter.days * 24 * 60 * 60 * 1000) : undefined);
-  if (from) conditions.push(gte(membershipEvents.createdAt, from));
-  if (filter.to) conditions.push(lte(membershipEvents.createdAt, filter.to));
-  if (filter.boardId) conditions.push(eq(membershipEvents.boardId, filter.boardId));
-  return conditions;
+/**
+ * Every leave that COUNTS in the range: ACTIVE and its round has ended
+ * (src/lib/leaves.ts isConfirmed) — a leave cancelled before the round ended
+ * is CANCELLED and never appears here; one for a round still ahead isn't
+ * counted yet. Range bounds are Thai calendar dates (occurrenceDate), so
+ * "last 30 days" means rounds dated in the last 30 days.
+ */
+async function confirmedLeavesInRange(filter: AttendanceRangeFilter) {
+  const now = new Date();
+  const from = filter.from ?? (filter.days ? new Date(now.getTime() - filter.days * 24 * 60 * 60 * 1000) : undefined);
+  const conditions = [eq(leaves.status, "ACTIVE")];
+  if (from) conditions.push(gte(leaves.occurrenceDate, thaiDateString(from)));
+  if (filter.to) conditions.push(lte(leaves.occurrenceDate, thaiDateString(filter.to)));
+  if (filter.boardId) conditions.push(eq(leaves.boardId, filter.boardId));
+  const rows = await db
+    .select({ leave: leaves, board: partyBoards })
+    .from(leaves)
+    .leftJoin(partyBoards, eq(leaves.boardId, partyBoards.id))
+    .where(and(...conditions))
+    .orderBy(asc(leaves.occurrenceDate));
+  return rows
+    .filter((r) => isConfirmed(r.leave, r.board ?? { checkinEventKey: null }, now))
+    .map((r) => ({ ...r.leave, roundEnd: roundEnd(r.board ?? { checkinEventKey: null }, r.leave.occurrenceDate) }));
 }
 
 /**
@@ -170,36 +187,21 @@ function attendanceConditions(filter: AttendanceRangeFilter) {
  * takes leave the most" at a glance. Deliberately just a raw count rather
  * than a percentage: a "rate" would need an "expected attendance" concept
  * (how many events did they have the chance to attend) that this app's
- * board model doesn't track (boards are a single always-current sheet
- * reused across events, not one row per historical event), so a rate would
- * be more misleading than informative. Only lists members who are
- * currently ACTIVE and not benched — someone who's left the guild isn't
- * meaningful to rank here, and a benched member isn't really "playing"
- * (they're excluded from every board's roster too, see party-data.ts), so
- * listing them at 0 ลา would just be clutter, not signal.
+ * board model doesn't track, so a rate would be more misleading than
+ * informative. Only lists members who are currently ACTIVE and not benched.
  *
- * Also surfaces each member's most recent ลา date within the range
- * (lastLeaveAt) — every leave already carries an exact date+time
- * (membershipEvents.createdAt), this just makes that visible on the stats
- * page itself instead of only in the per-member activity feed.
+ * Also surfaces each member's most recent counted ลา within the range
+ * (lastLeaveAt = that round's end).
  */
 export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
-  // Only confirmed leaves count — a "ลา" only locks in once the matching
-  // event's window actually ends, so a leave that gets cancelled (un-reacted,
-  // or via /leave's self-service cancel) before then is discarded rather
-  // than ever showing up here (see confirmDueLeaves in
-  // bot/attendance-confirm.ts).
-  const rows = await db
-    .select({
-      memberId: membershipEvents.memberId,
-      leaveCount: sql<number>`count(*)::int`,
-      lastLeaveAt: sql<string>`max(${membershipEvents.createdAt})`,
-    })
-    .from(membershipEvents)
-    .where(and(...attendanceConditions(filter)))
-    .groupBy(membershipEvents.memberId);
-
-  const statsByMember = new Map(rows.map((r) => [r.memberId, { leaveCount: r.leaveCount, lastLeaveAt: r.lastLeaveAt }]));
+  const confirmed = await confirmedLeavesInRange(filter);
+  const statsByMember = new Map<string, { leaveCount: number; lastLeaveAt: Date }>();
+  for (const l of confirmed) {
+    const s = statsByMember.get(l.memberId) ?? { leaveCount: 0, lastLeaveAt: l.roundEnd };
+    s.leaveCount++;
+    if (l.roundEnd > s.lastLeaveAt) s.lastLeaveAt = l.roundEnd;
+    statsByMember.set(l.memberId, s);
+  }
 
   const activeMembers = await db
     .select()
@@ -209,13 +211,11 @@ export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
   const stats = activeMembers
     .map((m) => {
       const s = statsByMember.get(m.id);
-      return { member: m, leaveCount: s?.leaveCount ?? 0, lastLeaveAt: s ? new Date(s.lastLeaveAt) : null };
+      return { member: m, leaveCount: s?.leaveCount ?? 0, lastLeaveAt: s?.lastLeaveAt ?? null };
     })
     .sort((a, b) => b.leaveCount - a.leaveCount || a.member.discordUsername.localeCompare(b.member.discordUsername));
 
-  const totalLeaveEvents = rows.reduce((sum, r) => sum + r.leaveCount, 0);
-
-  return { stats, totalLeaveEvents };
+  return { stats, totalLeaveEvents: confirmed.length };
 }
 
 export interface OverQuotaEntry {
@@ -224,34 +224,26 @@ export interface OverQuotaEntry {
   boards: { boardId: string | null; boardName: string; leaveCount: number }[];
 }
 
-/** Start of the current calendar month at Thai-local midnight, as a UTC
- * instant — same helper the bot keeps its own copies of. */
-function startOfThaiMonth(): Date {
-  const nowThai = new Date(Date.now() + 7 * 60 * 60 * 1000);
-  return new Date(Date.UTC(nowThai.getUTCFullYear(), nowThai.getUTCMonth(), 1, 0, 0, 0) - 7 * 60 * 60 * 1000);
-}
-
 /**
  * Active, non-benched members who are OVER the monthly leave rule
  * (MONTHLY_LEAVE_LIMIT, per board) in the current Thai calendar month —
- * the "⚠️ เกินโควต้าเดือนนี้" panel on /attendance. Counts confirmed AND
- * still-pending ATTENDANCE_LEAVE rows, deliberately matching what the bot
- * tells the member ("ครั้งที่ N/2") and the admin notification, rather than
- * getAttendanceStats's confirmed-only view — a member on their 3rd leave
- * this month should be flagged the moment it's marked, not only after the
- * event ends. Independent of the page's range/board filter: the rule is a
- * per-month thing regardless of what period the table is showing.
+ * the "⚠️ เกินโควต้าเดือนนี้" panel on /attendance. Counts every ACTIVE
+ * leave dated this month, upcoming rounds included — deliberately matching
+ * what ห้องลา tells the member ("ครั้งที่ N/2") and the admin notification,
+ * so a member on their 3rd leave is flagged the moment it's filed, not only
+ * after the round ends. Independent of the page's range/board filter.
  */
 export async function getOverQuotaThisMonth(): Promise<OverQuotaEntry[]> {
+  const { from, to } = thaiMonthRange();
   const rows = await db
     .select({
-      memberId: membershipEvents.memberId,
-      boardId: membershipEvents.boardId,
+      memberId: leaves.memberId,
+      boardId: leaves.boardId,
       leaveCount: sql<number>`count(*)::int`,
     })
-    .from(membershipEvents)
-    .where(and(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), gte(membershipEvents.createdAt, startOfThaiMonth())))
-    .groupBy(membershipEvents.memberId, membershipEvents.boardId)
+    .from(leaves)
+    .where(and(eq(leaves.status, "ACTIVE"), gte(leaves.occurrenceDate, from), lte(leaves.occurrenceDate, to)))
+    .groupBy(leaves.memberId, leaves.boardId)
     .having(sql`count(*) > ${MONTHLY_LEAVE_LIMIT}`);
   if (rows.length === 0) return [];
 
@@ -282,31 +274,24 @@ export async function getOverQuotaThisMonth(): Promise<OverQuotaEntry[]> {
 }
 
 /**
- * Confirmed-leave totals grouped by board (e.g. "GL": 12, "WOE": 8) — feeds
- * the small per-board summary on the /attendance page so switching the
- * board filter isn't the only way to see the split. Leaves logged before
- * boardId existed on membershipEvents (or whose board has since been
- * deleted) are bucketed under a null id so the numbers still add up to
- * getAttendanceStats's totalLeaveEvents.
+ * Counted-leave totals grouped by board (e.g. "GL": 12, "WOE": 8) — feeds
+ * the small per-board summary on the /attendance page. Leaves with no board
+ * (or whose board has since been deleted) are bucketed under a null id so
+ * the numbers still add up to getAttendanceStats's totalLeaveEvents.
  */
 export async function getAttendanceBoardBreakdown(filter: Omit<AttendanceRangeFilter, "boardId"> = {}) {
-  const rows = await db
-    .select({
-      boardId: membershipEvents.boardId,
-      leaveCount: sql<number>`count(*)::int`,
-    })
-    .from(membershipEvents)
-    .where(and(...attendanceConditions(filter)))
-    .groupBy(membershipEvents.boardId);
+  const confirmed = await confirmedLeavesInRange(filter);
+  const countByBoard = new Map<string | null, number>();
+  for (const l of confirmed) countByBoard.set(l.boardId, (countByBoard.get(l.boardId) ?? 0) + 1);
 
   const boards = await db.select({ id: partyBoards.id, name: partyBoards.name }).from(partyBoards);
   const nameById = new Map(boards.map((b) => [b.id, b.name]));
 
-  return rows
-    .map((r) => ({
-      boardId: r.boardId,
-      boardName: r.boardId ? nameById.get(r.boardId) ?? "Deleted board" : "Unspecified board",
-      leaveCount: r.leaveCount,
+  return [...countByBoard.entries()]
+    .map(([boardId, leaveCount]) => ({
+      boardId,
+      boardName: boardId ? nameById.get(boardId) ?? "Deleted board" : "Unspecified board",
+      leaveCount,
     }))
     .sort((a, b) => b.leaveCount - a.leaveCount);
 }

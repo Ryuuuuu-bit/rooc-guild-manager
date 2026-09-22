@@ -65,10 +65,10 @@ function CalendarLegend() {
         <span className="h-2.5 w-2.5 rounded-full bg-indigo-400/70" /> WOE
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="font-medium text-amber-300">·N</span> On leave (confirmed)
+        <span className="font-medium text-amber-300">·N</span> On leave (round ended — counted)
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="font-medium text-zinc-400">·N</span> Requested, not due yet
+        <span className="font-medium text-zinc-400">·N</span> On leave (upcoming — still cancellable)
       </span>
     </div>
   );
@@ -98,8 +98,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <div>
         <h1 className="text-2xl font-semibold text-zinc-50">Calendar</h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Today&apos;s GL/WOE leave, and who&apos;s requested leave for what&apos;s coming up — click a day to see the
-          full list. Past rounds aren&apos;t shown here (see /attendance or /checkin for history).
+          Who&apos;s on leave for each GL/WOE round — click a day to see the full list. Same data as the party
+          board and /checkin.
         </p>
       </div>
 
@@ -261,15 +261,13 @@ function CalendarEventDetail({ event }: { event: CalendarDayEvent }) {
                 : "bg-zinc-700/40 text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
             }`}
           >
-            {event.status === "confirmed" ? "On Leave" : "Leave Requested"} ({event.onLeave.length})
+            On Leave ({event.onLeave.length})
           </span>
         )}
       </div>
-      {event.status === "unavailable" ? (
-        <p className="text-sm text-zinc-500">Past round — see /attendance or /checkin for its leave history.</p>
-      ) : event.onLeave.length === 0 ? (
+      {event.onLeave.length === 0 ? (
         <p className="text-sm text-zinc-500">
-          {event.status === "confirmed" ? "No one on leave for this round." : "No one has requested leave for this round yet."}
+          {event.status === "confirmed" ? "No one was on leave for this round." : "No one has requested leave for this round yet."}
         </p>
       ) : (
         <div className="flex flex-wrap gap-2">

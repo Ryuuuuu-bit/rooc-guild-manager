@@ -3,12 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { lootCategories, lootQueueEntries, members, membershipEvents, memberNotes, partyBusyEntries, partySlots } from "@/db/schema";
+import { lootCategories, lootQueueEntries, members, membershipEvents, memberNotes, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
 import { env } from "@/lib/env";
 import { DiscordApiError, kickGuildMember } from "@/lib/discord";
-import { reconcilePendingLeaveEverywhere } from "@/lib/party-data";
+import { cancelMemberOpenLeaves } from "@/lib/leaves";
 
 export interface UpdateMemberResult {
   ok: boolean;
@@ -100,15 +100,10 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
     .update(partySlots)
     .set({ memberId: null, updatedAt: new Date() })
     .where(eq(partySlots.memberId, memberId));
-  // Reconcile (discard if still pending, log ATTENDANCE_RETURN if already
-  // confirmed) any open ลา on every board before wiping the busy list — see
-  // reconcilePendingLeaveEverywhere's doc comment (src/lib/party-data.ts).
-  // Without this, kicking someone mid-leave silently orphaned their pending
-  // leave event once confirmDueLeaves swept it later.
-  await db.transaction(async (tx) => {
-    await reconcilePendingLeaveEverywhere(tx, memberId, session.user.username);
-    await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
-  });
+  // Cancel every not-yet-ended leave (past, already-counted ones stay) so
+  // /checkin and /calendar stop listing them as "on leave" for rounds
+  // they're no longer part of.
+  await cancelMemberOpenLeaves(memberId, session.user.username, `(ถูกเตะโดยแอดมิน ${session.user.username})`);
   // Also drop them from every loot-queue category — otherwise their row
   // just sits there forever (the members row itself is never deleted, only
   // its status, so the table's onDelete: "cascade" never fires) and an
@@ -243,14 +238,7 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
  * but not currently playing) or clears that flag. Independent of `status`
  * — the bot's role sync never touches this, only an admin can. Benching
  * someone clears them from every party board (they'd otherwise vanish from
- * the unassigned pool but leave a dangling slot/busy-entry reference) AND
- * drops them from every loot-queue category — same reasoning as
- * markMemberKicked/clearPartyAssignments (bot/sync.ts): a benched member
- * isn't expected to be bidding on loot (see the loot-queue page's own
- * "active, non-benched only" add-picker filter), so leaving their row
- * there would just sit forever, needing an admin to notice and remove them
- * by hand before running a round. Un-benching mirrors restoreMemberStatus
- * below and re-adds them to the back of every category, same as a rejoin.
+ * the unassigned pool but leave a dangling slot/busy-entry reference).
  */
 export async function setMemberBenched(memberId: string, benched: boolean): Promise<UpdateMemberResult> {
   const session = await requireAdmin();
@@ -265,30 +253,17 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
       .update(partySlots)
       .set({ memberId: null, updatedAt: new Date() })
       .where(eq(partySlots.memberId, memberId));
-    // Same reconcile as markMemberKicked above — benching someone mid-leave
-    // shouldn't silently drop their pending/confirmed ลา record.
-    await db.transaction(async (tx) => {
-      await reconcilePendingLeaveEverywhere(tx, memberId, session.user.username);
-      await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.memberId, memberId));
-    });
-    await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
-  }
-
-  // Guard mirrors restoreMemberStatus's `wasInactive` check below — someone
-  // benched while ACTIVE who then left/got kicked (their queue entries
-  // already cleared by that path) shouldn't get re-added to every queue
-  // just because an admin happens to also flip their now-moot bench flag.
-  const readdedToQueues = !benched && existing.status === "ACTIVE";
-  if (readdedToQueues) {
-    await addToAllLootQueues(memberId);
+    // Same as markMemberKicked above — open leaves are cancelled, past
+    // ones stay counted.
+    await cancelMemberOpenLeaves(memberId, session.user.username, `(พักการเล่นโดยแอดมิน ${session.user.username})`);
   }
 
   await db.insert(membershipEvents).values({
     memberId,
     type: "NOTE",
     detail: benched
-      ? `พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้และคิวประมูล) โดยแอดมิน ${session.user.username}`
-      : `เลิกพักการเล่น${readdedToQueues ? " (กลับเข้าคิวประมูลทุกหมวดแล้ว)" : ""} โดยแอดมิน ${session.user.username}`,
+      ? `พักการเล่น (ไม่รวมในระบบจัดปาร์ตี้) โดยแอดมิน ${session.user.username}`
+      : `เลิกพักการเล่น โดยแอดมิน ${session.user.username}`,
     actor: session.user.username,
   });
 
@@ -296,7 +271,6 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
   revalidatePath("/members");
   revalidatePath("/");
   revalidatePath("/party");
-  revalidatePath("/loot-queue");
 
   return { ok: true };
 }

@@ -1,8 +1,9 @@
 import { and, asc, gte, lte, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { checkinNotes, members, membershipEvents, partyBoards, voiceAttendanceEvents } from "@/db/schema";
+import { checkinNotes, members, voiceAttendanceEvents } from "@/db/schema";
 import type { Member } from "@/db/schema";
 import { CHECKIN_EVENTS, getCheckinEvent, windowFor, type CheckinEventConfig } from "@/lib/checkin-events";
+import { leaveMemberIdsForEvent } from "@/lib/leaves";
 
 export { CHECKIN_EVENTS, getCheckinEvent, windowFor };
 export type { CheckinEventConfig };
@@ -141,57 +142,14 @@ export interface CheckinReport {
 }
 
 /**
- * Member IDs currently marked "ลา" on the party board linked to this
- * check-in event (partyBoards.checkinEventKey, see schema.ts — an explicit
- * link set from the "โพสต์ ลา ใน Discord" dialog, not a name match against
- * this event's key), as of `asOf` — i.e. their most recent
- * ATTENDANCE_LEAVE/ATTENDANCE_RETURN event on that board, at or before
- * `asOf`, was a LEAVE rather than a RETURN. Mirrors listOnlineMemberIds's
- * last-write-wins reduction over an ascending-time event log.
- *
- * Deliberately NOT gated on confirmedAt (unlike getAttendanceStats in
- * data.ts, which only counts confirmed leaves toward the monthly quota/stats
- * — a separate concern from this function's job) — this is "who's currently
- * excused right now", which should reflect a leave the moment it's marked,
- * same as partyBusyEntries does for the live party board, not wait for it to
- * lock in at the event's end (see confirmDueLeaves in
- * bot/attendance-confirm.ts). A leave that gets cancelled before then is
- * deleted outright rather than left unconfirmed (see cancelCurrentLeave in
- * bot/reactions.ts), so it simply stops appearing here too — no separate
- * confirmedAt check needed to keep a discarded test-click out of this set.
- *
- * Returns an empty set if no board is currently linked to this event — leave
- * just won't be shown rather than erroring the whole report.
+ * Members on leave for this event's round on `date` — one lookup in the
+ * `leaves` table (src/lib/leaves.ts), the same source the party board and
+ * /calendar read, so the three can't disagree. A leave cancelled before the
+ * round ended is CANCELLED and simply stops appearing. Returns an empty set
+ * if no board is currently linked to this event.
  */
-export async function getLeaveMemberIds(event: CheckinEventConfig, asOf: Date): Promise<Set<string>> {
-  const board = await db.query.partyBoards.findFirst({
-    where: eq(partyBoards.checkinEventKey, event.key),
-  });
-  if (!board) return new Set();
-
-  const rows = await db
-    .select({
-      memberId: membershipEvents.memberId,
-      type: membershipEvents.type,
-    })
-    .from(membershipEvents)
-    .where(
-      and(
-        eq(membershipEvents.boardId, board.id),
-        lte(membershipEvents.createdAt, asOf),
-        or(eq(membershipEvents.type, "ATTENDANCE_LEAVE"), eq(membershipEvents.type, "ATTENDANCE_RETURN"))
-      )
-    )
-    .orderBy(asc(membershipEvents.memberId), asc(membershipEvents.createdAt));
-
-  const lastTypeByMember = new Map<string, string>();
-  for (const r of rows) lastTypeByMember.set(r.memberId, r.type); // ascending order — last write wins = most recent event
-
-  const onLeave = new Set<string>();
-  for (const [memberId, type] of lastTypeByMember) {
-    if (type === "ATTENDANCE_LEAVE") onLeave.add(memberId);
-  }
-  return onLeave;
+export async function getLeaveMemberIds(event: CheckinEventConfig, date: string): Promise<Set<string>> {
+  return leaveMemberIdsForEvent(event.key, date);
 }
 
 /**
@@ -261,13 +219,10 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     .where(and(eq(checkinNotes.eventKey, eventKey), eq(checkinNotes.date, date)));
   const noteByMember = new Map(notes.map((n) => [n.memberId, n.note]));
 
-  // Evaluated at the window's own end (capped at `now` for a window that
-  // hasn't finished yet) so a past window's report doesn't get "helped" by
-  // someone who only clicked ลา on that board afterwards — kept fully
-  // separate per event/board (see partyBoards.checkinEventKey in schema.ts:
-  // "gl" only ever reads whichever board is linked to it, same for "woe").
-  const asOf = end.getTime() < now.getTime() ? end : now;
-  const leaveMemberIds = await getLeaveMemberIds(event, asOf);
+  // Keyed by the round's own date — kept fully separate per event/board
+  // (see partyBoards.checkinEventKey in schema.ts: "gl" only ever reads
+  // whichever board is linked to it, same for "woe").
+  const leaveMemberIds = await getLeaveMemberIds(event, date);
 
   const results: CheckinMemberResult[] = roster.map((member) => {
     const intervals = reconstructIntervals(eventsByMember.get(member.id) ?? [], now);

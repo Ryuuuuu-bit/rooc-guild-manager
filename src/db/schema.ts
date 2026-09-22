@@ -298,9 +298,10 @@ export const partySlots = pgTable(
   ]
 );
 
-// Members sitting out this round ("Busy" / on leave), scoped per board. A
-// member can only be in one place at a time within a given board, so being
-// added here removes them from any slot on the same board.
+// DEPRECATED (Leave v2): replaced by `leaves` below — the Busy/ลา list is
+// now "active leaves for the board's next occurrence". Kept only so
+// scripts/migrate-leaves-v2.ts can read the old rows; dropped in a later
+// migration once that has run. No app code reads or writes this anymore.
 export const partyBusyEntries = pgTable(
   "party_busy_entries",
   {
@@ -651,6 +652,9 @@ export const lootRounds = pgTable(
 // trail lives on in membershipEvents like every other leave, not here. So
 // unlike most tables in this app, this one is deliberately NOT an append-only
 // history — it only ever holds still-pending, not-yet-arrived requests.
+// DEPRECATED (Leave v2): replaced by `leaves` — an advance request is just a
+// leave row with a future occurrenceDate. Kept only for
+// scripts/migrate-leaves-v2.ts; dropped in a later migration.
 export const scheduledLeaves = pgTable(
   "scheduled_leaves",
   {
@@ -677,6 +681,59 @@ export const scheduledLeaves = pgTable(
   ]
 );
 
+// --- Leave v2 ---
+// ONE row per (member, board, occurrence date). This is the only source of
+// truth for "who is on leave for which round": the party board's Busy/ลา
+// list, /checkin's "On Leave", /calendar, /attendance and the monthly quota
+// all read this table with the same three-column question and nothing is
+// ever reconstructed from the membershipEvents log again (that log stays
+// write-only, for the Activity feed).
+//
+// "Confirmed" is NOT a column — a leave counts once its occurrence's event
+// window has ended (windowFor(event, occurrenceDate).end <= now) and it is
+// still ACTIVE. Before that it can be cancelled freely. No sweep ever
+// mutates rows to "confirm" them, so there is nothing for a restart to race.
+//
+// Cancelling flips status to CANCELLED and keeps the row (history + the
+// unique index means re-leaving the same round just flips it back).
+export const leaveStatusEnum = pgEnum("leave_status", ["ACTIVE", "CANCELLED"]);
+/** MEMBER = the member themselves via the ห้องลา button / /leave; ADMIN = an
+ * admin on the web (dragging into Busy/ลา, or Log Manual Leave). */
+export const leaveSourceEnum = pgEnum("leave_source", ["MEMBER", "ADMIN"]);
+
+export const leaves = pgTable(
+  "leaves",
+  {
+    id: text("id").primaryKey().$defaultFn(() => createId()),
+    memberId: text("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    // "set null" like membershipEvents.boardId: deleting a board must not
+    // erase leave history that feeds /attendance. A null board means "not
+    // tied to any board" (legacy manual entries) — counted in stats, never
+    // shown on a board.
+    boardId: text("board_id").references(() => partyBoards.id, { onDelete: "set null" }),
+    // "YYYY-MM-DD" Thai calendar date of the round this leave is FOR — for a
+    // board linked to a check-in event, always one of that event's
+    // occurrence dates; for a board with no event, the calendar day itself.
+    occurrenceDate: text("occurrence_date").notNull(),
+    status: leaveStatusEnum("status").notNull().default("ACTIVE"),
+    source: leaveSourceEnum("source").notNull(),
+    // Free-text reason (Log Manual Leave), null otherwise.
+    note: text("note"),
+    // Who created it: the member's Discord user id, or the admin's username.
+    actor: text("actor"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("leaves_member_board_date_idx").on(table.memberId, table.boardId, table.occurrenceDate),
+    index("leaves_board_date_status_idx").on(table.boardId, table.occurrenceDate, table.status),
+    index("leaves_member_id_idx").on(table.memberId),
+    index("leaves_occurrence_date_idx").on(table.occurrenceDate),
+  ]
+);
+
 export const membersRelations = relations(members, ({ many }) => ({
   events: many(membershipEvents),
   notes: many(memberNotes),
@@ -698,6 +755,8 @@ export type NewMember = typeof members.$inferInsert;
 export type MembershipEvent = typeof membershipEvents.$inferSelect;
 export type NewMembershipEvent = typeof membershipEvents.$inferInsert;
 export type MemberNote = typeof memberNotes.$inferSelect;
+export type Leave = typeof leaves.$inferSelect;
+export type NewLeave = typeof leaves.$inferInsert;
 export type NewMemberNote = typeof memberNotes.$inferInsert;
 export type DiscordRole = typeof discordRoles.$inferSelect;
 export type NewDiscordRole = typeof discordRoles.$inferInsert;

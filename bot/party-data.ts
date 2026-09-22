@@ -11,12 +11,12 @@ import {
   jobClasses,
   members,
   partyBoards,
-  partyBusyEntries,
   partyGroupParties,
   partyGroups,
   partySlots,
   type Member,
 } from "../src/db/schema";
+import { activeLeaveMemberIds, currentOccurrenceDate } from "../src/lib/leaves";
 
 const SLOTS_PER_PARTY = 5;
 
@@ -30,6 +30,10 @@ export interface PartyBoardMemberRef {
 export interface PartySlotView {
   slotIndex: number;
   member: PartyBoardMemberRef | null;
+  /** The member in this slot is on leave for the board's current round —
+   * they keep their slot (shown struck through) so nobody has to re-drag
+   * them back when they return. */
+  onLeave: boolean;
 }
 
 export interface PartyView {
@@ -53,6 +57,8 @@ export interface PartyBoardDetail {
   id: string;
   name: string;
   groups: PartyGroupView[];
+  /** "YYYY-MM-DD" the busy list refers to (the linked event's next round). */
+  occurrenceDate: string;
   busy: PartyBoardMemberRef[];
   unassigned: PartyBoardMemberRef[];
 }
@@ -69,15 +75,17 @@ export async function listPartyBoards(): Promise<PartyBoardListItem[]> {
     .orderBy(asc(partyBoards.sortOrder), asc(partyBoards.createdAt));
 }
 
-/** Full nested detail for one board: groups → parties → slots, plus busy list and unassigned pool. */
+/** Full nested detail for one board: groups → parties → slots, plus the
+ * ลา list for the board's current round and the unassigned pool. */
 export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDetail | null> {
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
   if (!board) return null;
 
-  const [activeMembers, groups, busyRows, classRows] = await Promise.all([
+  const occurrenceDate = currentOccurrenceDate(board);
+  const [activeMembers, groups, onLeaveIds, classRows] = await Promise.all([
     db.select().from(members).where(and(eq(members.status, "ACTIVE"), eq(members.benched, false))),
     db.select().from(partyGroups).where(eq(partyGroups.boardId, boardId)).orderBy(asc(partyGroups.sortOrder)),
-    db.select().from(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId)),
+    activeLeaveMemberIds(boardId, occurrenceDate),
     db.select().from(jobClasses),
   ]);
 
@@ -131,27 +139,21 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         const row = slotByIndex.get(i);
         const member = row?.memberId ? (membersById.get(row.memberId) ?? null) : null;
         if (member) placedMemberIds.add(member.id);
-        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null });
+        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, onLeave: member ? onLeaveIds.has(member.id) : false });
       }
       return { id: p.id, label: p.label, slots: slotViews };
     }),
   }));
 
-  const busy = busyRows
-    .slice()
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((row) => {
-      const member = membersById.get(row.memberId);
-      if (!member) return null;
-      placedMemberIds.add(member.id);
-      return toRef(member);
-    })
-    .filter((v): v is PartyBoardMemberRef => v !== null);
-
-  const unassigned = activeMembers
-    .filter((m) => !placedMemberIds.has(m.id))
+  const busy = activeMembers
+    .filter((m) => onLeaveIds.has(m.id))
     .map(toRef)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
-  return { id: board.id, name: board.name, groups: groupViews, busy, unassigned };
+  const unassigned = activeMembers
+    .filter((m) => !placedMemberIds.has(m.id) && !onLeaveIds.has(m.id))
+    .map(toRef)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
+
+  return { id: board.id, name: board.name, groups: groupViews, occurrenceDate, busy, unassigned };
 }

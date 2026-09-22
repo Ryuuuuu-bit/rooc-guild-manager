@@ -134,7 +134,9 @@ function drawPartyCard(ctx: SKRSContext2D, x: number, y: number, party: PartyVie
     if (slot.member) {
       const displayName = sanitizeForCanvas(slot.member.displayName);
       const className = slot.member.className ? sanitizeForCanvas(slot.member.className) : "";
-      const classSuffix = className ? `(${className})` : "";
+      // An on-leave occupant keeps their slot; mark it so the posted
+      // picture matches the live board (faded chip + ลา list).
+      const classSuffix = slot.onLeave ? `(ลา${className ? ` · ${className}` : ""})` : className ? `(${className})` : "";
       const label = `${slot.slotIndex + 1}. ${displayName}`;
 
       // Measure everything in the NAME's font (16px) before ever switching
@@ -147,7 +149,7 @@ function drawPartyCard(ctx: SKRSContext2D, x: number, y: number, party: PartyVie
       const truncatedLabel = truncateToWidth(ctx, label, CARD_W - CARD_PADDING * 2 - suffixBudget);
       const nameWidth = ctx.measureText(truncatedLabel).width;
 
-      ctx.fillStyle = TEXT;
+      ctx.fillStyle = slot.onLeave ? MUTED : TEXT;
       ctx.fillText(truncatedLabel, x + CARD_PADDING, rowY);
 
       if (classSuffix) {
@@ -329,7 +331,7 @@ export function renderPartyBoardImage(board: PartyBoardDetail): Buffer {
   y += BUSY_SECTION_GAP_ABOVE;
   ctx.fillStyle = ACCENT;
   ctx.font = "700 22px RoocPartyBoardFont";
-  ctx.fillText(`Busy / ลา (${board.busy.length})`, PADDING, y + 24);
+  ctx.fillText(`ลา ${board.occurrenceDate} (${board.busy.length})`, PADDING, y + 24);
   y += BUSY_SECTION_HEADER_H;
   layoutBusyChips(ctx, board.busy, PADDING, y, CANVAS_WIDTH - PADDING * 2, true);
 

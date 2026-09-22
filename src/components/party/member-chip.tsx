@@ -25,6 +25,14 @@ interface MemberChipProps {
    * listeners, never onClick, so the two never fight over the same event. */
   selected?: boolean;
   onSelect?: () => void;
+  /** Leave v2: the member is on leave for this round. Rendered faded with
+   * the name struck through; in a party slot they keep their place. */
+  onLeave?: boolean;
+  /** Distinguishes two draggables for the SAME member on one board (an
+   * on-leave member sits in their slot AND in the ลา zone) — dnd-kit needs
+   * unique ids. Also carried in the drag data so the drop handler knows a
+   * drag came out of the ลา zone (= cancel the leave). */
+  dragContext?: "busy";
 }
 
 /** A draggable chip representing one member, used in the pool, busy list, and party slots. */
@@ -36,12 +44,14 @@ export function MemberChip({
   stacked = false,
   selected = false,
   onSelect,
+  onLeave = false,
+  dragContext,
 }: MemberChipProps) {
   const { colorClassOf } = useJobClasses();
   const className = member.className;
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
-    id: `member-${member.id}`,
-    data: { member },
+    id: dragContext ? `member-${member.id}-${dragContext}` : `member-${member.id}`,
+    data: { member, fromBusy: dragContext === "busy" },
     disabled: !draggable,
   });
 
@@ -67,7 +77,8 @@ export function MemberChip({
         selected ? "border-amber-400 bg-amber-500/15 ring-1 ring-amber-400" : "border-zinc-700 bg-zinc-800/80"
       } ${stacked ? "flex-col gap-1" : "items-center gap-1.5"} ${isDragging ? "z-50 opacity-40" : ""} ${
         draggable ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""
-      }`}
+      } ${onLeave && !isDragging ? "opacity-45" : ""}`}
+      title={onLeave ? `${member.displayName} — ลารอบนี้` : undefined}
     >
       {/* `contents` keeps the avatar+name acting as direct flex children when
        * not stacked (unchanged layout); when stacked they form their own row. */}
@@ -86,7 +97,9 @@ export function MemberChip({
             className="object-cover"
           />
         </span>
-        <span className="min-w-0 flex-1 truncate font-medium text-zinc-100">{member.displayName}</span>
+        <span className={`min-w-0 flex-1 truncate font-medium text-zinc-100 ${onLeave ? "line-through decoration-amber-400/70" : ""}`}>
+          {member.displayName}
+        </span>
       </div>
       {showClassBadge && className && (
         <span

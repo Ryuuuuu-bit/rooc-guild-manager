@@ -9,9 +9,7 @@ import {
   upsertRole,
   removeRole,
 } from "./sync";
-import { handleReactionAdd, handleReactionRemove } from "./reactions";
-import { confirmDueLeaves } from "./attendance-confirm";
-import { resetDailyBusyLists, thaiDateString } from "./midnight-reset";
+import { handleReactionAdd } from "./reactions";
 import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
 import { sendPvpStatsReminders } from "./pvp-stats-reminder";
 import { commands } from "./commands";
@@ -19,8 +17,6 @@ import { handleInteractionCreate } from "./interactions";
 
 const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const FULL_SYNC_INTERVAL_MS = 30 * 60 * 1000; // safety-net re-sync every 30 minutes
-const LEAVE_CONFIRM_INTERVAL_MS = 5 * 60 * 1000; // sweep for ลา events due to confirm/discard
-const MIDNIGHT_CHECK_INTERVAL_MS = 60 * 1000; // check for a Thai-date rollover once a minute
 // 3-week staleness only matters at day granularity, so checking every few
 // hours is more than enough precision — mirrors the "safety-net" cadence of
 // the other periodic sweeps above, just much less frequent.
@@ -34,11 +30,6 @@ if (!GUILD_ID) {
 }
 
 const client = createBotClient();
-
-// Tracks the in-flight midnight-reset run (if any) so shutdown() can wait for
-// it instead of exiting mid-loop and leaving a board's reaction re-seed half
-// done — see the "resetDailyBusyLists" usage below.
-let midnightResetInFlight: Promise<unknown> | null = null;
 
 client.once(Events.ClientReady, async (readyClient) => {
   console.log(`[bot] logged in as ${readyClient.user.tag}`);
@@ -95,64 +86,9 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.error("[bot] voice presence reconcile failed", err);
   }
 
-  const runLeaveConfirmSweep = async () => {
-    try {
-      const { confirmed, discarded } = await confirmDueLeaves();
-      if (confirmed || discarded) {
-        console.log(`[bot] ลา confirm sweep: ${confirmed} confirmed, ${discarded} discarded`);
-      }
-    } catch (err) {
-      console.error("[bot] ลา confirm sweep failed", err);
-    }
-  };
-
-  await runLeaveConfirmSweep();
-  setInterval(runLeaveConfirmSweep, LEAVE_CONFIRM_INTERVAL_MS);
-
-  // Starts as null (not today's date) so the very first check below always
-  // runs resetDailyBusyLists() once, on every startup — including a routine
-  // mid-day redeploy. resetDailyBusyLists is idempotent (clearing an
-  // already-empty partyBusyEntries list for a board is a no-op per board,
-  // and applyTodaysScheduledLeaves only ever finds rows still sitting in
-  // scheduledLeaves — a row already applied earlier today was already
-  // deleted, so it simply finds nothing left to do), so running it again
-  // even when today's reset already happened moments ago is harmless.
-  //
-  // This closes a real gap: initializing to "today" used to make a restart
-  // silently believe today's reset had already run even when it hadn't —
-  // e.g. redeploying (routine here — see Railway deploy workflow) at any
-  // point between a Thai-date rollover and whenever that rollover's own
-  // 60s-interval check would have caught it. The in-memory flag would come
-  // back up already saying "today's done", so that whole day's reset (and
-  // the "ลา" board clear that comes with it) got skipped entirely — not
-  // caught up until the NEXT rollover, a full day late. Same missed-day
-  // pattern the `<=` in applyTodaysScheduledLeaves' own query already
-  // guards against for scheduled leaves specifically; this is the same fix
-  // applied to the reset itself.
-  let lastResetThaiDate: string | null = null;
-  const runMidnightResetCheck = async () => {
-    const today = thaiDateString();
-    if (today === lastResetThaiDate) return;
-    const task = (async () => {
-      try {
-        const { boardsReset, scheduledLeavesApplied } = await resetDailyBusyLists();
-        lastResetThaiDate = today; // only advance on success — a failure retries every minute until it works
-        console.log(
-          `[bot] เที่ยงคืน reset: ล้างสถานะ busy/ลา ${boardsReset} กระดาน, แจ้งลาล่วงหน้าที่ถึงกำหนด ${scheduledLeavesApplied} รายการ`
-        );
-      } catch (err) {
-        console.error("[bot] เที่ยงคืน reset ล้มเหลว จะลองใหม่นาทีถัดไป", err);
-      }
-    })();
-    midnightResetInFlight = task;
-    await task;
-    midnightResetInFlight = null;
-  };
-  // Awaited immediately (matching runLeaveConfirmSweep/runPvpReminderSweep's
-  // own pattern above/below) so a missed day is caught up right at startup
-  // instead of waiting up to 60s for the first interval tick.
-  await runMidnightResetCheck();
-  setInterval(runMidnightResetCheck, MIDNIGHT_CHECK_INTERVAL_MS);
+  // Leave v2: no timed leave jobs. "Confirmed" is computed at read time
+  // (src/lib/leaves.ts isConfirmed) and the ลา list is keyed by occurrence
+  // date, so there is nothing to sweep or reset at midnight anymore.
 
   const runPvpReminderSweep = async () => {
     try {
@@ -237,22 +173,14 @@ client.on(Events.GuildRoleDelete, async (role) => {
   }
 });
 
-// Class-select + attendance ("ลา") emoji reactions — see bot/reactions.ts.
-// Ignores anything on a message the bot isn't tracking (looked up inside the
-// handlers), so this is safe to leave on even in channels used for other things.
+// Legacy class-select emoji reactions — see bot/reactions.ts. Ignores
+// anything on a message the bot isn't tracking (looked up inside the
+// handler), so this is safe to leave on even in channels used for other things.
 client.on(Events.MessageReactionAdd, async (reaction, user) => {
   try {
     await handleReactionAdd(reaction, user);
   } catch (err) {
     console.error("[bot] failed to handle messageReactionAdd", err);
-  }
-});
-
-client.on(Events.MessageReactionRemove, async (reaction, user) => {
-  try {
-    await handleReactionRemove(reaction, user);
-  } catch (err) {
-    console.error("[bot] failed to handle messageReactionRemove", err);
   }
 });
 
@@ -284,15 +212,6 @@ client.on(Events.Error, (err) => {
 
 async function shutdown(signal: string) {
   console.log(`[bot] received ${signal}, shutting down...`);
-  // Give an in-flight midnight reset a chance to finish its per-board
-  // clear+re-seed loop rather than being cut off partway through (that used
-  // to be able to leave the bot's own "piggyback" reaction missing from a
-  // board until the next nightly cycle) — capped so a stuck run can't block
-  // shutdown forever.
-  if (midnightResetInFlight) {
-    console.log("[bot] waiting for in-flight midnight reset to finish before exiting...");
-    await Promise.race([midnightResetInFlight, new Promise((resolve) => setTimeout(resolve, 10_000))]);
-  }
   await client.destroy();
   process.exit(0);
 }

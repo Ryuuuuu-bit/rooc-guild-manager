@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { members, membershipEvents, partyBoards, partyBusyEntries, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
+import { members, membershipEvents, partyBoards, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
-import { getPartyBoardDetail, reconcilePendingLeaveOnBoard } from "@/lib/party-data";
+import { cancelBoardOpenLeaves, cancelLeave, currentOccurrenceDate, requestLeave } from "@/lib/leaves";
+import { getPartyBoardDetail } from "@/lib/party-data";
 import { renderPartyBoardImage } from "@/lib/party-image";
 import { createChannelMessageWithImage } from "@/lib/discord";
 
@@ -19,9 +20,17 @@ export interface ActionResultWithId extends ActionResult {
   id?: string;
 }
 
+/**
+ * Where a member goes on a board. Leave v2: "busy" files a leave for the
+ * board's current round (the member keeps their slot, shown faded);
+ * "return" cancels that leave (slot untouched); "slot"/"unassigned" only
+ * move the slot — except a slot move with `cancelLeave` (dragging someone
+ * out of the ลา zone into a party), which does both.
+ */
 export type PartyDestination =
-  | { type: "slot"; partyId: string; slotIndex: number }
+  | { type: "slot"; partyId: string; slotIndex: number; cancelLeave?: boolean }
   | { type: "busy" }
+  | { type: "return" }
   | { type: "unassigned" };
 
 /** All party (group_parties) ids belonging to a board, via its groups. */
@@ -73,17 +82,10 @@ export async function deleteBoard(boardId: string): Promise<ActionResult> {
   const session = await requireAdmin();
 
   await db.transaction(async (tx) => {
-    // Same reconcile as resetPartyBoard — a member still mid-leave when the
-    // board itself gets deleted would otherwise have that busy row cascade
-    // away with no trace, same as the resetPartyBoard bug this mirrors (see
-    // party-data.ts's doc comment).
-    const stillBusy = await tx
-      .select({ memberId: partyBusyEntries.memberId })
-      .from(partyBusyEntries)
-      .where(eq(partyBusyEntries.boardId, boardId));
-    for (const { memberId } of stillBusy) {
-      await reconcilePendingLeaveOnBoard(tx, memberId, boardId, session.user.username);
-    }
+    // Open (not-yet-ended) leaves on this board are cancelled with an audit
+    // line; past ones stay counted. leaves.boardId is "set null" on this
+    // FK, so the history survives the delete.
+    await cancelBoardOpenLeaves(boardId, session.user.username, `(ลบกระดานโดยแอดมิน ${session.user.username})`, new Date(), tx);
     // membershipEvents.boardId is "set null" (not cascade) on this FK — see
     // schema.ts's comment — so the leave/attendance history logged against
     // this board survives the delete instead of being wiped along with it.
@@ -172,20 +174,16 @@ export async function deleteParty(partyId: string): Promise<ActionResult> {
 // --- Member placement (scoped per board) ---
 
 /**
- * Moves a member to a new place on a board (a slot, the "busy" list, or
- * back out to the unassigned pool) — clearing them from wherever they
- * currently sit on THIS board first (a member can hold an independent spot
- * on each board, but only one place within a given board). A member's class
- * is a profile-level attribute (see setMemberClass), not part of this move.
+ * Moves a member on a board — see PartyDestination for what each target
+ * means. A member can hold an independent slot on each board, but only one
+ * slot within a given board. Leave state lives in the `leaves` table (one
+ * row per member+board+round, see src/lib/leaves.ts) and is keyed by the
+ * board's CURRENT round, so an admin marking someone ลา on Monday for GL
+ * files it for Tuesday's round — the same row the member's own ห้องลา
+ * request would have written.
  *
- * The whole read-then-write sequence runs as one transaction so a failure
- * partway through can't leave the member half-moved (cleared from their old
- * spot but never placed in the new one). This also narrows — though, absent
- * a DB-level constraint spanning partySlots/partyBusyEntries together, can't
- * fully close — the window for two concurrent moveMember calls targeting the
- * same member+board (e.g. two admins editing the same board at once) to both
- * read a stale "not busy yet" state and both end up inserting, leaving the
- * member placed in two locations at once.
+ * The slot clear + insert run as one transaction so a failure partway can't
+ * leave the member half-moved.
  */
 export async function moveMember(
   boardId: string,
@@ -199,104 +197,58 @@ export async function moveMember(
     return { ok: false, error: "Member not found, or they are no longer in the guild" };
   }
   // Benched members are supposed to be cleared off every board (see
-  // setMemberBenched) and never appear in a board's own unassigned/busy/slot
-  // lists — but the client's list of pickable members can go stale (e.g.
-  // another admin benches this member while this admin's board is still
-  // open in their browser), and this is the only real gate left once that
-  // happens. Removing them (destination "unassigned") stays allowed.
-  if (member.benched && destination.type !== "unassigned") {
+  // setMemberBenched) and never appear in a board's own lists — but the
+  // client's list of pickable members can go stale (another admin benches
+  // this member while this board is still open in a browser), and this is
+  // the only real gate left once that happens. Removing them stays allowed.
+  if (member.benched && destination.type !== "unassigned" && destination.type !== "return") {
     return { ok: false, error: "This member is currently benched and can't be placed on a party board" };
+  }
+
+  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+  if (!board) return { ok: false, error: "Board not found" };
+  const occurrenceDate = currentOccurrenceDate(board);
+  const actor = session.user.username;
+
+  if (destination.type === "busy") {
+    await requestLeave({ memberId, boardId, occurrenceDate, source: "ADMIN", actor, detailSuffix: `โดยแอดมิน ${actor} (จากหน้าจัดปาร์ตี้)` });
+    revalidatePath("/party");
+    return { ok: true };
+  }
+
+  if (destination.type === "return") {
+    await cancelLeave({ memberId, boardId, occurrenceDate, actor, detailSuffix: `โดยแอดมิน ${actor} (จากหน้าจัดปาร์ตี้)` });
+    revalidatePath("/party");
+    return { ok: true };
   }
 
   const partyIds = await getPartyIdsForBoard(boardId);
   // Defense-in-depth: the current UI always passes a partyId that actually
-  // belongs to boardId (it re-renders per board), but the action itself had
-  // no check — a future caller (a different client, a refactor that stops
-  // keying the board view by id) passing a mismatched pair would otherwise
-  // silently seat the member on a different board than the one whose
-  // busy/benched checks just ran above.
+  // belongs to boardId, but a future caller passing a mismatched pair would
+  // otherwise silently seat the member on a different board than the one
+  // whose checks just ran above.
   if (destination.type === "slot" && !partyIds.includes(destination.partyId)) {
     return { ok: false, error: "That party doesn't belong to this board" };
   }
 
   await db.transaction(async (tx) => {
-    // Checked before clearing below, so we know whether this move is a ลา (→
-    // busy, wasn't already), a return (busy → elsewhere), or neither — used
-    // to log ATTENDANCE_LEAVE/ATTENDANCE_RETURN only on an actual transition.
-    const wasBusy = await tx.query.partyBusyEntries.findFirst({
-      where: and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)),
-    });
-
     if (partyIds.length) {
       await tx
         .update(partySlots)
         .set({ memberId: null, updatedAt: new Date() })
         .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
     }
-    await tx
-      .delete(partyBusyEntries)
-      .where(and(eq(partyBusyEntries.boardId, boardId), eq(partyBusyEntries.memberId, memberId)));
-
-    if (destination.type === "busy" && !wasBusy) {
-      const board = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-      await tx.insert(membershipEvents).values({
-        memberId,
-        type: "ATTENDANCE_LEAVE",
-        detail: `ลาในกระดาน "${board?.name ?? boardId}" โดยแอดมิน ${session.user.username}`,
-        actor: session.user.username,
-        // Without this, an admin-added ลา has no board attached to its
-        // audit-log row — it still shows up in the board's own busy list
-        // (partyBusyEntries always has boardId), but /attendance's per-board
-        // breakdown dumps it in "ไม่ระบุกระดาน" and /checkin's "who's on
-        // leave" lookup can't find it at all (both read membershipEvents.
-        // boardId, not partyBusyEntries). Found via two real members an
-        // admin had marked ลา manually not showing up in either place.
-        boardId,
-        // Admin-vouched, deliberate action — same category as
-        // addManualLeave (attendance.ts) and applyTodaysScheduledLeaves
-        // (leave-schedule.ts), both of which confirm immediately rather
-        // than sitting through the 30-minute anti-fat-finger window meant
-        // only for live member reactions (there's no reaction here to
-        // accidentally undo). Previously missing here — an admin dragging
-        // someone onto Busy/ลา right before an event stayed invisible to
-        // /checkin and /attendance's live stats for up to 30 minutes.
-        confirmedAt: new Date(),
-      });
-    } else if (destination.type !== "busy" && wasBusy) {
-      // Whether this logs a normal return or discards the leave outright
-      // depends on whether it had already event-confirmed — see
-      // reconcilePendingLeaveOnBoard (src/lib/party-data.ts), which mirrors
-      // cancelCurrentLeave in bot/reactions.ts (the same check a member's
-      // own un-react / /leave self-service cancel goes through), so an admin
-      // manually pulling someone out of Busy/ลา behaves identically instead
-      // of leaving a stale still-pending ATTENDANCE_LEAVE row behind.
-      // (resetPartyBoard/markMemberKicked/setMemberBenched call the same
-      // helper for the same reason — see party-data.ts's doc comment.)
-      await reconcilePendingLeaveOnBoard(tx, memberId, boardId, session.user.username);
-    }
-
     if (destination.type === "slot") {
       await tx
         .insert(partySlots)
-        .values({
-          partyId: destination.partyId,
-          slotIndex: destination.slotIndex,
-          memberId,
-        })
+        .values({ partyId: destination.partyId, slotIndex: destination.slotIndex, memberId })
         .onConflictDoUpdate({
           target: [partySlots.partyId, partySlots.slotIndex],
           set: { memberId, updatedAt: new Date() },
         });
-    } else if (destination.type === "busy") {
-      const [{ maxOrder } = { maxOrder: 0 }] = await tx
-        .select({ maxOrder: sql<number>`coalesce(max(${partyBusyEntries.sortOrder}), 0)::int` })
-        .from(partyBusyEntries)
-        .where(eq(partyBusyEntries.boardId, boardId));
-      await tx.insert(partyBusyEntries).values({
-        boardId,
-        memberId,
-        sortOrder: maxOrder + 1,
-      });
+      if (destination.cancelLeave) {
+        await cancelLeave({ memberId, boardId, occurrenceDate, actor, detailSuffix: `โดยแอดมิน ${actor} (จากหน้าจัดปาร์ตี้)` }, tx);
+      }
     }
   });
 
@@ -353,33 +305,19 @@ export async function clearSlot(partyId: string, slotIndex: number): Promise<Act
   return { ok: true };
 }
 
-/** Clears an entire board back to empty — every slot and its busy list. */
+/** Clears an entire board back to empty — every slot, and every open
+ * (not-yet-ended) leave on it. Past leaves stay counted. */
 export async function resetPartyBoard(boardId: string): Promise<ActionResult> {
   const session = await requireAdmin();
 
   const partyIds = await getPartyIdsForBoard(boardId);
-  // Both deletes in one transaction — otherwise a failure/interruption
-  // between them (e.g. a deploy landing mid-request) can clear every slot
-  // but leave the busy/leave list (or vice versa) behind, leaving the board
-  // in a half-reset state with no way to tell it happened.
+  // One transaction — otherwise a failure between the two (e.g. a deploy
+  // landing mid-request) leaves the board half-reset with no way to tell.
   await db.transaction(async (tx) => {
     if (partyIds.length) {
       await tx.delete(partySlots).where(inArray(partySlots.partyId, partyIds));
     }
-    // Reconcile every still-open ลา on this board (discard if still pending,
-    // log ATTENDANCE_RETURN if already confirmed) BEFORE wiping the busy
-    // list — resetting a board is a routine weekly action that can easily
-    // land while a member's leave hasn't event-confirmed yet; without this,
-    // that busy row disappeared with no trace and confirmDueLeaves later
-    // silently discarded the orphaned pending leave.
-    const stillBusy = await tx
-      .select({ memberId: partyBusyEntries.memberId })
-      .from(partyBusyEntries)
-      .where(eq(partyBusyEntries.boardId, boardId));
-    for (const { memberId } of stillBusy) {
-      await reconcilePendingLeaveOnBoard(tx, memberId, boardId, session.user.username);
-    }
-    await tx.delete(partyBusyEntries).where(eq(partyBusyEntries.boardId, boardId));
+    await cancelBoardOpenLeaves(boardId, session.user.username, `(ล้างกระดานโดยแอดมิน ${session.user.username})`, new Date(), tx);
   });
 
   revalidatePath("/party");

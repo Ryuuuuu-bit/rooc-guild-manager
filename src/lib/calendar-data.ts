@@ -1,7 +1,5 @@
-import { and, gte, inArray, lte } from "drizzle-orm";
-import { db } from "@/db";
-import { members, scheduledLeaves } from "@/db/schema";
-import { CHECKIN_EVENTS, type CheckinEventConfig, getLeaveMemberIds, thaiDateString, weekdayOf, windowFor } from "@/lib/checkin-data";
+import { CHECKIN_EVENTS, type CheckinEventConfig, thaiDateString, weekdayOf, windowFor } from "@/lib/checkin-data";
+import { listActiveLeavesBetween } from "@/lib/leaves";
 import { memberDisplayName } from "@/lib/ui";
 
 export interface CalendarLeaveMember {
@@ -14,31 +12,20 @@ export interface CalendarDayEvent {
   eventKey: string;
   label: string;
   /**
-   * "confirmed" (today only) — real leave, read from the matching party
-   * board's leave log (see getLeaveMemberIds), the same source /checkin's
-   * "On Leave" count uses. Deliberately NOT based on check-in voice
-   * attendance — being outside the tracked voice channel doesn't mean
-   * someone is on leave or absent (they might be on Discord elsewhere with
-   * friends, or just not using voice at all).
+   * Leave v2 — one source (`leaves`, keyed by occurrence date) for every
+   * date, past or future; the status only says where the round stands:
    *
-   * "requested" (future dates) — an advance leave request on file
-   * (scheduledLeaves), not yet applied since the date hasn't arrived. A
-   * request still sitting in scheduledLeaves FOR TODAY (the bot hasn't
-   * applied it yet — normally happens within a minute of midnight, but an
-   * unusually long outage could leave it pending longer) is folded into
-   * today's "confirmed" onLeave list instead of its own bucket, so that
-   * member doesn't silently vanish from today's cell while still counting
-   * as "requested, not due" — see getCalendarMonth's dueTodayNotYetApplied.
+   * "confirmed" — the round has ended, so every ACTIVE leave for it counts
+   * (what /attendance and the monthly quota see).
    *
-
-   * "unavailable" (past dates) — deliberately not computed. The calendar's
-   * job is "who's on leave for what's coming up", not a historical audit
-   * (that's /attendance and /checkin) — the per-round board reconstruction
-   * for old dates that predate this feature (or the guild's own current
-   * roster/usage) produced misleading numbers, so past days just show the
-   * event happened, nothing more.
+   * "requested" — the round hasn't ended yet; these leaves still show on
+   * the party board / /checkin, and the member can cancel them for free
+   * until the window closes.
+   *
+   * Deliberately NOT based on check-in voice attendance — being outside the
+   * tracked voice channel doesn't mean someone is on leave.
    */
-  status: "confirmed" | "requested" | "unavailable";
+  status: "confirmed" | "requested";
   onLeave: CalendarLeaveMember[];
 }
 
@@ -73,10 +60,9 @@ function daysInMonth(year: number, month: number): number {
 
 /**
  * Every check-in event occurrence in the given month, each with who's on
- * leave for it — real/confirmed for today (see getLeaveMemberIds),
- * requested-but-not-yet-applied for dates still ahead (scheduledLeaves).
- * Past dates are returned with no leave data at all — see the "unavailable"
- * status on CalendarDayEvent for why.
+ * leave for it — one query over `leaves` for the month, grouped by the
+ * board's linked event (a leave on a board with no linked event has no
+ * calendar cell to land in and is skipped here; /attendance still lists it).
  */
 export async function getCalendarMonth(year: number, month: number): Promise<CalendarMonth> {
   const now = new Date();
@@ -93,80 +79,15 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
     const events = CHECKIN_EVENTS.filter((e) => e.weekdays.includes(weekday));
     allDates.push({ date, weekday, events });
   }
-  const occurrences = allDates.filter((d) => d.events.length > 0);
 
-  // Every not-yet-applied advance leave request for the month, in one query
-  // — applyTodaysScheduledLeaves() converts a row into a confirmed leave
-  // (and deletes it from here) once its date arrives, so this table only
-  // ever has future dates in it, but the > today bound is kept explicit
-  // rather than assumed (today's own rows, if any, are already gone by the
-  // time today starts — see applyTodaysScheduledLeaves's `date <= today`
-  // catch-up sweep in the nightly reset).
-  const scheduledRows =
-    monthEnd > today
-      ? await db
-          .select({ memberId: scheduledLeaves.memberId, date: scheduledLeaves.date, eventKey: scheduledLeaves.eventKey })
-          .from(scheduledLeaves)
-          .where(and(gte(scheduledLeaves.date, monthStart), lte(scheduledLeaves.date, monthEnd)))
-      : [];
-  const scheduledByKey = new Map<string, Set<string>>(); // `${date}:${eventKey}` -> memberIds, future dates only
-  // Rows still on file for TODAY specifically — the bot's own catch-up
-  // sweep (applyTodaysScheduledLeaves) usually clears these within a minute
-  // of midnight, but a long enough outage could leave one sitting here past
-  // that. Tracked separately (by eventKey only, no date — there's only ever
-  // one "today") so today's cell can still show them; see the merge below.
-  const dueTodayNotYetApplied = new Map<string, Set<string>>(); // eventKey -> memberIds
-  for (const r of scheduledRows) {
-    if (r.date === today) {
-      const set = dueTodayNotYetApplied.get(r.eventKey) ?? new Set<string>();
-      set.add(r.memberId);
-      dueTodayNotYetApplied.set(r.eventKey, set);
-      continue;
-    }
-    if (r.date < today) continue; // shouldn't happen — see applyTodaysScheduledLeaves' <= catch-up sweep
-    const key = `${r.date}:${r.eventKey}`;
-    const set = scheduledByKey.get(key) ?? new Set<string>();
-    set.add(r.memberId);
-    scheduledByKey.set(key, set);
-  }
-
-  const neededMemberIds = new Set<string>(scheduledRows.map((r) => r.memberId));
-  const confirmedIdsByOccurrence = new Map<string, Set<string>>(); // `${date}:${eventKey}` -> memberIds
-
-  // Confirmed leave for TODAY's occurrence(s) only — see the "unavailable"
-  // status doc above for why past dates are skipped entirely. Evaluated at
-  // each occurrence's own window end (or now, for a round still in
-  // progress), same as getCheckinReport does for /checkin.
-  const todaysOccurrence = occurrences.find((o) => o.date === today);
-  if (todaysOccurrence) {
-    for (const event of todaysOccurrence.events) {
-      const { end } = windowFor(event, today);
-      const asOf = end.getTime() < now.getTime() ? end : now;
-      const ids = await getLeaveMemberIds(event, asOf);
-      confirmedIdsByOccurrence.set(`${today}:${event.key}`, ids);
-      for (const id of ids) neededMemberIds.add(id);
-    }
-  }
-
-  const memberRows = neededMemberIds.size
-    ? await db
-        .select({
-          id: members.id,
-          discordUsername: members.discordUsername,
-          discordGlobalName: members.discordGlobalName,
-          discordNickname: members.discordNickname,
-          discordAvatar: members.discordAvatar,
-        })
-        .from(members)
-        .where(inArray(members.id, [...neededMemberIds]))
-    : [];
-  const memberById = new Map(memberRows.map((m) => [m.id, m]));
-  function toLeaveMember(id: string): CalendarLeaveMember {
-    const m = memberById.get(id);
-    return { id, name: m ? memberDisplayName(m) : "Unknown", discordAvatar: m?.discordAvatar ?? null };
-  }
-  function sortedNames(ids: Iterable<string>): CalendarLeaveMember[] {
-    return [...ids].map(toLeaveMember).sort((a, b) => a.name.localeCompare(b.name));
+  const rows = await listActiveLeavesBetween(monthStart, monthEnd);
+  const byOccurrence = new Map<string, CalendarLeaveMember[]>(); // `${date}:${eventKey}`
+  for (const r of rows) {
+    if (!r.board?.checkinEventKey) continue;
+    const key = `${r.occurrenceDate}:${r.board.checkinEventKey}`;
+    const list = byOccurrence.get(key) ?? [];
+    list.push({ id: r.member.id, name: memberDisplayName(r.member), discordAvatar: r.member.discordAvatar });
+    byOccurrence.set(key, list);
   }
 
   const days: CalendarDay[] = allDates.map(({ date, weekday, events }) => ({
@@ -175,17 +96,9 @@ export async function getCalendarMonth(year: number, month: number): Promise<Cal
     isToday: date === today,
     isPast: date < today,
     events: events.map((event) => {
-      if (date < today) {
-        return { eventKey: event.key, label: event.label, status: "unavailable" as const, onLeave: [] };
-      }
-      if (date === today) {
-        const confirmedIds = confirmedIdsByOccurrence.get(`${date}:${event.key}`) ?? new Set<string>();
-        const notYetAppliedIds = dueTodayNotYetApplied.get(event.key) ?? new Set<string>();
-        const ids = new Set([...confirmedIds, ...notYetAppliedIds]);
-        return { eventKey: event.key, label: event.label, status: "confirmed" as const, onLeave: sortedNames(ids) };
-      }
-      const ids = scheduledByKey.get(`${date}:${event.key}`) ?? new Set<string>();
-      return { eventKey: event.key, label: event.label, status: "requested" as const, onLeave: sortedNames(ids) };
+      const onLeave = (byOccurrence.get(`${date}:${event.key}`) ?? []).sort((a, b) => a.name.localeCompare(b.name));
+      const roundOver = windowFor(event, date).end <= now;
+      return { eventKey: event.key, label: event.label, status: roundOver ? ("confirmed" as const) : ("requested" as const), onLeave };
     }),
   }));
 

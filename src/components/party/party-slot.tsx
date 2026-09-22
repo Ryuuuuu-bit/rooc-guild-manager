@@ -9,11 +9,15 @@ import type { PartyBoardMemberRef } from "@/lib/party-data";
 interface PartySlotProps {
   id: string;
   member: PartyBoardMemberRef | null;
+  /** The occupant is on leave for this round (see PartySlotView.onLeave). */
+  onLeave?: boolean;
   isAdmin: boolean;
   onClassChange: (value: string) => void;
   onClear: () => void;
-  /** Sends the currently-assigned member straight to the Busy/Leave list (skips "unassigned"). */
+  /** Marks the occupant ลา for this round (they keep the slot, shown faded). */
   onSendBusy?: () => void;
+  /** Cancels the occupant's leave for this round. */
+  onReturn?: () => void;
   /** Unassigned members offered in the "pick a member" popover shown on an empty slot. */
   pickableMembers?: PartyBoardMemberRef[];
   onAssign?: (memberId: string) => void;
@@ -37,10 +41,12 @@ interface PartySlotProps {
 export function PartySlot({
   id,
   member,
+  onLeave = false,
   isAdmin,
   onClassChange,
   onClear,
   onSendBusy,
+  onReturn,
   pickableMembers = [],
   onAssign,
   pickerOpen,
@@ -79,6 +85,7 @@ export function PartySlot({
             compact
             showClassBadge={!isAdmin}
             stacked={stacked}
+            onLeave={onLeave}
             selected={selectedMember?.id === member.id}
             onSelect={
               isAdmin && onSelectMember
@@ -100,16 +107,25 @@ export function PartySlot({
                   </option>
                 ))}
               </select>
-              {onSendBusy && (
+              {onLeave && onReturn ? (
+                <button
+                  type="button"
+                  onClick={onReturn}
+                  title="Cancel this round's leave"
+                  className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-amber-400 transition hover:text-emerald-400"
+                >
+                  Return
+                </button>
+              ) : onSendBusy ? (
                 <button
                   type="button"
                   onClick={onSendBusy}
-                  title="Move to Busy/Leave list"
+                  title="Mark on leave this round (keeps the slot)"
                   className="shrink-0 rounded px-1.5 py-1.5 text-[10px] text-zinc-500 transition hover:text-amber-400"
                 >
                   Leave
                 </button>
-              )}
+              ) : null}
               <button
                 type="button"
                 onClick={onClear}

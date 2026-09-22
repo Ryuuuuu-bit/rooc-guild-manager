@@ -19,26 +19,16 @@ import { members, membershipEvents } from "../src/db/schema";
 import { getPartyBoardDetail, listPartyBoards, type PartyBoardMemberRef } from "./party-data";
 import { listJobClasses } from "./job-classes";
 import {
-  applyTodaysScheduledLeaves,
-  cancelScheduledLeave,
+  cancelLeave,
   formatThaiDateLabel,
-  listMemberActiveLeaves,
-  listMemberScheduledLeaves,
+  listMemberOpenLeaves,
   listUpcomingLeaveOptions,
-  scheduleLeave,
-} from "./leave-schedule";
-import { cancelCurrentLeave } from "./reactions";
-
-/** "YYYY-MM-DD" for now in Thailand's local time — local copy, same
- * cross-file-cycle reasoning as every other bot file's copy of this. */
-function thaiDateString(d: Date = new Date()): string {
-  const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
-  return thai.toISOString().slice(0, 10);
-}
+  requestLeave,
+} from "../src/lib/leaves";
+import { dmMemberLeaveFiled, notifyAdminsOfLeaves, type LeaveNotice } from "./leaves";
 
 const LEAVE_ADD_SELECT_ID = "leave_add_select";
 const LEAVE_CANCEL_SELECT_ID = "leave_cancel_select";
-const LEAVE_RETURN_SELECT_ID = "leave_return_select";
 // "ลายาว": pick one END date and every event date from today through it
 // gets scheduled in one go (see handleLeaveRangeSelect).
 const LEAVE_RANGE_SELECT_ID = "leave_range_select";
@@ -126,8 +116,10 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
     container.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small));
     container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${group.name}`));
     for (const party of group.parties) {
-      const filled = party.slots.filter((s) => s.member).length;
-      const inline = party.slots.map((s) => (s.member ? formatMemberInline(s.member) : "🔸 ว่าง")).join(" · ");
+      const filled = party.slots.filter((s) => s.member && !s.onLeave).length;
+      const inline = party.slots
+        .map((s) => (s.member ? (s.onLeave ? `~~${formatMemberInline(s.member)}~~` : formatMemberInline(s.member)) : "🔸 ว่าง"))
+        .join(" · ");
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`**${party.label}** (${filled}/${party.slots.length})\n${inline}`)
       );
@@ -137,7 +129,7 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
   if (board.busy.length > 0) {
     container.addSeparatorComponents(new SeparatorBuilder());
     container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent(`**ลา / ไม่สะดวก (${board.busy.length})**\n${formatNameList(board.busy)}`)
+      new TextDisplayBuilder().setContent(`**ลา ${formatThaiDateLabel(board.occurrenceDate)} (${board.busy.length})**\n${formatNameList(board.busy)}`)
     );
   }
 
@@ -156,16 +148,11 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
 
 /**
  * Builds the ephemeral leave picker's content + components for one member:
- * a multi-select dropdown of upcoming event dates they haven't already
- * scheduled a leave for (see listUpcomingLeaveOptions), a second dropdown to
- * cancel any not-yet-due requests, and a third to cancel any leave that's
- * ACTIVE right now (whether it came from a live reaction or an advance
- * request that already auto-applied — see listMemberActiveLeaves). Shared by
- * handleLeaveCommand (/leave), handleLeavePanelButton (the "ห้องลา" panel
- * button), and handleLeaveAddSelect/handleLeaveCancelSelect/
- * handleLeaveReturnSelect (to redraw a fresh picker in place after an
- * action) — every entry/re-entry point uses the same builder so the member
- * never has to type anything at any step.
+ * a multi-select of upcoming event dates they don't already have a leave
+ * for, a "ลายาว" end-date select, and a multi-select to cancel any leave
+ * whose round hasn't ended yet (today's included — cancelling before the
+ * window closes means it never counts). Shared by every entry/re-entry
+ * point so the member never has to type anything at any step.
  */
 async function renderLeavePicker(discordUserId: string): Promise<{ content: string; rows: ActionRowBuilder<StringSelectMenuBuilder>[] }> {
   const member = await db.query.members.findFirst({ where: eq(members.discordId, discordUserId) });
@@ -182,32 +169,12 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
     };
   }
 
-  const [allOptions, mine, active] = await Promise.all([
-    listUpcomingLeaveOptions(),
-    listMemberScheduledLeaves(member.id),
-    listMemberActiveLeaves(member.id),
-  ]);
-  const mineKeys = new Set(mine.map((m) => `${m.boardId}|${m.date}`));
+  const [allOptions, mine] = await Promise.all([listUpcomingLeaveOptions(), listMemberOpenLeaves(member.id)]);
+  const mineKeys = new Set(mine.map((m) => `${m.boardId}|${m.occurrenceDate}`));
   const addable = allOptions.filter((o) => !mineKeys.has(`${o.boardId}|${o.date}`)).slice(0, 25);
 
   const rows: ActionRowBuilder<StringSelectMenuBuilder>[] = [];
-  const lines: string[] = ["**แจ้งลาล่วงหน้า**"];
-
-  if (active.length > 0) {
-    const returnSelect = new StringSelectMenuBuilder()
-      .setCustomId(LEAVE_RETURN_SELECT_ID)
-      .setPlaceholder("ยกเลิกลาที่มีผลอยู่ตอนนี้")
-      .setMinValues(1)
-      .setMaxValues(Math.min(active.length, 25))
-      .addOptions(
-        active.slice(0, 25).map((a) => new StringSelectMenuOptionBuilder().setLabel(a.boardName).setValue(a.boardId))
-      );
-    rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(returnSelect));
-    lines.push(
-      `คุณกำลังลาอยู่ตอนนี้ในกระดาน: ${active.map((a) => a.boardName).join(", ")} — เลือกด้านล่างเพื่อยกเลิกทันที ` +
-        `(ถ้ากิจกรรมยังไม่จบ ยกเลิกได้ฟรี ไม่นับเป็นการลา)`
-    );
-  }
+  const lines: string[] = ["**แจ้งลา / ลาล่วงหน้า**"];
 
   if (addable.length > 0) {
     const addSelect = new StringSelectMenuBuilder()
@@ -219,17 +186,14 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
         addable.map((o) =>
           new StringSelectMenuOptionBuilder()
             .setLabel(`${formatThaiDateLabel(o.date)} — ${o.eventLabel}`)
-            .setValue(`${o.boardId}|${o.date}|${o.eventKey}`)
+            .setValue(`${o.boardId}|${o.date}`)
         )
       );
     rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(addSelect));
-    lines.push("เลือกวันที่ด้านล่างเพื่อแจ้งลา — วันนี้มีผลทันที วันอื่นระบบจะลาให้อัตโนมัติเมื่อถึงวันนั้น");
+    lines.push("เลือกวันที่ด้านล่างเพื่อแจ้งลา — มีผลทันทีทั้งในเมนูจัดปาร์ตี้ เช็คออนไลน์ และปฏิทิน");
 
     // "ลายาว" — one pick covers every event (GL and WOE alike) from today
-    // through the chosen end date, so a two-week trip is one click instead
-    // of six or seven. Options are the distinct upcoming dates; a date the
-    // member already has scheduled is simply skipped when applied
-    // (scheduleLeave's onConflictDoNothing), so it's safe to offer them all.
+    // through the chosen end date, so a two-week trip is one click.
     const endDates = [...new Set(addable.map((o) => o.date))].sort().slice(0, 25);
     if (endDates.length > 1) {
       const rangeSelect = new StringSelectMenuBuilder()
@@ -254,23 +218,18 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
   if (mine.length > 0) {
     const cancelSelect = new StringSelectMenuBuilder()
       .setCustomId(LEAVE_CANCEL_SELECT_ID)
-      .setPlaceholder("ยกเลิกวันที่แจ้งลาไว้แล้ว")
+      .setPlaceholder("ยกเลิกวันที่แจ้งลาไว้")
       .setMinValues(1)
       .setMaxValues(Math.min(mine.length, 25))
       .addOptions(
         mine.slice(0, 25).map((m) =>
           new StringSelectMenuOptionBuilder()
-            // Includes the event label, same as the add-select — a member
-            // can have two boards' leave scheduled for the same calendar
-            // date (scheduledLeaves is unique per board+member+date, not
-            // per member+date alone), so a date-only label here could show
-            // two visually identical options with no way to tell them apart.
-            .setLabel(m.eventLabel ? `${formatThaiDateLabel(m.date)} — ${m.eventLabel}` : formatThaiDateLabel(m.date))
-            .setValue(m.id)
+            .setLabel(`${formatThaiDateLabel(m.occurrenceDate)} — ${m.board.name}`)
+            .setValue(`${m.boardId}|${m.occurrenceDate}`)
         )
       );
     rows.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(cancelSelect));
-    lines.push(`คุณแจ้งลาไว้ล่วงหน้า ${mine.length} วัน — เลือกด้านล่างเพื่อยกเลิก`);
+    lines.push(`คุณแจ้งลาไว้ ${mine.length} รายการ — เลือกด้านล่างเพื่อยกเลิก (ยกเลิกก่อนกิจกรรมจบ ไม่นับเป็นการลา)`);
   }
 
   return { content: lines.join("\n"), rows };
@@ -295,29 +254,26 @@ async function handleLeavePanelButton(interaction: ButtonInteraction) {
   await interaction.editReply({ content, components: rows });
 }
 
-/**
- * Member picked one or more dates on the add-select — schedules each, then
- * refreshes the SAME message back into a live picker (not a dead-end
- * confirmation) so add/cancel/add-again all stay reachable by clicking,
- * with no need to ever type /leave again mid-flow.
- */
+/** Member picked one or more dates on the add-select — files each, then redraws the picker in place. */
 async function handleLeaveAddSelect(interaction: StringSelectMenuInteraction) {
   const member = await requireEligibleLeaveMember(interaction);
   if (!member) return;
 
-  const picks = interaction.values.map((value) => {
-    const [boardId, date, eventKey] = value.split("|");
-    return { boardId, date, eventKey };
-  });
-  await scheduleLeavesAndReply(interaction, member.id, picks, "");
+  const valid = new Set((await listUpcomingLeaveOptions()).map((o) => `${o.boardId}|${o.date}`));
+  const picks = interaction.values
+    .filter((v) => valid.has(v))
+    .map((value) => {
+      const [boardId, date] = value.split("|");
+      return { boardId, date };
+    });
+  await fileLeavesAndReply(interaction, member.id, picks, "");
 }
 
 /**
- * Member picked an END date on the range-select ("ลายาว") — schedules every
- * upcoming event date (all boards) from today through that date, same
- * per-date mechanics as handleLeaveAddSelect above. Recomputed from
- * listUpcomingLeaveOptions at click time rather than trusting a list baked
- * into the menu, so the set is exactly what the picker would offer now.
+ * Member picked an END date on the range-select ("ลายาว") — files every
+ * upcoming event date (all boards) from today through that date. Recomputed
+ * from listUpcomingLeaveOptions at click time rather than trusting a list
+ * baked into the menu, so the set is exactly what the picker would offer now.
  */
 async function handleLeaveRangeSelect(interaction: StringSelectMenuInteraction) {
   const member = await requireEligibleLeaveMember(interaction);
@@ -325,23 +281,17 @@ async function handleLeaveRangeSelect(interaction: StringSelectMenuInteraction) 
 
   const endDate = interaction.values[0];
   const picks = (await listUpcomingLeaveOptions()).filter((o) => o.date <= endDate);
-  await scheduleLeavesAndReply(interaction, member.id, picks, `ลายาวถึง ${formatThaiDateLabel(endDate)} — `);
+  await fileLeavesAndReply(interaction, member.id, picks, `ลายาวถึง ${formatThaiDateLabel(endDate)} — `);
 }
 
 /**
- * The add/range selects' shared gate — same ACTIVE + not-benched check
+ * The selects' shared gate — same ACTIVE + not-benched check
  * renderLeavePicker makes before ever showing these menus, re-checked at
  * click time because Discord keeps an ephemeral menu clickable for minutes
- * and an admin can bench/deactivate the member in between (previously
- * only the plain "not found" case was handled here, so a just-benched
- * member could still file future scheduledLeaves rows). Also DEFERS the
- * interaction right away: everything after this (N inserts, a possible
- * same-day apply that sends DMs, then a full picker re-render) can take
- * well over Discord's 3-second reply deadline, after which the final
- * update is rejected (10062) and the member sees "This interaction failed"
- * even though every leave was written. Deferring buys 15 minutes; the
- * reply then goes out via editReply. Returns null (already replied) when
- * the member isn't eligible.
+ * and an admin can bench/deactivate the member in between. Also DEFERS the
+ * interaction right away: N writes + DMs + a full picker re-render can take
+ * over Discord's 3-second reply deadline. Returns null (already replied)
+ * when the member isn't eligible.
  */
 async function requireEligibleLeaveMember(interaction: StringSelectMenuInteraction) {
   await interaction.deferUpdate();
@@ -358,105 +308,74 @@ async function requireEligibleLeaveMember(interaction: StringSelectMenuInteracti
 }
 
 /**
- * Shared tail of the add-select and range-select handlers: schedules each
- * pick, applies any that are for TODAY right away, then refreshes the same
- * message back into a live picker (not a dead-end confirmation) so
- * add/cancel/add-again all stay reachable by clicking, with no need to ever
- * type /leave again mid-flow. Expects the interaction to already be
- * deferred (requireEligibleLeaveMember).
+ * Shared tail of the add-select and range-select handlers: files each pick
+ * (requestLeave is idempotent, so only NEW ones are reported), DMs the
+ * member once and posts one admin notice, then refreshes the same message
+ * back into a live picker. Expects the interaction to already be deferred.
  */
-async function scheduleLeavesAndReply(
+async function fileLeavesAndReply(
   interaction: StringSelectMenuInteraction,
   memberId: string,
-  picks: { boardId: string; date: string; eventKey: string }[],
+  picks: { boardId: string; date: string }[],
   prefix: string
 ) {
-  // Only dates that were actually NEW — scheduleLeave is a silent no-op for
-  // a date already on file, and reporting those as "scheduled" (as this
-  // used to) made a "ลายาว" pick list dates the member already had.
-  const dates: string[] = [];
+  const filed: LeaveNotice[] = [];
   for (const pick of picks) {
-    if (await scheduleLeave(memberId, pick.boardId, pick.date, pick.eventKey)) dates.push(pick.date);
+    const { outcome } = await requestLeave({
+      memberId,
+      boardId: pick.boardId,
+      occurrenceDate: pick.date,
+      source: "MEMBER",
+      actor: interaction.user.id,
+      detailSuffix: "ผ่านห้องลา",
+    });
+    if (outcome !== "unchanged") filed.push({ memberId, boardId: pick.boardId, date: pick.date });
   }
 
-  // A leave picked for TODAY has to take effect right now, not at the next
-  // midnight. Scheduling only ever inserts a scheduledLeaves row, and the
-  // one thing that turns those rows into a real "ลา" (busy entry, party
-  // slot cleared, ATTENDANCE_LEAVE log, member DM + admin notify) is
-  // applyTodaysScheduledLeaves — which until this ran ONLY from the nightly
-  // reset. So a member using /leave on the morning of an event stayed in
-  // their party slot all day with nothing on the board to show it, and the
-  // row was then applied a day late (as a bogus leave on the following
-  // day). Running the apply pass here for same-day picks closes that gap;
-  // it's idempotent and only touches rows dated today or earlier, so the
-  // future dates just scheduled above are left alone for their own day.
-  const today = thaiDateString();
-  const todayDates = [...new Set(dates.filter((d) => d <= today))];
-  if (todayDates.length > 0) {
-    await applyTodaysScheduledLeaves();
+  // Both are side notifications — fire-and-forget so a slow DM never
+  // delays the picker redraw past Discord's deadline.
+  if (filed.length > 0) {
+    void dmMemberLeaveFiled(memberId, filed);
+    void notifyAdminsOfLeaves(filed);
   }
 
-  const futureDates = [...new Set(dates.filter((d) => d > today))].sort();
-  const lines: string[] = [];
-  if (todayDates.length) {
-    lines.push(`✅ ${prefix}แจ้งลาวันนี้แล้ว: ${todayDates.map(formatThaiDateLabel).join(", ")} (มีผลทันที — ย้ายออกจากปาร์ตี้ไปอยู่รายชื่อ ลา แล้ว)`);
-  }
-  if (futureDates.length) {
-    const label = futureDates.length > 4 ? `${futureDates.length} วัน (${formatThaiDateLabel(futureDates[0])} – ${formatThaiDateLabel(futureDates[futureDates.length - 1])})` : futureDates.map(formatThaiDateLabel).join(", ");
-    lines.push(`✅ ${todayDates.length ? "" : prefix}แจ้งลาล่วงหน้าแล้ว: ${label}`);
-  }
-  if (lines.length === 0) lines.push("ไม่มีวันใหม่ให้แจ้งลา (ทุกวันที่เลือกแจ้งไว้แล้ว)");
+  const dates = [...new Set(filed.map((f) => f.date))].sort();
+  const label =
+    dates.length > 4
+      ? `${dates.length} วัน (${formatThaiDateLabel(dates[0])} – ${formatThaiDateLabel(dates[dates.length - 1])})`
+      : dates.map(formatThaiDateLabel).join(", ");
+  const summary = dates.length ? `✅ ${prefix}แจ้งลาแล้ว: ${label}` : "ไม่มีวันใหม่ให้แจ้งลา (ทุกวันที่เลือกแจ้งไว้แล้ว)";
   const { content, rows } = await renderLeavePicker(interaction.user.id);
-  await interaction.editReply({ content: `${lines.join("\n")}\n\n${content}`, components: rows });
+  await interaction.editReply({ content: `${summary}\n\n${content}`, components: rows });
 }
 
-/** Member picked one or more entries on the cancel-select — cancels each, then refreshes the same message back into a live picker (see handleLeaveAddSelect). */
+/** Member picked one or more entries on the cancel-select — cancels each, then redraws the picker in place. */
 async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction) {
+  await interaction.deferUpdate();
   const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
   if (!member) {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
+    await interaction.editReply({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
     return;
   }
 
+  // Only rounds that haven't ended can be cancelled — a stale menu can't
+  // un-count a leave whose event already finished.
+  const open = new Set((await listMemberOpenLeaves(member.id)).map((l) => `${l.boardId}|${l.occurrenceDate}`));
   let cancelled = 0;
-  for (const id of interaction.values) {
-    if (await cancelScheduledLeave(member.id, id)) cancelled++;
+  let tooLate = 0;
+  for (const value of interaction.values) {
+    if (!open.has(value)) {
+      tooLate++;
+      continue;
+    }
+    const [boardId, occurrenceDate] = value.split("|");
+    if (await cancelLeave({ memberId: member.id, boardId, occurrenceDate, actor: interaction.user.id, detailSuffix: "ผ่านห้องลา" })) cancelled++;
   }
 
+  const parts = [`✅ ยกเลิกการลาแล้ว ${cancelled} รายการ`];
+  if (tooLate > 0) parts.push(`${tooLate} รายการยกเลิกไม่ได้แล้ว (กิจกรรมจบไปแล้ว จึงนับเป็นการลา)`);
   const { content, rows } = await renderLeavePicker(interaction.user.id);
-  await interaction.update({ content: `✅ ยกเลิกการแจ้งลาล่วงหน้าแล้ว ${cancelled} รายการ\n\n${content}`, components: rows });
-}
-
-/**
- * Member picked one or more boards on the "ยกเลิกลาที่มีผลอยู่ตอนนี้"
- * select — cancels each via cancelCurrentLeave (shared with the live-reaction
- * un-react flow, see reactions.ts), then refreshes the same message back
- * into a live picker (see handleLeaveAddSelect). Reports the two outcomes
- * separately so the member knows whether it actually counted or not — the
- * event may have already ended for one board and not another.
- */
-async function handleLeaveReturnSelect(interaction: StringSelectMenuInteraction) {
-  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
-  if (!member) {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
-    return;
-  }
-
-  let discarded = 0;
-  let returned = 0;
-  for (const boardId of interaction.values) {
-    const outcome = await cancelCurrentLeave(member.id, boardId, " ผ่าน /leave (ยกเลิกลาที่มีผลอยู่)");
-    if (outcome === "discarded") discarded++;
-    if (outcome === "returned") returned++;
-  }
-
-  const parts: string[] = [];
-  if (discarded > 0) parts.push(`ยกเลิกแล้ว ${discarded} รายการ (ไม่นับเป็นการลา)`);
-  if (returned > 0) parts.push(`กลับเข้าร่วมแล้ว ${returned} รายการ (กิจกรรมจบไปแล้ว จึงยังนับเป็นการลาในสถิติ)`);
-  const summary = parts.length > 0 ? parts.join(" · ") : "ไม่มีรายการที่ยกเลิกได้แล้ว";
-
-  const { content, rows } = await renderLeavePicker(interaction.user.id);
-  await interaction.update({ content: `✅ ${summary}\n\n${content}`, components: rows });
+  await interaction.editReply({ content: `${parts.join(" · ")}\n\n${content}`, components: rows });
 }
 
 /**
@@ -543,7 +462,7 @@ async function handleClassSelectChoose(interaction: StringSelectMenuInteraction)
   await interaction.update({ content: `✅ เลือกอาชีพ: ${className}`, components: [] });
 }
 
-/** Routes every interaction the bot receives — /party, /leave, the /leave picker's three select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
+/** Routes every interaction the bot receives — /party, /leave, the /leave picker's select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
 export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === "party") {
     try {
@@ -619,17 +538,12 @@ export async function handleInteractionCreate(interaction: Interaction) {
       await handleLeaveCancelSelect(interaction);
     } catch (err) {
       console.error("[bot] /leave cancel-select failed", err);
-      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
-    }
-    return;
-  }
-
-  if (interaction.isStringSelectMenu() && interaction.customId === LEAVE_RETURN_SELECT_ID) {
-    try {
-      await handleLeaveReturnSelect(interaction);
-    } catch (err) {
-      console.error("[bot] /leave return-select failed", err);
-      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content, components: [] }).catch(() => {});
+      } else {
+        await interaction.update({ content, components: [] }).catch(() => {});
+      }
     }
     return;
   }
