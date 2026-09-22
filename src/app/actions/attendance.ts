@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/authz";
-import { requestLeave, thaiDateString } from "@/lib/leaves";
+import { cancelLeavesInRange, requestLeave, thaiDateString } from "@/lib/leaves";
 
 export interface ActionResult {
   ok: boolean;
@@ -64,4 +64,39 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
   revalidatePath("/party");
   revalidatePath(`/members/${memberId}`);
   return { ok: true };
+}
+
+/**
+ * Voids every leave dated in a period — e.g. the game's scoring break, when
+ * nobody's absence should count — on one board or all boards. Each voided
+ * row gets an ATTENDANCE_RETURN audit line naming the reason.
+ */
+export async function voidLeavesInRange(formData: FormData): Promise<ActionResult & { cancelled?: number }> {
+  const session = await requireAdmin();
+
+  const from = (formData.get("from") as string)?.trim();
+  const to = (formData.get("to") as string)?.trim();
+  const boardId = (formData.get("boardId") as string)?.trim() || null;
+  const reason = (formData.get("reason") as string)?.trim();
+
+  if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) return { ok: false, error: "Please select a valid date range" };
+  if (from > to) return { ok: false, error: "\"From\" must be on or before \"To\"" };
+  if (!reason) return { ok: false, error: "Please give a reason (shown in each member's activity log)" };
+  if (reason.length > 300) return { ok: false, error: "Reason is too long (300 characters max)" };
+
+  const cancelled = await cancelLeavesInRange({
+    boardId,
+    from,
+    to,
+    actor: session.user.username,
+    detailSuffix: `(ยกเลิกทั้งช่วงโดยแอดมิน ${session.user.username} — ${reason})`,
+  });
+
+  revalidatePath("/");
+  revalidatePath("/activity");
+  revalidatePath("/attendance");
+  revalidatePath("/calendar");
+  revalidatePath("/checkin");
+  revalidatePath("/party");
+  return { ok: true, cancelled };
 }

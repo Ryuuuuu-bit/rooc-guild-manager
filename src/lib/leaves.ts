@@ -360,6 +360,50 @@ export async function cancelBoardOpenLeaves(boardId: string, actor: string, deta
   return n;
 }
 
+export interface CancelRangeParams {
+  /** Restrict to one board, or null for every board (board-less rows included). */
+  boardId: string | null;
+  /** Inclusive "YYYY-MM-DD" bounds on occurrenceDate. */
+  from: string;
+  to: string;
+  actor: string;
+  detailSuffix: string;
+}
+
+/** Cancels every ACTIVE leave dated in the range — past (already counted)
+ * rounds included. For "the game was on break, nobody's leave that week
+ * counts". Returns how many rows were cancelled. */
+export async function cancelLeavesInRange(params: CancelRangeParams, dbOrTx: DbOrTx = db): Promise<number> {
+  const conditions = [eq(leaves.status, "ACTIVE"), gte(leaves.occurrenceDate, params.from), lte(leaves.occurrenceDate, params.to)];
+  if (params.boardId) conditions.push(eq(leaves.boardId, params.boardId));
+  const rows = await dbOrTx.select({ id: leaves.id, memberId: leaves.memberId, boardId: leaves.boardId, occurrenceDate: leaves.occurrenceDate }).from(leaves).where(and(...conditions));
+  if (rows.length === 0) return 0;
+
+  const run = async (tx: DbOrTx) => {
+    const boardNames = new Map<string, string>();
+    for (const r of rows) {
+      await tx.update(leaves).set({ status: "CANCELLED", cancelledAt: new Date() }).where(eq(leaves.id, r.id));
+      let boardName = "(ไม่ระบุกระดาน)";
+      if (r.boardId) {
+        if (!boardNames.has(r.boardId)) {
+          const b = await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, r.boardId) });
+          boardNames.set(r.boardId, b?.name ?? r.boardId);
+        }
+        boardName = boardNames.get(r.boardId)!;
+      }
+      await tx.insert(membershipEvents).values({
+        memberId: r.memberId,
+        type: "ATTENDANCE_RETURN",
+        detail: `ยกเลิกลากระดาน "${boardName}" ${formatThaiDateLabel(r.occurrenceDate)} ${params.detailSuffix}`,
+        actor: params.actor,
+        boardId: r.boardId,
+      });
+    }
+    return rows.length;
+  };
+  return dbOrTx === db ? db.transaction((tx) => run(tx)) : run(dbOrTx);
+}
+
 /** Boards with a linked event, keyed by event key. */
 export async function boardsByEventKey(): Promise<Map<string, LeaveBoardRef>> {
   const keys = CHECKIN_EVENTS.map((e) => e.key);

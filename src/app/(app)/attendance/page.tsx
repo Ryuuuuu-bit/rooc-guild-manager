@@ -5,6 +5,7 @@ import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
+import { VoidLeavesForm } from "@/components/void-leaves-form";
 
 const DAY_OPTIONS = [
   { value: "7", label: "7 days" },
@@ -96,13 +97,17 @@ export default async function AttendancePage({
             most to least frequent
           </p>
           {session.user.isAdmin && (
-            <p className="mt-1 text-xs text-zinc-500">
-              Need to fix someone&apos;s leave entry? Click a member&apos;s name below to go to their profile — remove
-              test/mistaken entries from their &quot;Activity Log&quot;, or add a backdated leave (e.g. one reported via
-              DM) from &quot;Log Manual Leave&quot;. (Every leave entry already stores an exact date and time — hover
-              the &quot;Last Leave&quot; column below to see the full timestamp, or view every entry broken down by day
-              in that member&apos;s &quot;Activity Log&quot;.)
-            </p>
+            <>
+              <p className="mt-1 text-xs text-zinc-500">
+                A leave counts once its round has ended and it wasn&apos;t cancelled. To fix one: cancel it from the
+                party board (drag the member out of the ลา zone / &quot;Return&quot;) while the round is still open, or
+                add a backdated leave from &quot;Log Manual Leave&quot; on the member&apos;s profile. For a whole period
+                the game was on break, use &quot;Void leaves for a period&quot;.
+              </p>
+              <div className="mt-2">
+                <VoidLeavesForm boards={boards} />
+              </div>
+            </>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -229,8 +234,8 @@ export default async function AttendancePage({
             {overQuota.length === 1 ? "" : "s"}
           </p>
           <p className="mt-0.5 text-[11px] text-rose-200/60">
-            Counts this calendar month only, including leaves still pending confirmation — so these numbers can be higher
-            than the confirmed-only Leave Count column below.
+            Counts this calendar month only, including upcoming rounds already requested — so these numbers can be higher
+            than the counted-only Leave Count column below.
           </p>
           <ul className="mt-2 flex flex-col gap-1 text-xs text-rose-100/90">
             {overQuota.map((o) => (
