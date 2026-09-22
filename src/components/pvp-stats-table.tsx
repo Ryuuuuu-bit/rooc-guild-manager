@@ -6,7 +6,7 @@ import type { Member, PvpStatEntry } from "@/db/schema";
 import { memberDisplayName } from "@/lib/ui";
 import { fmtInt, fmtPct, type PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
 import { useJobClasses } from "@/components/job-classes-provider";
-import { ClassBadge } from "@/components/badges";
+import { AltClassIcons, ClassBadge } from "@/components/badges";
 import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
@@ -16,7 +16,7 @@ import { AdminEditEntryButton } from "@/components/pvp-stat-admin-entry";
 
 type PvpStatMember = Pick<
   Member,
-  "id" | "discordNickname" | "discordGlobalName" | "discordUsername" | "discordAvatar" | "characterClass" | "inGameName"
+  "id" | "discordNickname" | "discordGlobalName" | "discordUsername" | "discordAvatar" | "characterClass" | "altClasses" | "inGameName"
 >;
 
 type PvpStatsRow = { member: PvpStatMember; entry: PvpStatEntry | null };
@@ -277,7 +277,11 @@ export function PvpStatsTable({
   const filteredRows = useMemo(() => {
     let result = rows;
     if (pendingOnly) result = result.filter((r) => r.entry && !isReviewStatus(r.entry.reviewStatus));
-    if (selectedClasses.size > 0) result = result.filter((r) => r.member.characterClass && selectedClasses.has(r.member.characterClass));
+    // Class filter matches the main class OR a secondary one.
+    if (selectedClasses.size > 0)
+      result = result.filter(
+        (r) => (r.member.characterClass && selectedClasses.has(r.member.characterClass)) || r.member.altClasses.some((a) => selectedClasses.has(a))
+      );
     const q = query.trim().toLowerCase();
     if (!q) return result;
     return result.filter(({ member }) => {
@@ -488,7 +492,10 @@ export function PvpStatsTable({
                         </Link>
                       </td>
                       <td className="px-4 py-3">
-                        <ClassBadge className={member.characterClass} />
+                        <span className="inline-flex items-center gap-1.5">
+                          <ClassBadge className={member.characterClass} />
+                          <AltClassIcons altClasses={member.altClasses} />
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-zinc-300">{entry?.role ?? "—"}</td>
                       <td className="px-4 py-3">
@@ -592,6 +599,7 @@ export function PvpStatsTable({
                       <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
                     </Link>
                     <ClassBadge className={member.characterClass} />
+                    <AltClassIcons altClasses={member.altClasses} />
                   </div>
                 }
                 reviewAction={

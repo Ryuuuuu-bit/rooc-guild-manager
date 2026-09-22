@@ -28,7 +28,7 @@ export async function getPvpStatFieldDefs(): Promise<PvpCustomFieldDef[]> {
 
 export interface PvpStatRow {
   entry: PvpStatEntry;
-  member: Pick<Member, "id" | "discordNickname" | "discordGlobalName" | "discordUsername" | "discordAvatar" | "characterClass" | "inGameName">;
+  member: Pick<Member, "id" | "discordNickname" | "discordGlobalName" | "discordUsername" | "discordAvatar" | "characterClass" | "altClasses" | "inGameName">;
 }
 
 /**
@@ -46,6 +46,7 @@ export async function getLatestPvpStats(): Promise<Array<{ member: PvpStatRow["m
       discordUsername: members.discordUsername,
       discordAvatar: members.discordAvatar,
       characterClass: members.characterClass,
+      altClasses: members.altClasses,
       inGameName: members.inGameName,
     })
     .from(members)

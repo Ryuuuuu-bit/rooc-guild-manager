@@ -158,6 +158,7 @@ export default async function DashboardPage() {
           {totalClassed > 0 && (
             <span className="text-xs text-zinc-500">
               Total <span className="font-medium tabular-nums text-zinc-300">{totalClassed}</span> members
+              <span className="text-zinc-600"> · +N = also play it as a secondary class</span>
             </span>
           )}
         </div>
@@ -189,6 +190,12 @@ export default async function DashboardPage() {
                   />
                 </div>
                 <span className="w-8 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-300">{c.count}</span>
+                <span
+                  className="w-10 shrink-0 text-right text-[11px] tabular-nums text-zinc-500"
+                  title={c.alsoCount ? `${c.alsoCount} more list ${c.name} as a secondary class` : undefined}
+                >
+                  {c.alsoCount ? `+${c.alsoCount}` : ""}
+                </span>
               </div>
             ))}
             {classDistribution.unassignedCount > 0 && (
@@ -203,6 +210,7 @@ export default async function DashboardPage() {
                 <span className="w-8 shrink-0 text-right text-sm font-medium tabular-nums text-zinc-500">
                   {classDistribution.unassignedCount}
                 </span>
+                <span className="w-10 shrink-0" />
               </div>
             )}
             </div>

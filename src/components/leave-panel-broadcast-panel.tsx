@@ -73,7 +73,7 @@ export function LeavePanelBroadcastPanel() {
         onClick={handleOpen}
         className="rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
       >
-        Post ห้องลา Panel in Discord
+        Post Leave Panel in Discord
       </button>
 
       {open && (
@@ -91,9 +91,9 @@ export function LeavePanelBroadcastPanel() {
             {!loading && (
               <div className="flex flex-col gap-3">
                 <p className="text-xs text-zinc-500">
-                  Posts one pinned message with a &quot;แจ้งลาล่วงหน้า&quot; button — members click it any time to pick
-                  upcoming leave dates, no typing needed (the bot needs &quot;Send Messages&quot; permission in the selected
-                  channel).
+                  Posts one pinned message with a &quot;แจ้งลาล่วงหน้า&quot; button — members click it any time to
+                  pick leave dates (today&apos;s round included) or cancel one, no typing needed (the bot needs
+                  &quot;Send Messages&quot; permission in the selected channel).
                 </p>
 
                 {status && (

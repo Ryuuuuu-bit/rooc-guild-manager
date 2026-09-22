@@ -17,7 +17,6 @@ import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
 import { getCheckinEvent } from "@/lib/checkin-events";
 import { AnnounceBoardImageButton } from "./announce-board-image-button";
-import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
 import {
   createGroup,
@@ -26,7 +25,6 @@ import {
   deleteGroup,
   deleteParty,
   moveMember,
-  renameBoard,
   renameGroup,
   resetPartyBoard,
   setMemberClass,
@@ -512,20 +510,6 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     }
   }
 
-  async function handleRenameBoard() {
-    if (!board || !selectedBoardId) return;
-    const name = window.prompt("Rename board:", board.name);
-    if (!name) return;
-    try {
-      const result = await renameBoard(selectedBoardId, name);
-      if (result.ok) router.refresh();
-      else if (result.error) alert(result.error);
-    } catch (err) {
-      console.error("Failed to rename board", err);
-      alert("Failed to rename board. Please try again.");
-    }
-  }
-
   async function handleDeleteBoard() {
     if (!board || !selectedBoardId) return;
     if (!confirm(`Delete the entire "${board.name}" board? This cannot be undone.`)) return;
@@ -741,18 +725,6 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         boardName={board.name}
                         lastChannelId={board.lastImageAnnounceChannelId}
                       />
-                      <PartyTemplatePanel
-                        boardId={selectedBoardId}
-                        boardName={board.name}
-                        onApplied={() => router.refresh()}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleRenameBoard}
-                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
-                      >
-                        Rename Board
-                      </button>
                       <button
                         type="button"
                         onClick={handleReset}

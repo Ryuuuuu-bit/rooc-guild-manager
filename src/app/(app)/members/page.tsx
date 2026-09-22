@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listDiscordRoles, listMembers } from "@/lib/data";
+import { listJobClasses } from "@/lib/job-classes";
 import { requireUser } from "@/lib/authz";
 import { StatusBadge, ClassBadge, BenchedBadge, AltClassBadges } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
@@ -11,6 +12,7 @@ interface SearchParams {
   status?: string;
   role?: string;
   benched?: string;
+  class?: string;
 }
 
 export default async function MembersPage({
@@ -23,14 +25,16 @@ export default async function MembersPage({
   const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
   const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
 
-  const [membersList, discordRoleList] = await Promise.all([
+  const [membersList, discordRoleList, jobClassList] = await Promise.all([
     listMembers({
       search: params.q,
       status,
       discordRoleId: params.role,
       benched,
+      className: params.class || undefined,
     }),
     listDiscordRoles(),
+    listJobClasses(),
   ]);
 
   const rolesById = new Map(discordRoleList.map((r) => [r.id, r]));
@@ -72,6 +76,19 @@ export default async function MembersPage({
             {discordRoleList.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
+              </option>
+            ))}
+          </select>
+          <select
+            name="class"
+            defaultValue={params.class ?? ""}
+            title="Main or secondary class"
+            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
+          >
+            <option value="">All Classes</option>
+            {jobClassList.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.emoji} {c.name}
               </option>
             ))}
           </select>

@@ -253,6 +253,13 @@
       "when": 1790095995713,
       "tag": "0035_add_member_alt_classes",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790099083960,
+      "tag": "0036_drop_party_templates",
+      "breakpoints": true
     }
   ]
 }

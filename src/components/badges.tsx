@@ -54,3 +54,18 @@ export function AltClassBadges({ altClasses }: { altClasses: string[] }) {
     </span>
   );
 }
+
+/** Emoji-only version of AltClassBadges for dense rows (tables, pickers) — names in the tooltip. */
+export function AltClassIcons({ altClasses, size = 11 }: { altClasses: string[]; size?: number }) {
+  if (altClasses.length === 0) return null;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-px rounded-full bg-zinc-800/60 px-1 py-px ring-1 ring-inset ring-zinc-700/60"
+      title={`Secondary classes: ${altClasses.join(", ")}`}
+    >
+      {altClasses.map((c) => (
+        <ClassIcon key={c} job={c} size={size} />
+      ))}
+    </span>
+  );
+}

@@ -72,18 +72,6 @@ export async function createBoard(name: string): Promise<ActionResultWithId> {
   return { ok: true, id: inserted.id };
 }
 
-export async function renameBoard(boardId: string, name: string): Promise<ActionResult> {
-  await requireAdmin();
-  const trimmed = name.trim();
-  if (!trimmed) return { ok: false, error: "Please enter a board name" };
-
-  await db.update(partyBoards).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
-  // Renaming to/away from "GL"/"WOE" links/unlinks the check-in event.
-  await syncBoardEventLink(boardId, trimmed);
-  revalidatePath("/party");
-  return { ok: true };
-}
-
 export async function deleteBoard(boardId: string): Promise<ActionResult> {
   const session = await requireAdmin();
 

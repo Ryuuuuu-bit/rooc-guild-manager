@@ -117,9 +117,19 @@ export function MemberChip({
           {className}
         </span>
       )}
-      {showClassBadge && !stacked && member.altClasses.length > 0 && (
-        <span className="shrink-0 text-[9px] text-zinc-500" title={`รอง: ${member.altClasses.join(", ")}`}>
-          +{member.altClasses.join("/")}
+      {/* Secondary classes as emoji-only dots — fixed ~14px each, so two of
+          them never push a 210px slot card or a wrapped pool chip out of
+          shape; names live in the tooltip. Hidden in screenshot (stacked)
+          mode, where only the main class matters. */}
+      {!stacked && member.altClasses.length > 0 && (
+        <span
+          className="inline-flex shrink-0 items-center gap-px rounded-full bg-zinc-900/80 px-1 py-px ring-1 ring-inset ring-zinc-700/60"
+          title={`เล่นได้ด้วย: ${member.altClasses.join(", ")}`}
+          aria-label={`secondary classes: ${member.altClasses.join(", ")}`}
+        >
+          {member.altClasses.map((c) => (
+            <ClassIcon key={c} job={c} size={compact ? 9 : 10} />
+          ))}
         </span>
       )}
     </div>

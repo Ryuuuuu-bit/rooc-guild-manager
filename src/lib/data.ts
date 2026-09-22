@@ -13,6 +13,8 @@ export interface MemberFilters {
   discordRoleId?: string;
   /** "benched" = only benched members, "active" = only non-benched, undefined = no filter. */
   benched?: "benched" | "active";
+  /** Class name — matches the main class OR a secondary one ("who can play Priest?"). */
+  className?: string;
 }
 
 export async function listMembers(filters: MemberFilters = {}) {
@@ -38,6 +40,10 @@ export async function listMembers(filters: MemberFilters = {}) {
 
   if (filters.discordRoleId) {
     conditions.push(arrayContains(members.discordRoles, [filters.discordRoleId]));
+  }
+
+  if (filters.className) {
+    conditions.push(or(eq(members.characterClass, filters.className), arrayContains(members.altClasses, [filters.className]))!);
   }
 
   if (filters.benched === "benched") {
@@ -313,6 +319,15 @@ export async function getClassDistribution() {
     .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)))
     .groupBy(members.characterClass);
 
+  // Members who list each class as a SECONDARY one — "could also field N
+  // more of these in a pinch", shown faintly next to the main-class bar.
+  const altRows = await db
+    .select({ className: sql<string>`alt`, count: sql<number>`count(*)::int` })
+    .from(sql`${members}, unnest(${members.altClasses}) as alt`)
+    .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)))
+    .groupBy(sql`alt`);
+  const altByName = new Map(altRows.map((r) => [r.className, r.count]));
+
   const classesList = await listJobClasses();
   const byName = new Map(classesList.map((c) => [c.name, c]));
 
@@ -321,6 +336,7 @@ export async function getClassDistribution() {
     .map((r) => ({
       name: r.className,
       count: r.count,
+      alsoCount: altByName.get(r.className) ?? 0,
       emoji: byName.get(r.className)?.emoji ?? "",
       colorKey: byName.get(r.className)?.colorKey ?? "stone",
     }))

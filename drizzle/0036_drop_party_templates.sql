@@ -1,0 +1,1 @@
+DROP TABLE "party_templates" CASCADE;

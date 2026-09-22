@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { memberDisplayName } from "@/lib/ui";
-import { ClassBadge, BenchedBadge } from "@/components/badges";
+import { AltClassIcons, ClassBadge, BenchedBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
 import { HorseRaceTrack, buildRacers, type RaceRacer } from "@/components/horse-race-track";
 import { setMuted as setSoundMuted, isMuted as getSoundMuted, playTick, playRevealChime } from "@/lib/race-sounds";
@@ -15,6 +15,7 @@ export interface PickableMember {
   discordAvatar: string | null;
   inGameName: string | null;
   characterClass: string | null;
+  altClasses: string[];
   benched: boolean;
 }
 
@@ -218,6 +219,7 @@ export function RandomPicker({ members }: { members: PickableMember[] }) {
               {!spinning && (
                 <div className="flex items-center gap-2">
                   <ClassBadge className={current.characterClass} />
+                  <AltClassIcons altClasses={current.altClasses} />
                   {current.benched && <BenchedBadge />}
                 </div>
               )}

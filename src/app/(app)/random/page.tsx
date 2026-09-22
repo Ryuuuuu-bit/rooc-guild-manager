@@ -30,6 +30,7 @@ export default async function RandomPickerPage() {
           discordAvatar: m.discordAvatar,
           inGameName: m.inGameName,
           characterClass: m.characterClass,
+          altClasses: m.altClasses,
           benched: m.benched,
         }))}
       />

@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/authz";
 import { getPvpStatHistory, getPvpStatFieldDefs } from "@/lib/pvp-stats";
 import { fmtInt, fmtPct } from "@/lib/pvp-stat-fields";
 import { memberDisplayName } from "@/lib/ui";
-import { ClassBadge } from "@/components/badges";
+import { AltClassBadges, ClassBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
 import { PvpReviewBadge, PvpReviewButton } from "@/components/pvp-stat-review";
@@ -39,6 +39,7 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
             <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-50">
               {memberDisplayName(member)}
               <ClassBadge className={member.characterClass} />
+              <AltClassBadges altClasses={member.altClasses} />
             </h1>
             <p className="text-sm text-zinc-400">PVP Stats history · {history.length} entries</p>
           </div>
