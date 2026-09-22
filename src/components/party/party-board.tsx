@@ -28,6 +28,7 @@ import {
   renameGroup,
   resetPartyBoard,
   setMemberClass,
+  setSlotPlayingAs,
   type PartyDestination,
 } from "@/app/actions/party";
 import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
@@ -92,11 +93,14 @@ function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destin
   }
 
   const stillOnLeave = wasOnLeave && !(destination.type === "slot" && destination.cancelLeave);
+  // Their per-slot "playing as" moves with them (mirrors moveMember).
+  let carriedPlayingAs: string | null = null;
+  for (const g of groups) for (const p of g.parties) for (const s of p.slots) if (s.member?.id === member.id) carriedPlayingAs = s.playingAs;
   groups = groups.map((g) => ({
     ...g,
     parties: g.parties.map((p) => ({
       ...p,
-      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null, onLeave: false } : s)),
+      slots: p.slots.map((s) => (s.member?.id === member.id ? { ...s, member: null, playingAs: null, onLeave: false } : s)),
     })),
   }));
   unassigned = unassigned.filter((u) => u.id !== member.id);
@@ -113,7 +117,7 @@ function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destin
           slots: p.slots.map((s) => {
             if (s.slotIndex !== destination.slotIndex) return s;
             if (s.member && s.member.id !== member.id) bumpedOccupant = s.member;
-            return { slotIndex: s.slotIndex, member, onLeave: stillOnLeave };
+            return { slotIndex: s.slotIndex, member, playingAs: carriedPlayingAs, onLeave: stillOnLeave };
           }),
         };
       }),
@@ -191,6 +195,7 @@ interface PartyCardProps {
   isAdmin: boolean;
   pickableMembers: PartyBoardMemberRef[];
   onClassChange: (memberId: string, value: string) => void;
+  onPlayingAsChange: (partyId: string, slotIndex: number, value: string | null) => void;
   onClear: (partyId: string, slotIndex: number) => void;
   onAssign: (partyId: string, slotIndex: number, memberId: string) => void;
   onSendBusy: (partyId: string, slotIndex: number) => void;
@@ -212,6 +217,7 @@ function PartyCard({
   isAdmin,
   pickableMembers,
   onClassChange,
+  onPlayingAsChange,
   onClear,
   onAssign,
   onSendBusy,
@@ -256,7 +262,7 @@ function PartyCard({
       </div>
       <div className="flex flex-col gap-1.5 p-1.5">
         {[0, 1, 2, 3, 4].map((slotIndex) => {
-          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null, onLeave: false };
+          const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null, playingAs: null, onLeave: false };
           const memberId = slot.member?.id;
           return (
             <PartySlot
@@ -264,8 +270,10 @@ function PartyCard({
               id={`slot:${party.id}:${slotIndex}`}
               member={slot.member}
               onLeave={slot.onLeave}
+              playingAs={slot.playingAs}
               isAdmin={isAdmin}
               onClassChange={(value) => memberId && onClassChange(memberId, value)}
+              onPlayingAsChange={(value) => onPlayingAsChange(party.id, slotIndex, value)}
               onClear={() => onClear(party.id, slotIndex)}
               onSendBusy={memberId ? () => onSendBusy(party.id, slotIndex) : undefined}
               onReturn={memberId ? () => onReturn(party.id, slotIndex) : undefined}
@@ -430,6 +438,36 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
         }
       } catch (err) {
         console.error("Failed to change class", err);
+        alert("Failed to change class. Please try again.");
+        router.refresh();
+      }
+    });
+  }
+
+  function handlePlayingAsChange(partyId: string, slotIndex: number, value: string | null) {
+    if (!board) return;
+    setBoard((prev) =>
+      prev
+        ? {
+            ...prev,
+            groups: prev.groups.map((g) => ({
+              ...g,
+              parties: g.parties.map((p) =>
+                p.id !== partyId ? p : { ...p, slots: p.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, playingAs: value } : s)) }
+              ),
+            })),
+          }
+        : prev
+    );
+    startTransition(async () => {
+      try {
+        const result = await setSlotPlayingAs(partyId, slotIndex, value);
+        if (!result.ok) {
+          alert(result.error ?? "Failed to change class. Please try again.");
+          router.refresh();
+        }
+      } catch (err) {
+        console.error("Failed to change slot class", err);
         alert("Failed to change class. Please try again.");
         router.refresh();
       }
@@ -960,6 +998,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         isAdmin={effectiveAdmin}
                         pickableMembers={board.unassigned}
                         onClassChange={handleClassChange}
+                        onPlayingAsChange={handlePlayingAsChange}
                         onClear={handleClearSlot}
                         onAssign={handleAssignToSlot}
                         onSendBusy={handleSendBusy}

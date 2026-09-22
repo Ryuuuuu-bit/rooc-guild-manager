@@ -11,8 +11,15 @@ interface PartySlotProps {
   member: PartyBoardMemberRef | null;
   /** The occupant is on leave for this round (see PartySlotView.onLeave). */
   onLeave?: boolean;
+  /** Which of the occupant's classes they play here — null = main (see PartySlotView.playingAs). */
+  playingAs?: string | null;
   isAdmin: boolean;
+  /** Occupant has NO main class yet: the dropdown lists every class and
+   * this sets their main class (profile-level). */
   onClassChange: (value: string) => void;
+  /** Occupant has a main class: the dropdown lists only main + secondaries
+   * and this sets the per-slot "playing as" (null = main). */
+  onPlayingAsChange: (value: string | null) => void;
   onClear: () => void;
   /** Marks the occupant ลา for this round (they keep the slot, shown faded). */
   onSendBusy?: () => void;
@@ -42,8 +49,10 @@ export function PartySlot({
   id,
   member,
   onLeave = false,
+  playingAs = null,
   isAdmin,
   onClassChange,
+  onPlayingAsChange,
   onClear,
   onSendBusy,
   onReturn,
@@ -58,10 +67,15 @@ export function PartySlot({
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const { options: allClassOptions } = useJobClasses();
-  // The member's own classes (main, then secondaries) float to the top of
-  // the dropdown so "swap them to their alt" is one click.
-  const own = member ? [member.className, ...member.altClasses].filter((c): c is string => Boolean(c)) : [];
-  const classOptions = [...own, ...allClassOptions.filter((c) => !own.includes(c))];
+  // With a main class set, the dropdown is ONLY the member's own classes
+  // (main + secondaries) and picks what they play in this slot. Without one
+  // it falls back to the full list and sets their main class — the only
+  // way to class a brand-new member straight from the board.
+  const hasMain = Boolean(member?.className);
+  const ownOptions = member ? [member.className, ...member.altClasses].filter((c): c is string => Boolean(c)) : [];
+  const effectiveClass = playingAs ?? member?.className ?? null;
+  // What the chip shows: the class played HERE, not necessarily the main.
+  const shownMember = member && effectiveClass !== member.className ? { ...member, className: effectiveClass } : member;
 
   // A pending selection makes every OTHER slot look tappable — the same
   // affordance drag gives via isOver, just driven by tap state instead.
@@ -84,7 +98,7 @@ export function PartySlot({
       {member ? (
         <div className="flex w-full flex-col gap-1">
           <MemberChip
-            member={member}
+            member={shownMember ?? member}
             draggable={isAdmin}
             compact
             showClassBadge={!isAdmin}
@@ -99,18 +113,36 @@ export function PartySlot({
           />
           {isAdmin && (
             <div className="flex items-center gap-1">
-              <select
-                value={member.className ?? ""}
-                onChange={(e) => onClassChange(e.target.value)}
-                className="w-0 min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-300 focus:border-amber-500 focus:outline-none"
-              >
-                <option value="">- Class -</option>
-                {classOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+              {hasMain ? (
+                <select
+                  value={effectiveClass ?? ""}
+                  onChange={(e) => onPlayingAsChange(e.target.value === member.className ? null : e.target.value)}
+                  title={ownOptions.length > 1 ? "Class they play in this slot (main or one of their secondary classes)" : "Main class — no secondary classes set"}
+                  className={`w-0 min-w-0 flex-1 rounded border bg-zinc-900 px-1 py-1.5 text-[10px] focus:border-amber-500 focus:outline-none ${
+                    playingAs ? "border-amber-500/50 text-amber-300" : "border-zinc-700 text-zinc-300"
+                  }`}
+                >
+                  {ownOptions.map((c, i) => (
+                    <option key={c} value={c}>
+                      {i === 0 ? c : `${c} (รอง)`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value=""
+                  onChange={(e) => onClassChange(e.target.value)}
+                  title="No main class yet — pick one to set it on their profile"
+                  className="w-0 min-w-0 flex-1 rounded border border-dashed border-zinc-600 bg-zinc-900 px-1 py-1.5 text-[10px] text-zinc-400 focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="">- Class -</option>
+                  {allClassOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              )}
               {onLeave && onReturn ? (
                 <button
                   type="button"

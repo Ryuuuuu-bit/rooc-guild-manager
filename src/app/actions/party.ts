@@ -226,19 +226,28 @@ export async function moveMember(
   }
 
   await db.transaction(async (tx) => {
+    // A per-slot "playing as" choice follows the member to their new slot
+    // (and is dropped when they leave the board).
+    let playingAs: string | null = null;
     if (partyIds.length) {
+      const [prev] = await tx
+        .select({ playingAs: partySlots.playingAs })
+        .from(partySlots)
+        .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)))
+        .limit(1);
+      playingAs = prev?.playingAs ?? null;
       await tx
         .update(partySlots)
-        .set({ memberId: null, updatedAt: new Date() })
+        .set({ memberId: null, playingAs: null, updatedAt: new Date() })
         .where(and(eq(partySlots.memberId, memberId), inArray(partySlots.partyId, partyIds)));
     }
     if (destination.type === "slot") {
       await tx
         .insert(partySlots)
-        .values({ partyId: destination.partyId, slotIndex: destination.slotIndex, memberId })
+        .values({ partyId: destination.partyId, slotIndex: destination.slotIndex, memberId, playingAs })
         .onConflictDoUpdate({
           target: [partySlots.partyId, partySlots.slotIndex],
-          set: { memberId, updatedAt: new Date() },
+          set: { memberId, playingAs, updatedAt: new Date() },
         });
       if (destination.cancelLeave) {
         await cancelLeave({ memberId, boardId, occurrenceDate, actor, detailSuffix: `โดยแอดมิน ${actor} (จากหน้าจัดปาร์ตี้)` }, tx);
@@ -298,9 +307,38 @@ export async function clearSlot(partyId: string, slotIndex: number): Promise<Act
 
   await db
     .update(partySlots)
-    .set({ memberId: null, updatedAt: new Date() })
+    .set({ memberId: null, playingAs: null, updatedAt: new Date() })
     .where(and(eq(partySlots.partyId, partyId), eq(partySlots.slotIndex, slotIndex)));
 
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+/**
+ * Sets which of the occupant's classes they play in THIS slot — one of
+ * their secondary classes, or null for their main class. Purely a board
+ * choice: the member's profile (main/secondary classes) is untouched, so
+ * fielding someone as their alt this week doesn't rewrite who they are.
+ */
+export async function setSlotPlayingAs(partyId: string, slotIndex: number, className: string | null): Promise<ActionResult> {
+  await requireAdmin();
+
+  const [slot] = await db
+    .select({ id: partySlots.id, memberId: partySlots.memberId })
+    .from(partySlots)
+    .where(and(eq(partySlots.partyId, partyId), eq(partySlots.slotIndex, slotIndex)))
+    .limit(1);
+  if (!slot?.memberId) return { ok: false, error: "That slot is empty" };
+  const member = await db.query.members.findFirst({ where: eq(members.id, slot.memberId) });
+  if (!member) return { ok: false, error: "Member not found" };
+
+  // null / their main class → main; otherwise must be one of their alts.
+  const playingAs = !className || className === member.characterClass ? null : className;
+  if (playingAs && !member.altClasses.includes(playingAs)) {
+    return { ok: false, error: "That isn't one of this member's classes — set it on their profile or via the Discord class picker first" };
+  }
+
+  await db.update(partySlots).set({ playingAs, updatedAt: new Date() }).where(eq(partySlots.id, slot.id));
   revalidatePath("/party");
   return { ok: true };
 }

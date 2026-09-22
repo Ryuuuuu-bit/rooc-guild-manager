@@ -54,8 +54,8 @@ const PARTY_ACCENT_COLOR = 0xf59e0b;
 // and one that takes several screens of scrolling in Discord's mobile app
 // (the original one-line-per-member layout did the latter — reported by a
 // guild admin after trying it live).
-function formatMemberInline(member: PartyBoardMemberRef): string {
-  const emoji = member.classEmoji ?? "❔";
+function formatMemberInline(member: PartyBoardMemberRef, emojiOverride?: string | null): string {
+  const emoji = emojiOverride ?? member.classEmoji ?? "❔";
   return `${emoji} ${member.displayName}`;
 }
 
@@ -121,7 +121,12 @@ async function handlePartyCommand(interaction: ChatInputCommandInteraction) {
     for (const party of group.parties) {
       const filled = party.slots.filter((s) => s.member && !s.onLeave).length;
       const inline = party.slots
-        .map((s) => (s.member ? (s.onLeave ? `~~${formatMemberInline(s.member)}~~` : formatMemberInline(s.member)) : "🔸 ว่าง"))
+        .map((s) => {
+          if (!s.member) return "🔸 ว่าง";
+          // Show the class they play in THIS slot (their alt, if chosen).
+          const text = formatMemberInline(s.member, s.playingAs ? board.classEmojiByName.get(s.playingAs) : undefined);
+          return s.onLeave ? `~~${text}~~` : text;
+        })
         .join(" · ");
       container.addTextDisplayComponents(
         new TextDisplayBuilder().setContent(`**${party.label}** (${filled}/${party.slots.length})\n${inline}`)

@@ -30,6 +30,8 @@ export interface PartyBoardMemberRef {
 export interface PartySlotView {
   slotIndex: number;
   member: PartyBoardMemberRef | null;
+  /** Class the occupant plays in this slot when not their main (see src/lib/party-data.ts). */
+  playingAs: string | null;
   /** The member in this slot is on leave for the board's current round —
    * they keep their slot (shown struck through) so nobody has to re-drag
    * them back when they return. */
@@ -57,6 +59,8 @@ export interface PartyBoardDetail {
   id: string;
   name: string;
   groups: PartyGroupView[];
+  /** class name → emoji, for rendering a slot's playingAs. */
+  classEmojiByName: Map<string, string>;
   /** "YYYY-MM-DD" the busy list refers to (the linked event's next round). */
   occurrenceDate: string;
   busy: PartyBoardMemberRef[];
@@ -139,7 +143,8 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         const row = slotByIndex.get(i);
         const member = row?.memberId ? (membersById.get(row.memberId) ?? null) : null;
         if (member) placedMemberIds.add(member.id);
-        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, onLeave: member ? onLeaveIds.has(member.id) : false });
+        const playingAs = member && row?.playingAs && member.altClasses.includes(row.playingAs) ? row.playingAs : null;
+        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, playingAs, onLeave: member ? onLeaveIds.has(member.id) : false });
       }
       return { id: p.id, label: p.label, slots: slotViews };
     }),
@@ -155,5 +160,5 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     .map(toRef)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
-  return { id: board.id, name: board.name, groups: groupViews, occurrenceDate, busy, unassigned };
+  return { id: board.id, name: board.name, groups: groupViews, classEmojiByName, occurrenceDate, busy, unassigned };
 }

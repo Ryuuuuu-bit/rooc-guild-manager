@@ -133,7 +133,8 @@ function drawPartyCard(ctx: SKRSContext2D, x: number, y: number, party: PartyVie
     const rowY = y + CARD_HEADER_H + CARD_PADDING + slot.slotIndex * ROW_H + 18;
     if (slot.member) {
       const displayName = sanitizeForCanvas(slot.member.displayName);
-      const className = slot.member.className ? sanitizeForCanvas(slot.member.className) : "";
+      const playedClass = slot.playingAs ?? slot.member.className;
+      const className = playedClass ? sanitizeForCanvas(playedClass) : "";
       // An on-leave occupant keeps their slot; mark it so the posted
       // picture matches the live board (faded chip + ลา list).
       const classSuffix = slot.onLeave ? `(ลา${className ? ` · ${className}` : ""})` : className ? `(${className})` : "";

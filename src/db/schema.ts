@@ -281,6 +281,10 @@ export const partySlots = pgTable(
       .references(() => partyGroupParties.id, { onDelete: "cascade" }),
     slotIndex: integer("slot_index").notNull(), // 0-4
     memberId: text("member_id").references(() => members.id, { onDelete: "set null" }),
+    /** Which of the member's classes they play IN THIS SLOT — one of their
+     * secondary classes, or null = their main class. Set from the slot's
+     * dropdown (see setSlotPlayingAs); the member's profile is untouched. */
+    playingAs: text("playing_as"),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

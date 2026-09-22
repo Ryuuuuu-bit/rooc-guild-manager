@@ -22,6 +22,9 @@ export interface PartyBoardMemberRef {
 export interface PartySlotView {
   slotIndex: number;
   member: PartyBoardMemberRef | null;
+  /** The class the occupant plays in this slot when it's NOT their main
+   * one (one of their altClasses) — null = main. See setSlotPlayingAs. */
+  playingAs: string | null;
   /** The member in this slot is on leave for the board's current round.
    * They keep their slot (rendered faded) so nobody has to re-drag them
    * back when they return; the "ลา" zone lists them too. */
@@ -153,7 +156,10 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         const row = slotByIndex.get(i);
         const member = row?.memberId ? membersById.get(row.memberId) ?? null : null;
         if (member) placedMemberIds.add(member.id);
-        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, onLeave: member ? onLeaveIds.has(member.id) : false });
+        // A stale playingAs (the member dropped that alt since) falls back
+        // to main rather than showing a class they no longer list.
+        const playingAs = member && row?.playingAs && member.altClasses.includes(row.playingAs) ? row.playingAs : null;
+        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, playingAs, onLeave: member ? onLeaveIds.has(member.id) : false });
       }
       return { id: p.id, label: p.label, slots: slotViews };
     }),

@@ -1,0 +1,1 @@
+ALTER TABLE "party_slots" ADD COLUMN "playing_as" text;
