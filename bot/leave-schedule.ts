@@ -157,13 +157,13 @@ export async function listMemberScheduledLeaves(memberId: string): Promise<Membe
  * weeks later on its actual date (see applyTodaysScheduledLeaves, which logs
  * the separate ATTENDANCE_LEAVE that day).
  */
-export async function scheduleLeave(memberId: string, boardId: string, date: string, eventKey: string) {
+export async function scheduleLeave(memberId: string, boardId: string, date: string, eventKey: string): Promise<boolean> {
   const inserted = await db
     .insert(scheduledLeaves)
     .values({ memberId, boardId, date, eventKey })
     .onConflictDoNothing()
     .returning({ id: scheduledLeaves.id });
-  if (inserted.length === 0) return; // already scheduled — nothing new happened
+  if (inserted.length === 0) return false; // already scheduled — nothing new happened
 
   const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
   await db.insert(membershipEvents).values({
@@ -173,6 +173,7 @@ export async function scheduleLeave(memberId: string, boardId: string, date: str
     actor: "bot:leave-schedule",
     boardId,
   });
+  return true;
 }
 
 /**
@@ -249,6 +250,37 @@ export async function applyTodaysScheduledLeaves(): Promise<{ applied: number }>
     if (member && member.status === "ACTIVE" && !member.benched) {
       const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, row.boardId) });
       let insertedLeaveLog = false;
+
+      // The occurrence this row was for has ALREADY ENDED (the bot was down
+      // across it — a whole event day, or a restart that came back after
+      // the window closed). Applying it the normal way below would mark the
+      // member busy NOW and log a fresh pending ลา, which confirmDueLeaves
+      // would then lock in against the NEXT occurrence — a leave for the
+      // wrong date, and a member wrongly shown as out for an event they
+      // never asked off. Record it directly instead: an already-confirmed
+      // ATTENDANCE_LEAVE stamped at that window's end (so /attendance and
+      // the monthly quota count it on the right date), no busy row, no
+      // party-slot change, no DMs — the event is over, there's nothing left
+      // to be excused from. Only possible for a linked event; a board with
+      // none has no window to have missed, so it falls through as before.
+      const event = CHECKIN_EVENTS.find((e) => e.key === row.eventKey);
+      const endedAt = event ? windowFor(event, row.date).end : null;
+      if (endedAt && endedAt <= new Date()) {
+        await db.transaction(async (tx) => {
+          await tx.insert(membershipEvents).values({
+            memberId: row.memberId,
+            type: "ATTENDANCE_LEAVE",
+            detail: `ลาในกระดาน "${board?.name ?? row.boardId}" (แจ้งลาล่วงหน้าผ่าน /leave — บันทึกย้อนหลัง บอทไม่ได้ทำงานตอนถึงวัน)`,
+            actor: "bot:leave-schedule",
+            boardId: row.boardId,
+            createdAt: endedAt,
+            confirmedAt: endedAt,
+          });
+          await tx.delete(scheduledLeaves).where(eq(scheduledLeaves.id, row.id));
+        });
+        applied++;
+        continue;
+      }
 
       // Marking the member busy, clearing their party slot, the same-day
       // dedup check below, the new ATTENDANCE_LEAVE log, and removing this

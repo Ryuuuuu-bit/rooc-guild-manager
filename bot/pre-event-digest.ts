@@ -9,7 +9,7 @@
 //      message 1 (new leaves, cancelled leaves) so last-minute reshuffles
 //      jump out instead of having to be diffed by eye.
 //
-// Both go out through admin-notify.ts (channel, or DM fallback). Driven by a
+// Both go out through admin-notify.ts (the admin channel). Driven by a
 // once-a-minute check in bot/index.ts — see runPreEventDigestCheck below for
 // the firing rules and why they survive restarts without a DB table.
 import { and, eq, inArray } from "drizzle-orm";
@@ -27,9 +27,11 @@ const DAY_BEFORE_HOUR = 20;
 const HOURS_BEFORE_START = 1;
 /** A digest whose trigger instant is older than this is never sent — stops
  * a restart later in the day from replaying a digest that already went out
- * (or one nobody needs anymore). Matches a 60s check loop with room to
- * spare for a slow DB. */
-const FIRE_WINDOW_MS = 5 * 60 * 1000;
+ * (or one nobody needs anymore). Wide enough that a redeploy landing right
+ * on a trigger (startup can take a few minutes: sync, voice reconcile,
+ * sweeps) still catches it; a restart INSIDE this window may re-send once,
+ * which is the cheaper failure. */
+const FIRE_WINDOW_MS = 10 * 60 * 1000;
 
 /** "YYYY-MM-DD" for now in Thailand's local time — local copy, same
  * cross-file-cycle reasoning as every other bot file's copy of this. */
@@ -61,7 +63,7 @@ type DigestKind = "eve" | "hour";
 
 /** In-memory "already sent" set, keyed `${eventKey}|${date}|${kind}`. Lost on
  * restart — which is fine, because FIRE_WINDOW_MS above means a restart can
- * only ever re-send a digest whose trigger was in the last 5 minutes, a
+ * only ever re-send a digest whose trigger was inside that window, a
  * duplicate that's rare and harmless rather than a whole-day replay. */
 const sent = new Set<string>();
 

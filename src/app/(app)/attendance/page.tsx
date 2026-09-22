@@ -228,6 +228,10 @@ export default async function AttendancePage({
             ⚠️ Over the monthly leave limit ({MONTHLY_LEAVE_LIMIT} per board) this month — {overQuota.length} member
             {overQuota.length === 1 ? "" : "s"}
           </p>
+          <p className="mt-0.5 text-[11px] text-rose-200/60">
+            Counts this calendar month only, including leaves still pending confirmation — so these numbers can be higher
+            than the confirmed-only Leave Count column below.
+          </p>
           <ul className="mt-2 flex flex-col gap-1 text-xs text-rose-100/90">
             {overQuota.map((o) => (
               <li key={o.member.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">

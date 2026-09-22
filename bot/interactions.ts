@@ -230,7 +230,7 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
     // of six or seven. Options are the distinct upcoming dates; a date the
     // member already has scheduled is simply skipped when applied
     // (scheduleLeave's onConflictDoNothing), so it's safe to offer them all.
-    const endDates = [...new Set(allOptions.map((o) => o.date))].sort().slice(0, 25);
+    const endDates = [...new Set(addable.map((o) => o.date))].sort().slice(0, 25);
     if (endDates.length > 1) {
       const rangeSelect = new StringSelectMenuBuilder()
         .setCustomId(LEAVE_RANGE_SELECT_ID)
@@ -239,7 +239,7 @@ async function renderLeavePicker(discordUserId: string): Promise<{ content: stri
         .setMaxValues(1)
         .addOptions(
           endDates.map((d) => {
-            const count = allOptions.filter((o) => o.date <= d).length;
+            const count = addable.filter((o) => o.date <= d).length;
             return new StringSelectMenuOptionBuilder()
               .setLabel(`ลาทุกกิจกรรมถึง ${formatThaiDateLabel(d)} (${count} ครั้ง)`)
               .setValue(d);
@@ -302,11 +302,8 @@ async function handleLeavePanelButton(interaction: ButtonInteraction) {
  * with no need to ever type /leave again mid-flow.
  */
 async function handleLeaveAddSelect(interaction: StringSelectMenuInteraction) {
-  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
-  if (!member) {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
-    return;
-  }
+  const member = await requireEligibleLeaveMember(interaction);
+  if (!member) return;
 
   const picks = interaction.values.map((value) => {
     const [boardId, date, eventKey] = value.split("|");
@@ -323,11 +320,8 @@ async function handleLeaveAddSelect(interaction: StringSelectMenuInteraction) {
  * into the menu, so the set is exactly what the picker would offer now.
  */
 async function handleLeaveRangeSelect(interaction: StringSelectMenuInteraction) {
-  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
-  if (!member) {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ", components: [] });
-    return;
-  }
+  const member = await requireEligibleLeaveMember(interaction);
+  if (!member) return;
 
   const endDate = interaction.values[0];
   const picks = (await listUpcomingLeaveOptions()).filter((o) => o.date <= endDate);
@@ -335,11 +329,41 @@ async function handleLeaveRangeSelect(interaction: StringSelectMenuInteraction) 
 }
 
 /**
+ * The add/range selects' shared gate — same ACTIVE + not-benched check
+ * renderLeavePicker makes before ever showing these menus, re-checked at
+ * click time because Discord keeps an ephemeral menu clickable for minutes
+ * and an admin can bench/deactivate the member in between (previously
+ * only the plain "not found" case was handled here, so a just-benched
+ * member could still file future scheduledLeaves rows). Also DEFERS the
+ * interaction right away: everything after this (N inserts, a possible
+ * same-day apply that sends DMs, then a full picker re-render) can take
+ * well over Discord's 3-second reply deadline, after which the final
+ * update is rejected (10062) and the member sees "This interaction failed"
+ * even though every leave was written. Deferring buys 15 minutes; the
+ * reply then goes out via editReply. Returns null (already replied) when
+ * the member isn't eligible.
+ */
+async function requireEligibleLeaveMember(interaction: StringSelectMenuInteraction) {
+  await interaction.deferUpdate();
+  const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
+  if (!member || member.status !== "ACTIVE") {
+    await interaction.editReply({ content: "ไม่พบข้อมูลสมาชิกของคุณ หรือบัญชีนี้ไม่ได้ใช้งานอยู่แล้ว", components: [] });
+    return null;
+  }
+  if (member.benched) {
+    await interaction.editReply({ content: "บัญชีของคุณถูกตั้งเป็น Benched อยู่ — ไม่ได้อยู่ในผังปาร์ตี้ จึงไม่ต้องแจ้งลา", components: [] });
+    return null;
+  }
+  return member;
+}
+
+/**
  * Shared tail of the add-select and range-select handlers: schedules each
  * pick, applies any that are for TODAY right away, then refreshes the same
  * message back into a live picker (not a dead-end confirmation) so
  * add/cancel/add-again all stay reachable by clicking, with no need to ever
- * type /leave again mid-flow.
+ * type /leave again mid-flow. Expects the interaction to already be
+ * deferred (requireEligibleLeaveMember).
  */
 async function scheduleLeavesAndReply(
   interaction: StringSelectMenuInteraction,
@@ -347,10 +371,12 @@ async function scheduleLeavesAndReply(
   picks: { boardId: string; date: string; eventKey: string }[],
   prefix: string
 ) {
+  // Only dates that were actually NEW — scheduleLeave is a silent no-op for
+  // a date already on file, and reporting those as "scheduled" (as this
+  // used to) made a "ลายาว" pick list dates the member already had.
   const dates: string[] = [];
   for (const pick of picks) {
-    await scheduleLeave(memberId, pick.boardId, pick.date, pick.eventKey);
-    dates.push(pick.date);
+    if (await scheduleLeave(memberId, pick.boardId, pick.date, pick.eventKey)) dates.push(pick.date);
   }
 
   // A leave picked for TODAY has to take effect right now, not at the next
@@ -381,7 +407,7 @@ async function scheduleLeavesAndReply(
   }
   if (lines.length === 0) lines.push("ไม่มีวันใหม่ให้แจ้งลา (ทุกวันที่เลือกแจ้งไว้แล้ว)");
   const { content, rows } = await renderLeavePicker(interaction.user.id);
-  await interaction.update({ content: `${lines.join("\n")}\n\n${content}`, components: rows });
+  await interaction.editReply({ content: `${lines.join("\n")}\n\n${content}`, components: rows });
 }
 
 /** Member picked one or more entries on the cancel-select — cancels each, then refreshes the same message back into a live picker (see handleLeaveAddSelect). */
@@ -493,6 +519,13 @@ async function handleClassSelectChoose(interaction: StringSelectMenuInteraction)
   }
 
   const className = interaction.values[0];
+  if (member.characterClass === className) {
+    // Same class re-picked (a double-click, or reassurance) — nothing to
+    // change, and logging a second identical CLASS_CHANGE just put
+    // duplicate "Class changed" rows in the activity feed (seen live).
+    await interaction.update({ content: `✅ อาชีพของคุณคือ ${className} อยู่แล้ว`, components: [] });
+    return;
+  }
   // Both writes commit together — same transaction-safety reasoning as the
   // legacy CLASS_SELECT reaction path in reactions.ts: two separate
   // statements here meant a crash between them (a routine Railway redeploy)
@@ -556,7 +589,12 @@ export async function handleInteractionCreate(interaction: Interaction) {
       await handleLeaveAddSelect(interaction);
     } catch (err) {
       console.error("[bot] /leave add-select failed", err);
-      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content, components: [] }).catch(() => {});
+      } else {
+        await interaction.update({ content, components: [] }).catch(() => {});
+      }
     }
     return;
   }
@@ -566,7 +604,12 @@ export async function handleInteractionCreate(interaction: Interaction) {
       await handleLeaveRangeSelect(interaction);
     } catch (err) {
       console.error("[bot] /leave range-select failed", err);
-      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content, components: [] }).catch(() => {});
+      } else {
+        await interaction.update({ content, components: [] }).catch(() => {});
+      }
     }
     return;
   }

@@ -5,6 +5,7 @@ import { ATTENDANCE_EMOJI } from "../src/lib/class-emoji";
 import { getCheckinEvent, lastOccurrenceEnd } from "../src/lib/checkin-events";
 import { DiscordApiError, addMessageReaction, removeAllReactionsForEmoji, removeMemberReaction } from "../src/lib/discord";
 import { applyTodaysScheduledLeaves } from "./leave-schedule";
+import { confirmDueLeaves } from "./attendance-confirm";
 import { notifyAdmins } from "./admin-notify";
 
 /**
@@ -42,6 +43,20 @@ export function thaiDateString(d: Date = new Date()): string {
  * and /attendance no longer permanently misattributing a stale leave.
  */
 export async function resetDailyBusyLists(): Promise<{ boardsReset: number; scheduledLeavesApplied: number }> {
+  // Lock in anything whose event has already ended BEFORE deciding what to
+  // clear. This runs on every bot startup as well as at midnight, and the
+  // regular 5-minute confirm sweep can lag the event's end by a few seconds
+  // to minutes — a restart landing in that gap (sweep saw "not due yet" at
+  // 20:19:59, this reset then saw "occurrence ended" at 20:20:01) used to
+  // clear the busy row first, after which the next sweep found the leave
+  // "no longer busy" and DISCARDED it, so a perfectly real leave never
+  // counted. Confirming first makes the order irrelevant.
+  try {
+    await confirmDueLeaves();
+  } catch (err) {
+    console.error("[bot] pre-reset ลา confirm sweep failed", err);
+  }
+
   const boards = await db
     .select({ id: partyBoards.id, name: partyBoards.name, emoji: partyBoards.emoji, checkinEventKey: partyBoards.checkinEventKey })
     .from(partyBoards);
@@ -89,7 +104,7 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number; sche
           continue;
         }
         const [latestLeave] = await tx
-          .select({ createdAt: membershipEvents.createdAt })
+          .select({ createdAt: membershipEvents.createdAt, actor: membershipEvents.actor })
           .from(membershipEvents)
           .where(
             and(
@@ -100,10 +115,21 @@ export async function resetDailyBusyLists(): Promise<{ boardsReset: number; sche
           )
           .orderBy(desc(membershipEvents.createdAt))
           .limit(1);
-        // No ลา behind this row → manual Busy → daily clear. A ลา marked
-        // before the last ended occurrence → it was for that (or an older)
-        // occurrence → clear. A ลา marked after it → for the next one → keep.
-        if (!latestLeave || lastEnd === null || latestLeave.createdAt <= lastEnd) toClear.push(memberId);
+        // Only a ลา the MEMBER marked themselves (a live reaction or an
+        // advance /leave — actor "bot:…") carries the "marked after the last
+        // occurrence ⇒ it's for the next one" meaning: those members were
+        // explicitly told so in their DM (confirmTimingLabel in
+        // reactions.ts). An admin dragging someone to Busy/ลา on the web
+        // (src/app/actions/party.ts's moveMember — actor is the admin's
+        // username, and it logs the leave already confirmed) is a same-day
+        // roster note with no such promise, so it keeps the original
+        // once-a-day clear — otherwise an admin marking a no-show right
+        // after Tuesday's GL would leave that member shown as on leave for
+        // Thursday's too. No ลา event at all behind the row → daily clear.
+        // A member-marked ลา before the last ended occurrence → it was for
+        // that (or an older) occurrence → clear; after it → keep.
+        const memberMarked = latestLeave?.actor?.startsWith("bot:") ?? false;
+        if (!latestLeave || !memberMarked || lastEnd === null || latestLeave.createdAt <= lastEnd) toClear.push(memberId);
       }
 
       const clearedRows = toClear.length

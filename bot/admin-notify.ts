@@ -69,16 +69,37 @@ function splitForDiscord(text: string): string[] {
   const chunks: string[] = [];
   let current = "";
   for (const line of text.split("\n")) {
-    // A single line longer than the limit is hard-cut — shouldn't happen
-    // with the short per-member lines these messages are built from.
-    const piece = line.length > DISCORD_MESSAGE_LIMIT ? line.slice(0, DISCORD_MESSAGE_LIMIT) : line;
-    if (current.length + piece.length + 1 > DISCORD_MESSAGE_LIMIT) {
-      if (current) chunks.push(current);
-      current = piece;
-    } else {
-      current = current ? `${current}\n${piece}` : piece;
+    // A single line over the limit (a name list for a big guild — the
+    // digest's per-class "unassigned" line or the ลา line can run long) is
+    // wrapped at ", " boundaries so no name is ever cut off; only a line
+    // with no separator at all is hard-cut.
+    for (const piece of wrapLongLine(line)) {
+      if (current.length + piece.length + 1 > DISCORD_MESSAGE_LIMIT) {
+        if (current) chunks.push(current);
+        current = piece;
+      } else {
+        current = current ? `${current}\n${piece}` : piece;
+      }
     }
   }
   if (current) chunks.push(current);
   return chunks;
+}
+
+function wrapLongLine(line: string): string[] {
+  if (line.length <= DISCORD_MESSAGE_LIMIT) return [line];
+  const out: string[] = [];
+  let rest = line;
+  while (rest.length > DISCORD_MESSAGE_LIMIT) {
+    const cut = rest.lastIndexOf(", ", DISCORD_MESSAGE_LIMIT - 1);
+    if (cut <= 0) {
+      out.push(rest.slice(0, DISCORD_MESSAGE_LIMIT));
+      rest = rest.slice(DISCORD_MESSAGE_LIMIT);
+    } else {
+      out.push(rest.slice(0, cut + 1));
+      rest = `  ${rest.slice(cut + 2)}`;
+    }
+  }
+  out.push(rest);
+  return out;
 }

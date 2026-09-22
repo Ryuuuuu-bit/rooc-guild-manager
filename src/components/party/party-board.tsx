@@ -105,6 +105,7 @@ function patchMemberClass(prev: PartyBoardDetail, memberId: string, className: s
     })),
     busy: prev.busy.map(patch),
     unassigned: prev.unassigned.map(patch),
+    upcomingLeaves: prev.upcomingLeaves.map((l) => (l.memberId === memberId ? { ...l, className } : l)),
   };
 }
 
@@ -563,9 +564,13 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     type Hint = { memberId: string; name: string; className: string | null; when: string | null; candidates: PartyBoardMemberRef[] };
     const rows = new Map<string, Hint>();
     if (!board) return [] as Hint[];
+    // Someone who's out themselves (busy now, or with a leave on file) is
+    // not a substitute for anyone — including for their own row, which an
+    // unassigned member with an upcoming leave would otherwise appear in.
+    const outIds = new Set<string>([...board.busy.map((m) => m.id), ...board.upcomingLeaves.map((l) => l.memberId)]);
     const openByClass = new Map<string, PartyBoardMemberRef[]>();
     for (const m of board.unassigned) {
-      if (!m.className) continue;
+      if (!m.className || outIds.has(m.id)) continue;
       openByClass.set(m.className, [...(openByClass.get(m.className) ?? []), m]);
     }
     for (const m of board.busy) {

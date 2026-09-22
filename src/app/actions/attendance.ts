@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { membershipEvents } from "@/db/schema";
+import { membershipEvents, partyBoards, partyBusyEntries, partySlots, partyGroupParties, partyGroups } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
+import { getCheckinEvent, windowFor } from "@/lib/checkin-events";
 
 export interface ActionResult {
   ok: boolean;
@@ -73,19 +75,76 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
     ? `ลา (บันทึกย้อนหลังโดยแอดมิน) — ${reason}`
     : "ลา (บันทึกย้อนหลังโดยแอดมิน)";
 
-  await db.insert(membershipEvents).values({
-    memberId,
-    type: "ATTENDANCE_LEAVE",
-    detail,
-    actor: session.user.username,
-    boardId,
-    confirmedAt: new Date(),
-    createdAt: leaveDate,
+  // When the leave is tied to a board, the LEAVE row alone is not enough:
+  // /checkin's "on leave" lookup and /calendar both reconstruct who's out
+  // by "last ATTENDANCE_LEAVE/RETURN per member on this board" with no date
+  // bound (getLeaveMemberIds in src/lib/checkin-data.ts). A backdated leave
+  // with nothing ever closing it left the member counted as on leave on
+  // that board for EVERY later round — seen live: three members showed as
+  // "On Leave" for a GL day none of them had asked off, purely from a
+  // manual entry days earlier. So:
+  //  - a leave for a date whose event window has already ended (the normal
+  //    "log it after the fact" case) is written as a closed LEAVE→RETURN
+  //    pair, the RETURN stamped just after that window's end so the leave
+  //    still applies to that round (both pages evaluate at the window end)
+  //    and to nothing after it;
+  //  - a leave for TODAY whose event hasn't ended yet is treated like a live
+  //    ลา instead: busy row + slot cleared, and the nightly reset closes it
+  //    out with its own RETURN exactly as it does for a reaction.
+  const board = boardId ? await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) }) : null;
+  const event = board?.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
+  const now = new Date();
+  // End of the round this leave is for: the linked event's window on that
+  // date, or end of that Thai calendar day for a board with no event.
+  const roundEnd = event ? windowFor(event, dateStr).end : new Date(`${dateStr}T23:59:59+07:00`);
+  const stillOpen = roundEnd > now;
+
+  await db.transaction(async (tx) => {
+    await tx.insert(membershipEvents).values({
+      memberId,
+      type: "ATTENDANCE_LEAVE",
+      detail,
+      actor: session.user.username,
+      boardId,
+      confirmedAt: now,
+      createdAt: leaveDate,
+    });
+
+    if (!board) return;
+
+    if (stillOpen) {
+      await tx
+        .delete(partyBusyEntries)
+        .where(and(eq(partyBusyEntries.boardId, board.id), eq(partyBusyEntries.memberId, memberId)));
+      await tx.insert(partyBusyEntries).values({ boardId: board.id, memberId, sortOrder: 0 });
+      const slotRows = await tx
+        .select({ slotId: partySlots.id })
+        .from(partySlots)
+        .innerJoin(partyGroupParties, eq(partySlots.partyId, partyGroupParties.id))
+        .innerJoin(partyGroups, eq(partyGroupParties.groupId, partyGroups.id))
+        .where(and(eq(partySlots.memberId, memberId), eq(partyGroups.boardId, board.id)));
+      for (const { slotId } of slotRows) {
+        await tx.update(partySlots).set({ memberId: null, updatedAt: now }).where(eq(partySlots.id, slotId));
+      }
+      return;
+    }
+
+    await tx.insert(membershipEvents).values({
+      memberId,
+      type: "ATTENDANCE_RETURN",
+      detail: `กลับจากลาในกระดาน "${board.name}" (ปิดรายการลาที่บันทึกย้อนหลังอัตโนมัติ)`,
+      actor: session.user.username,
+      boardId,
+      createdAt: new Date(roundEnd.getTime() + 1000),
+    });
   });
 
   revalidatePath("/");
   revalidatePath("/activity");
   revalidatePath("/attendance");
+  revalidatePath("/calendar");
+  revalidatePath("/checkin");
+  revalidatePath("/party");
   revalidatePath(`/members/${memberId}`);
   return { ok: true };
 }

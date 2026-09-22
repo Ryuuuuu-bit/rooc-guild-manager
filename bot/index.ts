@@ -88,6 +88,22 @@ client.once(Events.ClientReady, async (readyClient) => {
     }
   };
 
+  // Admin "party health" digests the evening before and an hour before each
+  // event — the check itself decides whether anything is due right now.
+  // Started FIRST (before the sync / voice reconcile / sweeps below, which
+  // can take a while on startup) so a redeploy landing on a trigger time
+  // doesn't push the first check past the digest's fire window.
+  const runDigestCheck = async () => {
+    try {
+      const fired = await runPreEventDigestCheck();
+      if (fired) console.log(`[bot] pre-event digest: sent ${fired}`);
+    } catch (err) {
+      console.error("[bot] pre-event digest check failed", err);
+    }
+  };
+  void runDigestCheck();
+  setInterval(runDigestCheck, PRE_EVENT_DIGEST_CHECK_INTERVAL_MS);
+
   await runSync("startup");
   setInterval(() => runSync("periodic safety-net"), FULL_SYNC_INTERVAL_MS);
 
@@ -167,18 +183,6 @@ client.once(Events.ClientReady, async (readyClient) => {
   await runPvpReminderSweep();
   setInterval(runPvpReminderSweep, PVP_REMINDER_INTERVAL_MS);
 
-  // Admin "party health" digests the evening before and an hour before each
-  // event — the check itself decides whether anything is due right now.
-  const runDigestCheck = async () => {
-    try {
-      const fired = await runPreEventDigestCheck();
-      if (fired) console.log(`[bot] pre-event digest: sent ${fired}`);
-    } catch (err) {
-      console.error("[bot] pre-event digest check failed", err);
-    }
-  };
-  await runDigestCheck();
-  setInterval(runDigestCheck, PRE_EVENT_DIGEST_CHECK_INTERVAL_MS);
 });
 
 client.on(Events.GuildMemberAdd, async (member) => {
