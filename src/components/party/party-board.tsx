@@ -15,7 +15,7 @@ import {
 import { MemberChip } from "./member-chip";
 import { PartySlot } from "./party-slot";
 import { MemberPicker } from "./member-picker";
-import { BoardEventLink } from "./board-event-link";
+import { getCheckinEvent } from "@/lib/checkin-events";
 import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { PartyTemplatePanel } from "./party-template-panel";
 import { useJobClasses } from "@/components/job-classes-provider";
@@ -42,6 +42,11 @@ function fmtLeaveDate(date: string): string {
     month: "short",
     timeZone: "Asia/Bangkok",
   });
+}
+
+const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+function fmtWeekdays(days: number[]): string {
+  return days.map((d) => WEEKDAY_SHORT[d]).join("/");
 }
 
 export function parseDestination(id: string): PartyDestination | null {
@@ -662,6 +667,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   }, [board]);
 
   const activeGroup = board?.groups.find((g) => g.id === activeGroupId) ?? null;
+  const linkedEvent = board?.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -691,9 +697,28 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-400">
-              <span>
-                Board <span className="font-medium text-zinc-200">{board.name}</span> · {placedCount} placed
-                {" "}· {board.unassigned.length} open · ลา {fmtLeaveDate(board.occurrenceDate)}: {board.busy.length}
+              <span className="flex flex-wrap items-center gap-x-1.5">
+                <span>
+                  Board <span className="font-medium text-zinc-200">{board.name}</span>
+                </span>
+                {linkedEvent ? (
+                  <span
+                    className="rounded-full bg-sky-400/10 px-2 py-0.5 text-[11px] text-sky-300 ring-1 ring-inset ring-sky-400/30"
+                    title="Linked by board name — ห้องลา, /checkin and /calendar use this board for this event"
+                  >
+                    🔗 {linkedEvent.label} · {fmtWeekdays(linkedEvent.weekdays)} {linkedEvent.startTime.slice(0, 5)}–{linkedEvent.endTime.slice(0, 5)}
+                  </span>
+                ) : (
+                  <span
+                    className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300 ring-1 ring-inset ring-amber-500/30"
+                    title="Only a board named GL or WOE is linked to a check-in event"
+                  >
+                    ⚠ not linked to an event — name the board GL or WOE
+                  </span>
+                )}
+                <span>
+                  · {placedCount} placed · {board.unassigned.length} open · ลา {fmtLeaveDate(board.occurrenceDate)}: {board.busy.length}
+                </span>
               </span>
               {isAdmin && (
                 <div className="flex items-center gap-2">
@@ -711,7 +736,6 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                   </button>
                   {effectiveAdmin && selectedBoardId && (
                     <>
-                      <BoardEventLink boardId={selectedBoardId} checkinEventKey={board.checkinEventKey} onChanged={() => router.refresh()} />
                       <AnnounceBoardImageButton
                         boardId={selectedBoardId}
                         boardName={board.name}

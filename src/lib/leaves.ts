@@ -261,7 +261,11 @@ export async function requestLeave(params: RequestLeaveParams, dbOrTx: DbOrTx = 
         .where(eq(leaves.id, existing.id))
         .returning();
     } else {
-      [leave] = await tx
+      // Two writers can race here (an admin dragging to ลา while the member
+      // clicks ห้องลา for the same round). The unique index guarantees one
+      // row; the loser's insert is a no-op and it simply reports the
+      // winner's row as "unchanged" instead of surfacing a 23505 error.
+      const inserted = await tx
         .insert(leaves)
         .values({
           memberId: params.memberId,
@@ -271,7 +275,17 @@ export async function requestLeave(params: RequestLeaveParams, dbOrTx: DbOrTx = 
           actor: params.actor,
           note: params.note ?? null,
         })
+        .onConflictDoNothing()
         .returning();
+      if (inserted.length === 0) {
+        const [winner] = await tx
+          .select()
+          .from(leaves)
+          .where(and(eq(leaves.memberId, params.memberId), eq(leaves.boardId, params.boardId!), eq(leaves.occurrenceDate, params.occurrenceDate)))
+          .limit(1);
+        return { outcome: "unchanged", leave: winner };
+      }
+      [leave] = inserted;
     }
 
     const board = params.boardId ? await tx.query.partyBoards.findFirst({ where: eq(partyBoards.id, params.boardId) }) : null;

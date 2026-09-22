@@ -17,16 +17,19 @@ export interface CheckinEventConfig {
   endTime: string;
   /** Being in ANY of these channels counts as present for this event — e.g. two separate team rooms for the same event. */
   channelIds: string[];
+  /** Party-board names (case-insensitive) that link to this event — see eventKeyForBoardName. */
+  boardNames: string[];
 }
 
-// Which party board's "ลา" tracks approved leave for each event is NOT
-// stored here — that's an explicit link on partyBoards.checkinEventKey (see
-// schema.ts), set from the "โพสต์ ลา ใน Discord" dialog, rather than a name
-// this config would have to match against partyBoards.name exactly. An
-// earlier version had that as an `attendanceBoardName` field here — removed
-// because matching by name broke silently the moment an admin created a
-// differently-named board for the same event, renamed the linked board, or
-// created a second board sharing the same name (nothing ever stopped that).
+// Which party board's "ลา" tracks approved leave for each event is stored on
+// partyBoards.checkinEventKey (see schema.ts) and derived FROM THE BOARD'S
+// NAME: a board named "GL" links to the gl event, "WOE" to woe (see
+// boardNames + eventKeyForBoardName below; syncBoardEventLink in
+// src/lib/board-link.ts writes it on create/rename). The admin's call: the
+// two boards are named for their events and never change, so a separate
+// dropdown was just clutter. The unique index on checkinEventKey still makes
+// "two boards fighting over one event" impossible — a second board with the
+// same name simply stays unlinked (the board page says so).
 export const CHECKIN_EVENTS: CheckinEventConfig[] = [
   {
     key: "gl",
@@ -35,6 +38,7 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:20:00",
     channelIds: ["1488971259113902090", "1488971308225269943", "1486678906214809721", "1545045768107196488"],
+    boardNames: ["GL", "Tyr Cup"],
   },
   {
     key: "woe",
@@ -43,11 +47,18 @@ export const CHECKIN_EVENTS: CheckinEventConfig[] = [
     startTime: "19:55:00",
     endTime: "20:40:00",
     channelIds: ["1490330449275260988"],
+    boardNames: ["WOE"],
   },
 ];
 
 export function getCheckinEvent(key: string): CheckinEventConfig | undefined {
   return CHECKIN_EVENTS.find((e) => e.key === key);
+}
+
+/** The event a party board named `name` belongs to (case/whitespace-insensitive), or null. */
+export function eventKeyForBoardName(name: string): string | null {
+  const wanted = name.trim().toLowerCase();
+  return CHECKIN_EVENTS.find((e) => e.key === wanted || e.boardNames.some((n) => n.toLowerCase() === wanted))?.key ?? null;
 }
 
 /** Start/end instants of an event's window for a given "YYYY-MM-DD" (Thai

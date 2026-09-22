@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { botReactionMessages, partyBoards } from "@/db/schema";
+import { botReactionMessages } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { env } from "@/lib/env";
 import {
@@ -13,7 +13,6 @@ import {
   type DiscordChannel,
 } from "@/lib/discord";
 import { listJobClasses } from "@/lib/job-classes";
-import { getCheckinEvent } from "@/lib/checkin-events";
 
 export interface ActionResult {
   ok: boolean;
@@ -66,46 +65,6 @@ export async function getClassSelectStatus(): Promise<BotMessageStatus | null> {
 export async function getLeavePanelStatus(): Promise<BotMessageStatus | null> {
   await requireAdmin();
   return toStatus(await getCurrentMessage("LEAVE_PANEL", null));
-}
-
-/** Which check-in event (CHECKIN_EVENTS key, e.g. "gl"/"woe") this board is currently linked to, if any — see partyBoards.checkinEventKey in schema.ts. */
-export async function getBoardCheckinEventKey(boardId: string): Promise<string | null> {
-  await requireAdmin();
-  const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
-  return board?.checkinEventKey ?? null;
-}
-
-/**
- * Links (or unlinks, passing null) this board to a check-in event — this is
- * what the leave system (src/lib/leaves.ts), /checkin, and /calendar use to
- * find "the GL board" / "the WOE board", replacing an earlier design
- * that matched on partyBoards.name against a hardcoded string in
- * checkin-events.ts (see that file's own comment for why that broke
- * silently). A DB-level unique index on checkinEventKey (schema.ts) makes it
- * impossible for two boards to both claim the same event — surfaced here as
- * a friendly error (Postgres 23505) rather than a raw constraint violation,
- * same pattern as addToLootQueue's double-add guard.
- */
-export async function setBoardCheckinEventKey(boardId: string, eventKey: string | null): Promise<ActionResult> {
-  await requireAdmin();
-  if (eventKey && !getCheckinEvent(eventKey)) {
-    return { ok: false, error: "Unknown check-in event" };
-  }
-
-  try {
-    await db
-      .update(partyBoards)
-      .set({ checkinEventKey: eventKey, updatedAt: new Date() })
-      .where(eq(partyBoards.id, boardId));
-  } catch (err) {
-    if (err && typeof err === "object" && "code" in err && err.code === "23505") {
-      return { ok: false, error: "Another board is already linked to this check-in event — unlink it there first" };
-    }
-    throw err;
-  }
-
-  revalidatePath("/party");
-  return { ok: true };
 }
 
 /**

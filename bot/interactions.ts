@@ -43,7 +43,6 @@ const CLASS_SELECT_BUTTON_ID = "class_select_open";
 const CLASS_SELECT_CHOOSE_ID = "class_select_choose";
 // Second dropdown on the same picker: secondary classes (multi-select).
 const CLASS_SELECT_ALT_ID = "class_select_alt";
-const CLASS_ALT_NONE_VALUE = "__none__";
 
 // Matches the web app's amber accent (see Tailwind's amber-500) so the
 // Components V2 card reads as the same product, not a generic bot embed.
@@ -403,20 +402,23 @@ async function renderClassPicker(member: { characterClass: string | null; altCla
         withSafeEmoji(new StringSelectMenuOptionBuilder().setLabel(c.name).setValue(c.name).setDefault(c.name === member.characterClass), c.emoji)
       )
     );
-  const altChoices = classes.filter((c) => c.name !== member.characterClass).slice(0, 24);
+  // minValues 0: submitting with nothing ticked = "no secondary classes".
+  // (An explicit "none" option didn't work — it's a multi-select, so a
+  // member ticking a class on top of the pre-ticked "none" sent both, and
+  // the "none" won.)
+  const altChoices = classes.filter((c) => c.name !== member.characterClass).slice(0, 25);
   const alt = new StringSelectMenuBuilder()
     .setCustomId(CLASS_SELECT_ALT_ID)
     .setPlaceholder(`อาชีพรองที่เล่นได้ด้วย (ไม่บังคับ เลือกได้ไม่เกิน ${MAX_ALT_CLASSES})`)
-    .setMinValues(1)
+    .setMinValues(0)
     .setMaxValues(Math.min(MAX_ALT_CLASSES, altChoices.length))
     .addOptions(
-      new StringSelectMenuOptionBuilder().setLabel("— ไม่มีอาชีพรอง —").setValue(CLASS_ALT_NONE_VALUE).setDefault(member.altClasses.length === 0),
-      ...altChoices.map((c) =>
+      altChoices.map((c) =>
         withSafeEmoji(new StringSelectMenuOptionBuilder().setLabel(c.name).setValue(c.name).setDefault(member.altClasses.includes(c.name)), c.emoji)
       )
     );
   return {
-    content: `**เลือกอาชีพของคุณ**\nตอนนี้: ${describeClasses(member.characterClass, member.altClasses)}\nอันบน = อาชีพหลัก (ใช้แสดงในผังปาร์ตี้) · อันล่าง = อาชีพรองที่เล่นแทนได้ (คนจัดปาร์ตี้จะเห็นเป็นแท็ก)`,
+    content: `**เลือกอาชีพของคุณ**\nตอนนี้: ${describeClasses(member.characterClass, member.altClasses)}\nอันบน = อาชีพหลัก (ใช้แสดงในผังปาร์ตี้) · อันล่าง = อาชีพรองที่เล่นแทนได้ ไม่เกิน ${MAX_ALT_CLASSES} (ติ๊กออกทั้งหมดแล้วกดยืนยัน = ไม่มีอาชีพรอง)`,
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(main),
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(alt),
@@ -494,7 +496,7 @@ async function handleClassSelectAlt(interaction: StringSelectMenuInteraction) {
   if (!member) return;
 
   const validNames = new Set((await listJobClasses()).map((c) => c.name));
-  const picked = interaction.values.includes(CLASS_ALT_NONE_VALUE) ? [] : interaction.values.filter((v) => validNames.has(v));
+  const picked = interaction.values.filter((v) => validNames.has(v));
   const altClasses = normalizeAltClasses(picked, member.characterClass);
   const changed = altClasses.join("|") !== member.altClasses.join("|");
   if (changed) {

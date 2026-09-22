@@ -225,16 +225,10 @@ export const partyBoards = pgTable(
     // an unlinked board) or show up in /checkin's no-show exclusion or
     // /calendar.
     //
-    // Deliberately an explicit link rather than matching on partyBoards.name
-    // against CHECKIN_EVENTS' old attendanceBoardName field (removed) — name
-    // matching broke silently the moment an admin created a differently-named
-    // board for the same event, renamed the linked board, or (nothing ever
-    // stopped this) created a second board that happened to share the exact
-    // same name. The unique index below makes "two boards fighting over one
-    // event" impossible to represent at all, rather than just unlikely.
-    // Set/cleared from the "โพสต์ ลา ใน Discord" dialog — see
-    // getBoardCheckinEventKey/setBoardCheckinEventKey in
-    // src/app/actions/bot-messages.ts.
+    // Which check-in event (CHECKIN_EVENTS key) this board's ลา list is for.
+    // Derived from the board's NAME ("GL" → gl, "WOE" → woe) by
+    // syncBoardEventLink (src/lib/board-link.ts) on create/rename; the
+    // unique index below keeps two boards from claiming one event.
     checkinEventKey: text("checkin_event_key"),
     // Discord channel id the "ประกาศภาพผังปาร์ตี้" button last posted this
     // board to — remembered per-board so the picker defaults to it next time

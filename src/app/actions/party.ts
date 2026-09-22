@@ -9,6 +9,7 @@ import { isValidJobClassName } from "@/lib/job-classes";
 import { normalizeAltClasses } from "@/lib/alt-classes";
 import { cancelBoardOpenLeaves, cancelLeave, currentOccurrenceDate, requestLeave } from "@/lib/leaves";
 import { getPartyBoardDetail } from "@/lib/party-data";
+import { syncBoardEventLink } from "@/lib/board-link";
 import { renderPartyBoardImage } from "@/lib/party-image";
 import { createChannelMessageWithImage } from "@/lib/discord";
 
@@ -64,6 +65,8 @@ export async function createBoard(name: string): Promise<ActionResultWithId> {
     .insert(partyBoards)
     .values({ name: trimmed, sortOrder: maxOrder + 1 })
     .returning({ id: partyBoards.id });
+  // "GL" / "WOE" boards link to their check-in event by name.
+  await syncBoardEventLink(inserted.id, trimmed);
 
   revalidatePath("/party");
   return { ok: true, id: inserted.id };
@@ -75,6 +78,8 @@ export async function renameBoard(boardId: string, name: string): Promise<Action
   if (!trimmed) return { ok: false, error: "Please enter a board name" };
 
   await db.update(partyBoards).set({ name: trimmed, updatedAt: new Date() }).where(eq(partyBoards.id, boardId));
+  // Renaming to/away from "GL"/"WOE" links/unlinks the check-in event.
+  await syncBoardEventLink(boardId, trimmed);
   revalidatePath("/party");
   return { ok: true };
 }
