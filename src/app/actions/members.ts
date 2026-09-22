@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { lootCategories, lootQueueEntries, members, membershipEvents, memberNotes, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
+import { MAX_ALT_CLASSES, normalizeAltClasses } from "@/lib/alt-classes";
 import { env } from "@/lib/env";
 import { DiscordApiError, kickGuildMember } from "@/lib/discord";
 import { cancelMemberOpenLeaves } from "@/lib/leaves";
@@ -34,6 +35,16 @@ export async function updateMemberProfile(
   }
   const characterClass = characterClassRaw;
 
+  // Secondary classes: one checkbox per class named "altClasses".
+  const altRaw = formData.getAll("altClasses").map((v) => String(v).trim()).filter(Boolean);
+  for (const a of altRaw) {
+    if (!(await isValidJobClassName(a))) return { ok: false, error: `Invalid secondary class: ${a}` };
+  }
+  const altClasses = normalizeAltClasses(altRaw, characterClass);
+  if (altRaw.filter((a) => a !== characterClass).length > MAX_ALT_CLASSES) {
+    return { ok: false, error: `Pick at most ${MAX_ALT_CLASSES} secondary classes` };
+  }
+
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!existing) return { ok: false, error: "Member not found" };
 
@@ -42,6 +53,7 @@ export async function updateMemberProfile(
     .set({
       inGameName,
       characterClass,
+      altClasses,
       notes,
       updatedAt: new Date(),
     })
@@ -58,6 +70,17 @@ export async function updateMemberProfile(
       detail: characterClass
         ? `เปลี่ยนอาชีพเป็น ${characterClass} โดยแอดมิน ${session.user.username}`
         : `ล้างอาชีพโดยแอดมิน ${session.user.username}`,
+      actor: session.user.username,
+    });
+  }
+
+  if (existing.altClasses.join("|") !== altClasses.join("|")) {
+    await db.insert(membershipEvents).values({
+      memberId,
+      type: "CLASS_CHANGE",
+      detail: altClasses.length
+        ? `ตั้งอาชีพรองเป็น ${altClasses.join(", ")} โดยแอดมิน ${session.user.username}`
+        : `ล้างอาชีพรองโดยแอดมิน ${session.user.username}`,
       actor: session.user.username,
     });
   }

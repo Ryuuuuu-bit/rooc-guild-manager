@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { listDiscordRoles, listMembers } from "@/lib/data";
 import { requireUser } from "@/lib/authz";
-import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
+import { StatusBadge, ClassBadge, BenchedBadge, AltClassBadges } from "@/components/badges";
 import { RoleChips } from "@/components/role-chips";
 import { memberDisplayName } from "@/lib/ui";
 import { MemberAvatar } from "@/components/member-avatar";
@@ -136,7 +136,10 @@ export default async function MembersPage({
                 </td>
                 <td className="px-5 py-3 text-zinc-300">{member.inGameName ?? "—"}</td>
                 <td className="px-5 py-3 text-zinc-300">
-                  <ClassBadge className={member.characterClass} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <ClassBadge className={member.characterClass} />
+                    <AltClassBadges altClasses={member.altClasses} />
+                  </div>
                 </td>
                 <td className="px-5 py-3">
                   <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />

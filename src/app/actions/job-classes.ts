@@ -95,6 +95,11 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
       .update(members)
       .set({ characterClass: name, updatedAt: new Date() })
       .where(eq(members.characterClass, existing.name));
+    // Same cascade for the secondary-class tags (text[] column).
+    await db
+      .update(members)
+      .set({ altClasses: sql`array_replace(${members.altClasses}, ${existing.name}, ${name})`, updatedAt: new Date() })
+      .where(sql`${existing.name} = any(${members.altClasses})`);
   }
 
   revalidateEverywhere();
@@ -117,6 +122,11 @@ export async function deleteJobClass(id: string): Promise<ActionResult> {
       error: `${count} member(s) currently use this class — change their class first (or rename this class instead of deleting it), then delete`,
     };
   }
+  // A secondary-class tag is just a hint, so it's simply dropped.
+  await db
+    .update(members)
+    .set({ altClasses: sql`array_remove(${members.altClasses}, ${existing.name})`, updatedAt: new Date() })
+    .where(sql`${existing.name} = any(${members.altClasses})`);
 
   await db.delete(jobClasses).where(eq(jobClasses.id, id));
   revalidateEverywhere();

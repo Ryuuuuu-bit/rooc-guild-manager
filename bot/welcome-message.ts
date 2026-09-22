@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../src/db";
-import { botReactionMessages, partyBoards } from "../src/db/schema";
+import { botReactionMessages } from "../src/db/schema";
+import { MAX_ALT_CLASSES } from "../src/lib/alt-classes";
 import { sendDirectMessage } from "../src/lib/discord";
 
 /** Base URL of this deployment — same fallback chain as
@@ -28,8 +29,8 @@ function messageLink(channelId: string, messageId: string): string {
  * button for class select, where to press the button for advance leave
  * (plus the live per-board reaction as a same-day fallback), and the
  * PVP-stats link — the things new members otherwise had to ask an admin
- * about. Looks up the CURRENTLY live class-select / leave-panel /
- * attendance messages each time (rather than hardcoding channel names) so
+ * about. Looks up the CURRENTLY live class-select / leave-panel
+ * messages each time (rather than hardcoding channel names) so
  * the links stay correct even after a repost moves them to a different
  * message or channel.
  *
@@ -41,20 +42,12 @@ export async function sendWelcomeMessage(member: { discordId: string }): Promise
     where: and(eq(botReactionMessages.kind, "CLASS_SELECT"), isNull(botReactionMessages.boardId)),
   });
 
-  // The guild-wide "แจ้งลาล่วงหน้า" panel (see postLeavePanelMessage) — the
-  // primary way to take leave now: pick upcoming event dates in advance and
-  // the system applies the leave itself on the day, no need to remember to
-  // react live. Distinct from the per-board ATTENDANCE messages below,
-  // which are the same-day/live fallback for a leave decided last-minute.
+  // The guild-wide "ห้องลา" panel (see postLeavePanelMessage) — the ONLY
+  // way to take leave: pick event dates (today's included) and cancel
+  // until the round ends.
   const leavePanel = await db.query.botReactionMessages.findFirst({
     where: and(eq(botReactionMessages.kind, "LEAVE_PANEL"), isNull(botReactionMessages.boardId)),
   });
-
-  const attendanceRows = await db
-    .select({ channelId: botReactionMessages.channelId, messageId: botReactionMessages.messageId, boardName: partyBoards.name })
-    .from(botReactionMessages)
-    .innerJoin(partyBoards, eq(botReactionMessages.boardId, partyBoards.id))
-    .where(eq(botReactionMessages.kind, "ATTENDANCE"));
 
   const lines = [
     "👋 ยินดีต้อนรับเข้ากิลด์ครับ! ก่อนเริ่มเล่นมีเรื่องต้องรู้ไว้นิดหน่อย:",
@@ -65,20 +58,12 @@ export async function sendWelcomeMessage(member: { discordId: string }): Promise
     // handleClassSelectButton) — no more emoji-reacting, so this copy has
     // to say "press the button", not "react to this message".
     classSelect
-      ? `2️⃣ เลือกอาชีพตัวละคร — กดปุ่ม 🎮 เลือกอาชีพ ที่ข้อความนี้เลย: ${messageLink(classSelect.channelId, classSelect.messageId)}`
+      ? `2️⃣ เลือกอาชีพตัวละคร — กดปุ่ม 🎮 เลือกอาชีพ ที่ข้อความนี้เลย: ${messageLink(classSelect.channelId, classSelect.messageId)} (เลือกอาชีพหลัก 1 อาชีพ และอาชีพรองที่เล่นได้ด้วยอีกไม่เกิน ${MAX_ALT_CLASSES})`
       : "2️⃣ เลือกอาชีพตัวละคร — ยังไม่พบข้อความเลือกอาชีพตอนนี้ สอบถามแอดมินได้เลยครับ",
     "",
-    [
-      leavePanel
-        ? `3️⃣ ถ้าลา/ไม่สะดวกเข้ากิจกรรมไหน แจ้งล่วงหน้าได้เลย — กดปุ่ม 🗓️ แจ้งลาล่วงหน้า ที่ข้อความนี้: ${messageLink(leavePanel.channelId, leavePanel.messageId)} (เลือกวันที่จะลาไว้ล่วงหน้าได้เลย ระบบลาให้อัตโนมัติเมื่อถึงวันจริง)`
-        : "3️⃣ ถ้าลา/ไม่สะดวกเข้ากิจกรรมไหน จะมีปุ่มแจ้งลาล่วงหน้าให้กดแยกต่างหาก สอบถามแอดมินได้เลยครับ",
-      attendanceRows.length
-        ? `ถ้าลากะทันหันวันนั้นเลย (ไม่ทันแจ้งล่วงหน้า) กดอิโมจิที่ข้อความของกิจกรรมนั้นแทนได้:\n` +
-          attendanceRows.map((r) => `• ${r.boardName}: ${messageLink(r.channelId, r.messageId)}`).join("\n")
-        : null,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    leavePanel
+      ? `3️⃣ ถ้าลา/ไม่สะดวกเข้ากิจกรรมไหน แจ้งได้ที่ห้องลา — กดปุ่ม 🗓️ ที่ข้อความนี้: ${messageLink(leavePanel.channelId, leavePanel.messageId)} (เลือกวันที่จะลาได้ทั้งวันนี้และล่วงหน้า ยกเลิกได้จนกว่ากิจกรรมวันนั้นจะจบ)`
+      : "3️⃣ ถ้าลา/ไม่สะดวกเข้ากิจกรรมไหน แจ้งได้ที่ห้องลา สอบถามแอดมินได้เลยครับ",
     "",
     `4️⃣ กรอกสถิติ PVP ของตัวเองได้ที่เว็บนี้ (อัปเดตได้เรื่อยๆ ทุกสัปดาห์): ${appBaseUrl()}/pvp-stats`,
   ];

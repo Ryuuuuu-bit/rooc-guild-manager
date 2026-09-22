@@ -26,6 +26,7 @@ import {
   requestLeave,
 } from "../src/lib/leaves";
 import { dmMemberLeaveFiled, notifyAdminsOfLeaves, type LeaveNotice } from "./leaves";
+import { MAX_ALT_CLASSES, describeClasses, normalizeAltClasses } from "../src/lib/alt-classes";
 
 const LEAVE_ADD_SELECT_ID = "leave_add_select";
 const LEAVE_CANCEL_SELECT_ID = "leave_cancel_select";
@@ -40,6 +41,9 @@ const LEAVE_PANEL_BUTTON_ID = "leave_panel_open";
 // postClassSelectMessage in src/app/actions/bot-messages.ts for the button).
 const CLASS_SELECT_BUTTON_ID = "class_select_open";
 const CLASS_SELECT_CHOOSE_ID = "class_select_choose";
+// Second dropdown on the same picker: secondary classes (multi-select).
+const CLASS_SELECT_ALT_ID = "class_select_alt";
+const CLASS_ALT_NONE_VALUE = "__none__";
 
 // Matches the web app's amber accent (see Tailwind's amber-500) so the
 // Components V2 card reads as the same product, not a generic bot embed.
@@ -379,11 +383,51 @@ async function handleLeaveCancelSelect(interaction: StringSelectMenuInteraction)
 }
 
 /**
+ * Builds the class picker for one member: dropdown 1 = main class (single,
+ * current pre-selected), dropdown 2 = secondary classes they can also play
+ * (multi, up to MAX_ALT_CLASSES, current ones pre-selected, plus a "none"
+ * option to clear). Both live in the same ephemeral message and each pick
+ * redraws it, so a member can set main then alts (or the reverse) without
+ * reopening anything.
+ */
+async function renderClassPicker(member: { characterClass: string | null; altClasses: string[] }) {
+  const classes = await listJobClasses();
+  if (classes.length === 0) return null;
+  const main = new StringSelectMenuBuilder()
+    .setCustomId(CLASS_SELECT_CHOOSE_ID)
+    .setPlaceholder("อาชีพหลัก")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      classes.slice(0, 25).map((c) =>
+        withSafeEmoji(new StringSelectMenuOptionBuilder().setLabel(c.name).setValue(c.name).setDefault(c.name === member.characterClass), c.emoji)
+      )
+    );
+  const altChoices = classes.filter((c) => c.name !== member.characterClass).slice(0, 24);
+  const alt = new StringSelectMenuBuilder()
+    .setCustomId(CLASS_SELECT_ALT_ID)
+    .setPlaceholder(`อาชีพรองที่เล่นได้ด้วย (ไม่บังคับ เลือกได้ไม่เกิน ${MAX_ALT_CLASSES})`)
+    .setMinValues(1)
+    .setMaxValues(Math.min(MAX_ALT_CLASSES, altChoices.length))
+    .addOptions(
+      new StringSelectMenuOptionBuilder().setLabel("— ไม่มีอาชีพรอง —").setValue(CLASS_ALT_NONE_VALUE).setDefault(member.altClasses.length === 0),
+      ...altChoices.map((c) =>
+        withSafeEmoji(new StringSelectMenuOptionBuilder().setLabel(c.name).setValue(c.name).setDefault(member.altClasses.includes(c.name)), c.emoji)
+      )
+    );
+  return {
+    content: `**เลือกอาชีพของคุณ**\nตอนนี้: ${describeClasses(member.characterClass, member.altClasses)}\nอันบน = อาชีพหลัก (ใช้แสดงในผังปาร์ตี้) · อันล่าง = อาชีพรองที่เล่นแทนได้ (คนจัดปาร์ตี้จะเห็นเป็นแท็ก)`,
+    components: [
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(main),
+      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(alt),
+    ],
+  };
+}
+
+/**
  * Click on the "เลือกอาชีพ" panel's button (see postClassSelectMessage) —
- * shows an ephemeral single-select dropdown of the admin-managed job class
- * list, each option's own emoji shown next to it, with the member's current
- * class pre-selected so the dropdown opens already showing where they are.
- * No typing, no emoji-reacting — replaces the old click-an-emoji flow.
+ * shows the ephemeral class picker (renderClassPicker). No typing, no
+ * emoji-reacting.
  */
 async function handleClassSelectButton(interaction: ButtonInteraction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
@@ -396,73 +440,80 @@ async function handleClassSelectButton(interaction: ButtonInteraction) {
     return;
   }
 
-  const classes = await listJobClasses();
-  if (classes.length === 0) {
+  const picker = await renderClassPicker(member);
+  if (!picker) {
     await interaction.editReply({ content: "ยังไม่มีรายการอาชีพให้เลือก — ติดต่อแอดมิน" });
     return;
   }
-
-  const select = new StringSelectMenuBuilder()
-    .setCustomId(CLASS_SELECT_CHOOSE_ID)
-    .setPlaceholder("เลือกอาชีพของคุณ")
-    .setMinValues(1)
-    .setMaxValues(1)
-    .addOptions(
-      classes.slice(0, 25).map((c) =>
-        withSafeEmoji(
-          new StringSelectMenuOptionBuilder()
-            .setLabel(c.name)
-            .setValue(c.name)
-            .setDefault(c.name === member.characterClass),
-          c.emoji
-        )
-      )
-    );
-
-  await interaction.editReply({
-    content: "**เลือกอาชีพของคุณ**",
-    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
-  });
+  await interaction.editReply(picker);
 }
 
-/** Member picked their class on the dropdown — updates members.characterClass, logs it, and confirms. */
-async function handleClassSelectChoose(interaction: StringSelectMenuInteraction) {
+/** Re-checked at click time — Discord keeps an ephemeral menu clickable for minutes and an admin could deactivate the member in between. */
+async function requireActiveMember(interaction: StringSelectMenuInteraction) {
+  await interaction.deferUpdate();
   const member = await db.query.members.findFirst({ where: eq(members.discordId, interaction.user.id) });
-  // Same ACTIVE check handleClassSelectButton makes before ever opening this
-  // dropdown — re-checked here too, since Discord keeps an ephemeral menu
-  // clickable for several minutes and an admin could deactivate the member
-  // in between (e.g. mark them KICKED/benched) while it's still open.
   if (!member || member.status !== "ACTIVE") {
-    await interaction.update({ content: "ไม่พบข้อมูลสมาชิกของคุณ หรือบัญชีนี้ไม่ได้ใช้งานอยู่แล้ว", components: [] });
-    return;
+    await interaction.editReply({ content: "ไม่พบข้อมูลสมาชิกของคุณ หรือบัญชีนี้ไม่ได้ใช้งานอยู่แล้ว", components: [] });
+    return null;
   }
+  return member;
+}
+
+/** Member picked their MAIN class — updates members.characterClass (dropping it from altClasses if it was there), logs it, redraws the picker. */
+async function handleClassSelectChoose(interaction: StringSelectMenuInteraction) {
+  const member = await requireActiveMember(interaction);
+  if (!member) return;
 
   const className = interaction.values[0];
-  if (member.characterClass === className) {
-    // Same class re-picked (a double-click, or reassurance) — nothing to
-    // change, and logging a second identical CLASS_CHANGE just put
-    // duplicate "Class changed" rows in the activity feed (seen live).
-    await interaction.update({ content: `✅ อาชีพของคุณคือ ${className} อยู่แล้ว`, components: [] });
+  const valid = (await listJobClasses()).some((c) => c.name === className);
+  if (!valid) {
+    await interaction.editReply({ content: "อาชีพนี้ไม่มีในรายการแล้ว — กดปุ่มเลือกอาชีพใหม่อีกครั้ง", components: [] });
     return;
   }
-  // Both writes commit together — same transaction-safety reasoning as the
-  // legacy CLASS_SELECT reaction path in reactions.ts: two separate
-  // statements here meant a crash between them (a routine Railway redeploy)
-  // could change the member's class with no CLASS_CHANGE audit row for it.
-  await db.transaction(async (tx) => {
-    await tx.update(members).set({ characterClass: className, updatedAt: new Date() }).where(eq(members.id, member.id));
-    await tx.insert(membershipEvents).values({
-      memberId: member.id,
-      type: "CLASS_CHANGE",
-      detail: `เปลี่ยนอาชีพเป็น ${className} ผ่านเมนูเลือกอาชีพ`,
-      actor: "bot:interactions",
+  const altClasses = normalizeAltClasses(member.altClasses, className);
+  if (member.characterClass !== className) {
+    // Both writes commit together — a crash between them (a routine
+    // Railway redeploy) could otherwise change the class with no audit row.
+    await db.transaction(async (tx) => {
+      await tx.update(members).set({ characterClass: className, altClasses, updatedAt: new Date() }).where(eq(members.id, member.id));
+      await tx.insert(membershipEvents).values({
+        memberId: member.id,
+        type: "CLASS_CHANGE",
+        detail: `เปลี่ยนอาชีพหลักเป็น ${className} ผ่านเมนูเลือกอาชีพ`,
+        actor: "bot:interactions",
+      });
     });
-  });
-
-  await interaction.update({ content: `✅ เลือกอาชีพ: ${className}`, components: [] });
+  }
+  const picker = await renderClassPicker({ characterClass: className, altClasses });
+  await interaction.editReply({ content: `✅ อาชีพหลัก: ${className}\n\n${picker?.content ?? ""}`, components: picker?.components ?? [] });
 }
 
-/** Routes every interaction the bot receives — /party, /leave, the /leave picker's select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + dropdown. Extend this switch as more slash commands are added. */
+/** Member picked their SECONDARY classes — updates members.altClasses, logs it, redraws the picker. */
+async function handleClassSelectAlt(interaction: StringSelectMenuInteraction) {
+  const member = await requireActiveMember(interaction);
+  if (!member) return;
+
+  const validNames = new Set((await listJobClasses()).map((c) => c.name));
+  const picked = interaction.values.includes(CLASS_ALT_NONE_VALUE) ? [] : interaction.values.filter((v) => validNames.has(v));
+  const altClasses = normalizeAltClasses(picked, member.characterClass);
+  const changed = altClasses.join("|") !== member.altClasses.join("|");
+  if (changed) {
+    await db.transaction(async (tx) => {
+      await tx.update(members).set({ altClasses, updatedAt: new Date() }).where(eq(members.id, member.id));
+      await tx.insert(membershipEvents).values({
+        memberId: member.id,
+        type: "CLASS_CHANGE",
+        detail: altClasses.length ? `ตั้งอาชีพรองเป็น ${altClasses.join(", ")} ผ่านเมนูเลือกอาชีพ` : "ล้างอาชีพรอง ผ่านเมนูเลือกอาชีพ",
+        actor: "bot:interactions",
+      });
+    });
+  }
+  const picker = await renderClassPicker({ characterClass: member.characterClass, altClasses });
+  const summary = altClasses.length ? `✅ อาชีพรอง: ${altClasses.join(", ")}` : "✅ ไม่มีอาชีพรอง";
+  await interaction.editReply({ content: `${summary}\n\n${picker?.content ?? ""}`, components: picker?.components ?? [] });
+}
+
+/** Routes every interaction the bot receives — /party, /leave, the /leave picker's select menus, the "ห้องลา" panel button, and the "เลือกอาชีพ" panel button + its two dropdowns. Extend this switch as more slash commands are added. */
 export async function handleInteractionCreate(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === "party") {
     try {
@@ -578,12 +629,18 @@ export async function handleInteractionCreate(interaction: Interaction) {
     return;
   }
 
-  if (interaction.isStringSelectMenu() && interaction.customId === CLASS_SELECT_CHOOSE_ID) {
+  if (interaction.isStringSelectMenu() && (interaction.customId === CLASS_SELECT_CHOOSE_ID || interaction.customId === CLASS_SELECT_ALT_ID)) {
     try {
-      await handleClassSelectChoose(interaction);
+      if (interaction.customId === CLASS_SELECT_CHOOSE_ID) await handleClassSelectChoose(interaction);
+      else await handleClassSelectAlt(interaction);
     } catch (err) {
-      console.error("[bot] class-select choose failed", err);
-      await interaction.update({ content: "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง", components: [] }).catch(() => {});
+      console.error("[bot] class-select failed", err);
+      const content = "เกิดข้อผิดพลาด ลองใหม่อีกครั้ง";
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content, components: [] }).catch(() => {});
+      } else {
+        await interaction.update({ content, components: [] }).catch(() => {});
+      }
     }
   }
 }

@@ -57,7 +57,11 @@ export function PartySlot({
   onPlaceSelected,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
-  const { options: classOptions } = useJobClasses();
+  const { options: allClassOptions } = useJobClasses();
+  // The member's own classes (main, then secondaries) float to the top of
+  // the dropdown so "swap them to their alt" is one click.
+  const own = member ? [member.className, ...member.altClasses].filter((c): c is string => Boolean(c)) : [];
+  const classOptions = [...own, ...allClassOptions.filter((c) => !own.includes(c))];
 
   // A pending selection makes every OTHER slot look tappable — the same
   // affordance drag gives via isOver, just driven by tap state instead.

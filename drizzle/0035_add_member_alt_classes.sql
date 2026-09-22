@@ -1,0 +1,1 @@
+ALTER TABLE "members" ADD COLUMN "alt_classes" text[] DEFAULT '{}'::text[] NOT NULL;

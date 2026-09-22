@@ -126,7 +126,8 @@ function computeNext(prev: PartyBoardDetail, member: PartyBoardMemberRef, destin
 
 /** Patches a member's className everywhere they currently appear on the board (optimistic update). */
 function patchMemberClass(prev: PartyBoardDetail, memberId: string, className: string | null): PartyBoardDetail {
-  const patch = (m: PartyBoardMemberRef) => (m.id === memberId ? { ...m, className } : m);
+  // The new main class can't also be an alt — mirrors setMemberClass.
+  const patch = (m: PartyBoardMemberRef) => (m.id === memberId ? { ...m, className, altClasses: m.altClasses.filter((a) => a !== className) } : m);
   return {
     ...prev,
     groups: prev.groups.map((g) => ({
@@ -608,7 +609,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (!board) return [];
     const q = poolQuery.trim().toLowerCase();
     return board.unassigned.filter((m) => {
-      if (poolClassFilter && m.className !== poolClassFilter) return false;
+      if (poolClassFilter && m.className !== poolClassFilter && !m.altClasses.includes(poolClassFilter)) return false;
       if (q && !m.displayName.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -620,21 +621,27 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   // later date. Members with no class set get no row — there's nothing to
   // match on, and the plain pool list already covers "anyone free".
   const substituteHints = useMemo(() => {
-    type Hint = { memberId: string; name: string; className: string | null; when: string | null; candidates: PartyBoardMemberRef[] };
+    type Candidate = { member: PartyBoardMemberRef; asAlt: boolean };
+    type Hint = { memberId: string; name: string; className: string | null; when: string | null; candidates: Candidate[] };
     const rows = new Map<string, Hint>();
     if (!board) return [] as Hint[];
     // Someone who's out themselves (busy now, or with a leave on file) is
     // not a substitute for anyone — including for their own row, which an
     // unassigned member with an upcoming leave would otherwise appear in.
     const outIds = new Set<string>([...board.busy.map((m) => m.id), ...board.upcomingLeaves.map((l) => l.memberId)]);
-    const openByClass = new Map<string, PartyBoardMemberRef[]>();
+    // Main-class matches first, then people who list it as a secondary
+    // class (flagged "รอง" in the UI so the organizer knows it's not their
+    // usual role).
+    const openByClass = new Map<string, Candidate[]>();
     for (const m of board.unassigned) {
-      if (!m.className || outIds.has(m.id)) continue;
-      openByClass.set(m.className, [...(openByClass.get(m.className) ?? []), m]);
+      if (outIds.has(m.id)) continue;
+      if (m.className) openByClass.set(m.className, [...(openByClass.get(m.className) ?? []), { member: m, asAlt: false }]);
+      for (const a of m.altClasses) openByClass.set(a, [...(openByClass.get(a) ?? []), { member: m, asAlt: true }]);
     }
+    const candidatesFor = (className: string) => (openByClass.get(className) ?? []).slice().sort((a, b) => Number(a.asAlt) - Number(b.asAlt));
     for (const m of board.busy) {
       if (!m.className) continue;
-      rows.set(m.id, { memberId: m.id, name: m.displayName, className: m.className, when: null, candidates: openByClass.get(m.className) ?? [] });
+      rows.set(m.id, { memberId: m.id, name: m.displayName, className: m.className, when: null, candidates: candidatesFor(m.className) });
     }
     for (const l of board.upcomingLeaves) {
       if (!l.className) continue;
@@ -648,7 +655,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
         name: l.name,
         className: l.className,
         when: fmtLeaveDate(l.date),
-        candidates: openByClass.get(l.className) ?? [],
+        candidates: candidatesFor(l.className),
       });
     }
     return [...rows.values()];
@@ -773,7 +780,8 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 for the same reason as the banner above. */}
             {!screenshotMode && substituteHints.length > 0 && (
               <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5 text-xs text-zinc-300">
-                <span className="font-medium text-emerald-300">🔁 Substitutes with the same class:</span>
+                <span className="font-medium text-emerald-300">🔁 Substitutes with the same class</span>
+                <span className="text-zinc-500"> (รอง = lists it as a secondary class)</span>
                 <ul className="mt-1.5 flex flex-col gap-1">
                   {substituteHints.map((h) => (
                     <li key={h.memberId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -786,8 +794,15 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       {h.candidates.length > 0 ? (
                         <span className="flex flex-wrap gap-1">
                           {h.candidates.map((c) => (
-                            <span key={c.id} className="rounded-full bg-emerald-500/10 px-2 py-0.5 ring-1 ring-inset ring-emerald-500/30">
-                              {c.displayName}
+                            <span
+                              key={c.member.id}
+                              title={c.asAlt ? `${c.member.displayName} — main: ${c.member.className ?? "—"}, can also play ${h.className}` : undefined}
+                              className={`rounded-full px-2 py-0.5 ring-1 ring-inset ${
+                                c.asAlt ? "bg-zinc-800/60 text-zinc-300 ring-zinc-600/40" : "bg-emerald-500/10 ring-emerald-500/30"
+                              }`}
+                            >
+                              {c.member.displayName}
+                              {c.asAlt ? <span className="text-zinc-500"> (รอง)</span> : null}
                             </span>
                           ))}
                         </span>

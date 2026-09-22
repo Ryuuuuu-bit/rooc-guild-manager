@@ -75,7 +75,13 @@ export const members = pgTable(
 
     // --- In-game / guild data (managed by admins) ---
     inGameName: text("in_game_name"),
+    /** Main class (job). Single value — everything that needs "the" class
+     * (party chips, /party emoji, class distribution) reads this. */
     characterClass: text("character_class"),
+    /** Secondary classes the member can also play (up to MAX_ALT_CLASSES,
+     * see src/lib/job-classes.ts) — informational tags for party organizers
+     * ("who could fill this role"), never used as the member's identity. */
+    altClasses: text("alt_classes").array().notNull().default(sql`'{}'::text[]`),
     // Vestigial: used by the Google Sheet class-sync tool, which was removed
     // in favor of the Discord emoji class-select system. Left as a nullable
     // column rather than a migration to drop it — no code reads/writes it.

@@ -9,7 +9,6 @@ import {
   upsertRole,
   removeRole,
 } from "./sync";
-import { handleReactionAdd } from "./reactions";
 import { handleVoiceStateUpdate, reconcileVoicePresence } from "./voice-attendance";
 import { sendPvpStatsReminders } from "./pvp-stats-reminder";
 import { commands } from "./commands";
@@ -170,17 +169,6 @@ client.on(Events.GuildRoleDelete, async (role) => {
     await removeRole(role.id);
   } catch (err) {
     console.error("[bot] failed to handle guildRoleDelete", err);
-  }
-});
-
-// Legacy class-select emoji reactions — see bot/reactions.ts. Ignores
-// anything on a message the bot isn't tracking (looked up inside the
-// handler), so this is safe to leave on even in channels used for other things.
-client.on(Events.MessageReactionAdd, async (reaction, user) => {
-  try {
-    await handleReactionAdd(reaction, user);
-  } catch (err) {
-    console.error("[bot] failed to handle messageReactionAdd", err);
   }
 });
 

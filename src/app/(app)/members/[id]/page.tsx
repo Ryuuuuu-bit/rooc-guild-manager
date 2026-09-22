@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
-import { StatusBadge, ClassBadge, BenchedBadge } from "@/components/badges";
+import { StatusBadge, ClassBadge, BenchedBadge, AltClassBadges } from "@/components/badges";
 import { memberDisplayName, isCurrentlyAuctionBanned } from "@/lib/ui";
 import { MemberEditForm } from "@/components/member-edit-form";
 import { MemberStatusActions } from "@/components/member-status-actions";
@@ -61,8 +61,9 @@ export default async function MemberDetailPage({
                 </div>
                 <div>
                   <dt className="text-xs text-zinc-500">Class</dt>
-                  <dd className="text-sm text-zinc-200">
+                  <dd className="flex flex-wrap items-center gap-1.5 text-sm text-zinc-200">
                     <ClassBadge className={member.characterClass} />
+                    <AltClassBadges altClasses={member.altClasses} />
                   </dd>
                 </div>
               </dl>

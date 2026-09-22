@@ -36,3 +36,21 @@ export function ClassBadge({ className }: { className: string | null }) {
     </span>
   );
 }
+
+/** Small muted tags for a member's secondary classes, after their ClassBadge. */
+export function AltClassBadges({ altClasses }: { altClasses: string[] }) {
+  if (altClasses.length === 0) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1" title="Secondary classes (can also play)">
+      {altClasses.map((c) => (
+        <span
+          key={c}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-zinc-800/70 px-2 py-0.5 text-[11px] text-zinc-400 ring-1 ring-inset ring-zinc-700/60"
+        >
+          <ClassIcon job={c} size={10} />
+          {c}
+        </span>
+      ))}
+    </span>
+  );
+}

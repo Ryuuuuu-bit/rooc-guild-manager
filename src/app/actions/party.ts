@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { members, membershipEvents, partyBoards, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { isValidJobClassName } from "@/lib/job-classes";
+import { normalizeAltClasses } from "@/lib/alt-classes";
 import { cancelBoardOpenLeaves, cancelLeave, currentOccurrenceDate, requestLeave } from "@/lib/leaves";
 import { getPartyBoardDetail } from "@/lib/party-data";
 import { renderPartyBoardImage } from "@/lib/party-image";
@@ -269,13 +270,19 @@ export async function setMemberClass(memberId: string, className: string | null)
   if (className && !finalClassName) return { ok: false, error: "Invalid class" };
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
+  if (!existing) return { ok: false, error: "Member not found" };
 
   await db
     .update(members)
-    .set({ characterClass: finalClassName, updatedAt: new Date() })
+    .set({
+      characterClass: finalClassName,
+      // The new main class can't also be listed as a secondary one.
+      altClasses: normalizeAltClasses(existing.altClasses, finalClassName),
+      updatedAt: new Date(),
+    })
     .where(eq(members.id, memberId));
 
-  if (existing && existing.characterClass !== finalClassName) {
+  if (existing.characterClass !== finalClassName) {
     await db.insert(membershipEvents).values({
       memberId,
       type: "CLASS_CHANGE",

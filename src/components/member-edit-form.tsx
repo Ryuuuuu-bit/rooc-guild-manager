@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import type { Member } from "@/db/schema";
 import { updateMemberProfile, type UpdateMemberResult } from "@/app/actions/members";
 import { useJobClasses } from "@/components/job-classes-provider";
+import { MAX_ALT_CLASSES } from "@/lib/alt-classes";
 
 interface Props {
   member: Member;
@@ -49,6 +50,22 @@ export function MemberEditForm({ member }: Props) {
           </span>
         </label>
       </div>
+
+      <fieldset className="flex flex-col gap-1 text-sm">
+        <legend className="text-zinc-400">Secondary classes (can also play — up to {MAX_ALT_CLASSES})</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1">
+          {classOptions.map((c) => (
+            <label key={c} className="flex items-center gap-1.5 text-xs text-zinc-300">
+              <input type="checkbox" name="altClasses" value={c} defaultChecked={member.altClasses.includes(c)} className="accent-amber-500" />
+              {c}
+            </label>
+          ))}
+        </div>
+        <span className="text-xs text-zinc-500">
+          Shown as tags on the party board and used for substitute suggestions. Members set these themselves from the
+          Discord &quot;เลือกอาชีพ&quot; button too.
+        </span>
+      </fieldset>
 
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-zinc-400">Internal Note (admins only)</span>

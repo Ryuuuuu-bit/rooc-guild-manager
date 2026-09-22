@@ -15,6 +15,8 @@ export interface PartyBoardMemberRef {
   displayName: string;
   discordAvatar: string | null;
   className: string | null;
+  /** Secondary classes they can also play — organizer hints only. */
+  altClasses: string[];
 }
 
 export interface PartySlotView {
@@ -80,6 +82,7 @@ function toRef(member: Member): PartyBoardMemberRef {
     displayName: memberDisplayName(member),
     discordAvatar: member.discordAvatar,
     className: member.characterClass,
+    altClasses: member.altClasses,
   };
 }
 

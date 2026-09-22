@@ -78,7 +78,13 @@ export function MemberChip({
       } ${stacked ? "flex-col gap-1" : "items-center gap-1.5"} ${isDragging ? "z-50 opacity-40" : ""} ${
         draggable ? "touch-none cursor-grab select-none active:cursor-grabbing" : ""
       } ${onLeave && !isDragging ? "opacity-45" : ""}`}
-      title={onLeave ? `${member.displayName} — ลารอบนี้` : undefined}
+      title={
+        onLeave
+          ? `${member.displayName} — ลารอบนี้`
+          : member.altClasses.length
+            ? `${member.displayName} — รอง: ${member.altClasses.join(", ")}`
+            : undefined
+      }
     >
       {/* `contents` keeps the avatar+name acting as direct flex children when
        * not stacked (unchanged layout); when stacked they form their own row. */}
@@ -109,6 +115,11 @@ export function MemberChip({
         >
           <ClassIcon job={className} size={10} />
           {className}
+        </span>
+      )}
+      {showClassBadge && !stacked && member.altClasses.length > 0 && (
+        <span className="shrink-0 text-[9px] text-zinc-500" title={`รอง: ${member.altClasses.join(", ")}`}>
+          +{member.altClasses.join("/")}
         </span>
       )}
     </div>
