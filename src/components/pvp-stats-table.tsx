@@ -171,6 +171,85 @@ function computeHighlights(rows: PvpStatsRow[], columns: ColumnDef[]): Map<strin
   return out;
 }
 
+/** Same shape as computeHighlights, but ranks are within each member's
+ * main class — "#1 M.DEF" among Priests, not among the whole guild. */
+function computeClassHighlights(rows: PvpStatsRow[], columns: ColumnDef[]): Map<string, Map<string, Highlight>> {
+  const byClass = new Map<string, PvpStatsRow[]>();
+  for (const r of rows) {
+    const c = r.member.characterClass ?? "";
+    byClass.set(c, [...(byClass.get(c) ?? []), r]);
+  }
+  const out = new Map<string, Map<string, Highlight>>();
+  for (const classRows of byClass.values()) {
+    for (const [key, perMember] of computeHighlights(classRows, columns)) {
+      const merged = out.get(key) ?? new Map<string, Highlight>();
+      for (const [id, hl] of perMember) merged.set(id, hl);
+      out.set(key, merged);
+    }
+  }
+  return out;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Per-class roll-up over every submitted member of that class: count,
+ * average CP, who leads on CP, a tiny CP histogram, and the median of every
+ * numeric column (the yardstick for the heatmap and the outlier flag). */
+interface ClassStats {
+  className: string;
+  count: number;
+  avgCp: number | null;
+  top: PvpStatsRow | null;
+  cpBins: number[];
+  medians: Map<string, number>;
+}
+
+function computeClassStats(rows: PvpStatsRow[], columns: ColumnDef[]): Map<string, ClassStats> {
+  const byClass = new Map<string, PvpStatsRow[]>();
+  for (const r of rows) {
+    if (!r.member.characterClass || !r.entry) continue;
+    byClass.set(r.member.characterClass, [...(byClass.get(r.member.characterClass) ?? []), r]);
+  }
+  const out = new Map<string, ClassStats>();
+  for (const [className, classRows] of byClass) {
+    const cps = classRows.map((r) => r.entry?.cp ?? null).filter((v): v is number => v !== null && v > 0);
+    const avgCp = cps.length ? Math.round(cps.reduce((a, b) => a + b, 0) / cps.length) : null;
+    const top = classRows.reduce<PvpStatsRow | null>((t, r) => (r.entry?.cp != null && (t?.entry?.cp ?? -1) < r.entry.cp ? r : t), null);
+    const bins = Array<number>(8).fill(0);
+    if (cps.length) {
+      const min = Math.min(...cps);
+      const span = Math.max(...cps) - min || 1;
+      for (const v of cps) bins[Math.min(7, Math.floor(((v - min) / span) * 8))]++;
+    }
+    const medians = new Map<string, number>();
+    for (const col of columns) {
+      if (!col.numeric) continue;
+      const m = median(classRows.map((r) => getStatValue(r.entry, col.key)).filter((v): v is number => v !== null && v > 0));
+      if (m !== null) medians.set(col.key, m);
+    }
+    out.set(className, { className, count: classRows.length, avgCp, top, cpBins: bins, medians });
+  }
+  return out;
+}
+
+/** Heatmap tint vs the class median: ±5% is neutral, ±15% is strong. */
+function heatClass(value: number | null, med: number | undefined): string {
+  if (value === null || med === undefined || med <= 0) return "";
+  const d = (value - med) / med;
+  if (d < -0.15) return "bg-rose-500/25";
+  if (d < -0.05) return "bg-rose-500/10";
+  if (d > 0.15) return "bg-emerald-500/25";
+  if (d > 0.05) return "bg-emerald-500/10";
+  return "";
+}
+
+const OUTLIER_BELOW = 0.8;
+
 const RANK_BADGE: Record<number, string> = {
   1: "bg-amber-400/20 text-amber-300 ring-amber-400/40",
   2: "bg-zinc-300/15 text-zinc-200 ring-zinc-400/40",
@@ -574,6 +653,77 @@ function CompareDrawer({ rows, columns, onClose, onRemove }: { rows: PvpStatsRow
 }
 
 // ---------------------------------------------------------------------------
+// Class overview strip — one card per class (count, average CP, who leads,
+// a tiny CP histogram). Clicking a card filters the table to that class.
+// ---------------------------------------------------------------------------
+
+function ClassOverview({ stats, order, active, onPick }: { stats: Map<string, ClassStats>; order: string[]; active: Set<string>; onPick: (name: string) => void }) {
+  const { colorClassOf } = useJobClasses();
+  const list = [...stats.values()].sort((a, b) => b.count - a.count || order.indexOf(a.className) - order.indexOf(b.className));
+  if (list.length === 0) return null;
+  return (
+    <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+      {list.map((c) => {
+        const on = active.has(c.className);
+        const binMax = Math.max(1, ...c.cpBins);
+        return (
+          <button
+            key={c.className}
+            type="button"
+            onClick={() => onPick(c.className)}
+            title={on ? "Clear class filter" : `Show only ${c.className}`}
+            className={`rounded-xl border px-2.5 py-2 text-left transition ${on ? "border-amber-500/60 bg-amber-500/5 ring-1 ring-amber-500/30" : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"}`}
+          >
+            <div className="flex items-center justify-between gap-1">
+              <span className={`inline-flex items-center gap-1 truncate rounded-full px-2 py-0.5 text-[11px] font-medium ${colorClassOf(c.className)}`}>
+                <ClassIcon job={c.className} size={11} />
+                {c.className}
+              </span>
+              <span className="shrink-0 text-[10px] text-zinc-500">{c.count} คน</span>
+            </div>
+            <div className="mt-1 text-[15px] font-semibold tabular-nums text-zinc-100">{fmtInt(c.avgCp)}</div>
+            <div className="truncate text-[10px] text-zinc-500">
+              avg CP · top <span className="text-zinc-300">{c.top ? memberDisplayName(c.top.member) : "—"}</span>
+            </div>
+            <div className="mt-1.5 flex h-4 items-end gap-px" title="CP distribution in this class">
+              {c.cpBins.map((b, i) => (
+                <span key={i} className={`flex-1 rounded-[1px] ${i === 7 ? "bg-amber-400" : "bg-zinc-700"}`} style={{ height: `${Math.max(2, (b / binMax) * 16)}px` }} />
+              ))}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { key: T; label: string }[]; onChange: (v: T) => void }) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-xl border border-zinc-800 bg-zinc-900/50 p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          type="button"
+          onClick={() => onChange(o.key)}
+          className={`whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${value === o.key ? "bg-zinc-800 text-zinc-100" : "text-zinc-500 hover:text-zinc-300"}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const VIEW_STORAGE_KEY = "pvp-stats-view";
+interface ViewPrefs {
+  groupByClass: boolean;
+  badgeScope: "guild" | "class";
+  heatmap: boolean;
+  flags: boolean;
+}
+const DEFAULT_VIEW: ViewPrefs = { groupByClass: true, badgeScope: "class", heatmap: false, flags: true };
+
+// ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
 
@@ -586,7 +736,11 @@ function CompareDrawer({ rows, columns, onClose, onRemove }: { rows: PvpStatsRow
  * can be ticked for a side-by-side comparison drawer.
  */
 export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpStatsRow[]; activeFieldDefs: PvpCustomFieldDef[]; isAdmin: boolean }) {
-  const { options: classOrder } = useJobClasses();
+  const { options: classOrder, keyStatOf } = useJobClasses();
+  const [view, setView] = useState<ViewPrefs>(DEFAULT_VIEW);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const theadRef = useRef<HTMLTableSectionElement>(null);
+  const [theadHeight, setTheadHeight] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "cp", dir: "desc" });
   const [query, setQuery] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
@@ -622,9 +776,34 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
       } catch {
         /* ignore */
       }
+      try {
+        const raw = localStorage.getItem(VIEW_STORAGE_KEY);
+        if (raw) setView({ ...DEFAULT_VIEW, ...(JSON.parse(raw) as Partial<ViewPrefs>) });
+      } catch {
+        /* ignore */
+      }
     }, 0);
     return () => window.clearTimeout(id);
   }, []);
+  function updateView(patch: Partial<ViewPrefs>) {
+    setView((cur) => {
+      const next = { ...cur, ...patch };
+      try {
+        localStorage.setItem(VIEW_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+  function toggleCollapsed(name: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
   function persist(nextHidden: Set<string>, nextPreset: PresetKey | null) {
     try {
       localStorage.setItem(VISIBILITY_STORAGE_KEY, JSON.stringify({ hidden: [...nextHidden], preset: nextPreset }));
@@ -705,9 +884,37 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
     });
   }, [filteredRows, sort, classOrder]);
 
-  // Highlights are guild-wide (all rows), not per filter — "#1 P.DEF" should
-  // mean the same thing whichever class filter is on.
-  const highlights = useMemo(() => computeHighlights(rows, columns), [rows, columns]);
+  // Highlights rank ALL rows (never just the filtered ones) — "#1 P.DEF"
+  // means the same thing whichever filter is on. Scope is either the whole
+  // guild or the member's own class (a Priest's M.DEF vs other Priests).
+  const highlights = useMemo(
+    () => (view.badgeScope === "class" ? computeClassHighlights(rows, columns) : computeHighlights(rows, columns)),
+    [rows, columns, view.badgeScope]
+  );
+  const classStats = useMemo(() => computeClassStats(rows, columns), [rows, columns]);
+  // Grouped view: one section per class, biggest class first, members with
+  // no class last; rows inside keep the current sort.
+  const sections = useMemo(() => {
+    const byClass = new Map<string, PvpStatsRow[]>();
+    for (const r of sortedRows) {
+      const c = r.member.characterClass ?? "";
+      byClass.set(c, [...(byClass.get(c) ?? []), r]);
+    }
+    return [...byClass.entries()]
+      .map(([className, list]) => ({ className, rows: list }))
+      .sort((a, b) => {
+        if (!a.className) return 1;
+        if (!b.className) return -1;
+        return (classStats.get(b.className)?.count ?? 0) - (classStats.get(a.className)?.count ?? 0) || classOrder.indexOf(a.className) - classOrder.indexOf(b.className);
+      });
+  }, [sortedRows, classStats, classOrder]);
+  function outlierFlag(member: PvpStatsRow["member"], col: ColumnDef, value: number | null): string | null {
+    if (!view.flags || value === null || !member.characterClass) return null;
+    if (keyStatOf(member.characterClass) !== col.key) return null;
+    const med = classStats.get(member.characterClass)?.medians.get(col.key);
+    if (med === undefined || med <= 0 || value >= med * OUTLIER_BELOW) return null;
+    return `${col.label} is ${Math.round((1 - value / med) * 100)}% below the ${member.characterClass} median (${fmtStat(col, med)})`;
+  }
   const compareRows = useMemo(() => compareIds.map((id) => rows.find((r) => r.member.id === id)).filter((r): r is PvpStatsRow => Boolean(r)), [compareIds, rows]);
 
   const emptyMessage = rows.length === 0 ? "No members yet" : pendingOnly && selectedClasses.size === 0 && !query.trim() ? "Nothing pending review right now" : "No members match the filters";
@@ -718,6 +925,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
     function update() {
       if (!el) return;
       setShowRightShadow(el.scrollWidth - el.clientWidth - el.scrollLeft > 2);
+      if (theadRef.current) setTheadHeight(theadRef.current.offsetHeight);
     }
     update();
     el.addEventListener("scroll", update, { passive: true });
@@ -736,6 +944,13 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
 
   return (
     <>
+      <ClassOverview
+        stats={classStats}
+        order={classOrder}
+        active={selectedClasses}
+        onPick={(name) => setSelectedClasses((cur) => (cur.size === 1 && cur.has(name) ? new Set() : new Set([name])))}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative sm:w-72">
           <svg viewBox="0 0 20 20" fill="currentColor" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500">
@@ -758,6 +973,29 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
             Pending Review · {pendingCount}
           </button>
         )}
+
+        <Segmented
+          value={view.groupByClass ? "group" : "flat"}
+          options={[
+            { key: "group", label: "By class" },
+            { key: "flat", label: "Flat" },
+          ]}
+          onChange={(v) => updateView({ groupByClass: v === "group" })}
+        />
+        <Segmented
+          value={view.badgeScope}
+          options={[
+            { key: "class", label: "Badges: in class" },
+            { key: "guild", label: "Guild-wide" },
+          ]}
+          onChange={(v) => updateView({ badgeScope: v })}
+        />
+        <button type="button" onClick={() => updateView({ heatmap: !view.heatmap })} className={pillClass(view.heatmap)} title="Tint each stat against its class median">
+          Heatmap
+        </button>
+        <button type="button" onClick={() => updateView({ flags: !view.flags })} className={pillClass(view.flags)} title="Flag members far below their class median on the class's key stat (set in Manage Classes)">
+          ⚠ Flags
+        </button>
 
         <div className="ml-auto hidden items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1 lg:flex">
           {(["table", "cards"] as const).map((m) => (
@@ -812,7 +1050,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
               inset shadow. */}
           <div ref={scrollRef} className="pvp-scroll max-h-[calc(100dvh-7rem)] overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
             <table className="w-full min-w-max text-left text-sm">
-              <thead className="sticky top-0 z-20 [&_th]:shadow-[inset_0_-1px_0_#27272a]">
+              <thead ref={theadRef} className="sticky top-0 z-20 [&_th]:shadow-[inset_0_-1px_0_#27272a]">
                 <tr className="text-[11px] uppercase tracking-wide text-zinc-500">
                   <th className="sticky left-0 z-30 border-r border-zinc-800 bg-zinc-900 px-3 py-2">
                     <div className="flex items-center gap-2">
@@ -846,7 +1084,35 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                     </td>
                   </tr>
                 )}
-                {sortedRows.map(({ member, entry }) => {
+                {(view.groupByClass ? sections : [{ className: null, rows: sortedRows }]).map((section) => {
+                  const stats = section.className ? classStats.get(section.className) : undefined;
+                  const isCollapsed = section.className !== null && collapsed.has(section.className);
+                  const header =
+                    section.className === null ? null : (
+                      <tr key={`group:${section.className}`} className="bg-[#1c1917]">
+                        <td className="sticky left-0 z-[12] border-r border-zinc-800 bg-[#1c1917] px-3 py-1.5" style={{ top: theadHeight }}>
+                          <button type="button" onClick={() => toggleCollapsed(section.className!)} className="flex w-full items-center gap-2 text-left">
+                            <span className="w-4 shrink-0 text-center text-[10px] text-zinc-500">{isCollapsed ? "▸" : "▾"}</span>
+                            {section.className ? <ClassBadge className={section.className} /> : <span className="text-xs text-zinc-500">No class</span>}
+                            <span className="text-[11px] text-zinc-500">
+                              {section.rows.length} คน{stats?.avgCp ? <> · avg CP <span className="text-zinc-300">{fmtInt(stats.avgCp)}</span></> : null}
+                            </span>
+                          </button>
+                        </td>
+                        {visibleColumns.map((col) => (
+                          <td key={col.key} className={`${col.numeric ? numCell : cell} sticky z-[11] bg-[#1c1917] text-[11px] tabular-nums text-zinc-400`} style={{ top: theadHeight }}>
+                            {col.numeric && stats?.medians.has(col.key) ? (
+                              <>
+                                <span className="mr-1 text-[9px] text-zinc-600">med</span>
+                                {fmtStat(col, stats.medians.get(col.key)!)}
+                              </>
+                            ) : null}
+                          </td>
+                        ))}
+                        {isAdmin && <td className={`${cell} sticky z-[11] bg-[#1c1917]`} style={{ top: theadHeight }} />}
+                      </tr>
+                    );
+                  const body = isCollapsed ? [] : section.rows.map(({ member, entry }) => {
                   const checked = compareIds.includes(member.id);
                   const full = !checked && compareIds.length >= MAX_COMPARE;
                   return (
@@ -870,9 +1136,17 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                       </td>
                       {visibleColumns.map((col) => {
                         if (col.numeric) {
+                          const value = getStatValue(entry, col.key);
+                          const flag = outlierFlag(member, col, value);
+                          const heat = view.heatmap && member.characterClass ? heatClass(value, classStats.get(member.characterClass)?.medians.get(col.key)) : "";
                           return (
-                            <td key={col.key} className={numCell}>
-                              <StatCell col={col} value={getStatValue(entry, col.key)} hl={highlights.get(col.key)?.get(member.id)} />
+                            <td key={col.key} className={`${numCell} ${heat}`}>
+                              <StatCell col={col} value={value} hl={highlights.get(col.key)?.get(member.id)} />
+                              {flag && (
+                                <span className="ml-1 cursor-help text-[11px] text-rose-400" title={flag}>
+                                  ⚠
+                                </span>
+                              )}
                             </td>
                           );
                         }
@@ -923,6 +1197,13 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                       {isAdmin && <td className={cell}>{entry && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}</td>}
                     </tr>
                   );
+                  });
+                  return (
+                    <Fragment key={section.className ?? "__flat"}>
+                      {header}
+                      {body}
+                    </Fragment>
+                  );
                 })}
               </tbody>
             </table>
@@ -930,7 +1211,15 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
           <div className={`pointer-events-none absolute inset-y-0 right-0 w-12 rounded-r-2xl bg-gradient-to-l from-zinc-900 to-transparent transition-opacity duration-200 ${showRightShadow ? "opacity-100" : "opacity-0"}`} />
         </div>
         <p className="mt-1.5 text-[11px] text-zinc-600">
-          Badges: <span className="text-amber-300">#1</span> / <span className="text-zinc-300">#2</span> / <span className="text-orange-300">#3</span> guild-wide per stat · <span className="text-emerald-300">green</span> = top 10% · the table scrolls inside its own box (both ways), so the sideways scrollbar is always in view — or trim columns with the Columns menu.
+          Badges: <span className="text-amber-300">#1</span> / <span className="text-zinc-300">#2</span> / <span className="text-orange-300">#3</span> per stat {view.badgeScope === "class" ? "within the member's class" : "guild-wide"} · <span className="text-emerald-300">green</span> = top 10%
+          {view.heatmap && (
+            <>
+              {" "}
+              · heatmap: <span className="text-rose-300">red</span> below / <span className="text-emerald-300">green</span> above the class median (strong tint = ±15%)
+            </>
+          )}
+          {view.flags && <> · ⚠ = more than {Math.round((1 - OUTLIER_BELOW) * 100)}% below the class median on that class&apos;s key stat (set per class in Manage Classes)</>}
+          {" "}· click a class card above to filter, a group header to collapse.
         </p>
       </div>
 

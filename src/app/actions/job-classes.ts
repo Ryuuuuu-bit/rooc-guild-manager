@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { jobClasses, members, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { COLOR_KEYS, type ColorKey } from "@/lib/job-class-colors";
+import { isPvpKeyStat } from "@/lib/pvp-stat-fields";
 
 export interface ActionResult {
   ok: boolean;
@@ -27,10 +28,13 @@ export async function createJobClass(formData: FormData): Promise<ActionResult> 
   const name = (formData.get("name") as string | null)?.trim();
   const emoji = (formData.get("emoji") as string | null)?.trim();
   const colorKey = (formData.get("colorKey") as string | null)?.trim() ?? "";
+  const keyStatRaw = (formData.get("keyStat") as string | null)?.trim() || null;
 
   if (!name) return { ok: false, error: "Please enter a class name" };
   if (!emoji) return { ok: false, error: "Please enter an emoji" };
   if (!isColorKey(colorKey)) return { ok: false, error: "Please choose a color" };
+  if (keyStatRaw && !isPvpKeyStat(keyStatRaw)) return { ok: false, error: "Invalid key stat" };
+  const keyStat = keyStatRaw;
 
   const dup = await db.query.jobClasses.findFirst({ where: eq(jobClasses.name, name) });
   if (dup) return { ok: false, error: "A class with this name already exists" };
@@ -49,7 +53,7 @@ export async function createJobClass(formData: FormData): Promise<ActionResult> 
     .select({ maxOrder: sql<number>`coalesce(max(${jobClasses.sortOrder}), -1)::int` })
     .from(jobClasses);
 
-  await db.insert(jobClasses).values({ name, emoji, colorKey, sortOrder: maxOrder + 1 });
+  await db.insert(jobClasses).values({ name, emoji, colorKey, keyStat, sortOrder: maxOrder + 1 });
 
   revalidateEverywhere();
   return { ok: true };
@@ -61,10 +65,13 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
   const name = (formData.get("name") as string | null)?.trim();
   const emoji = (formData.get("emoji") as string | null)?.trim();
   const colorKey = (formData.get("colorKey") as string | null)?.trim() ?? "";
+  const keyStatRaw = (formData.get("keyStat") as string | null)?.trim() || null;
 
   if (!name) return { ok: false, error: "Please enter a class name" };
   if (!emoji) return { ok: false, error: "Please enter an emoji" };
   if (!isColorKey(colorKey)) return { ok: false, error: "Please choose a color" };
+  if (keyStatRaw && !isPvpKeyStat(keyStatRaw)) return { ok: false, error: "Invalid key stat" };
+  const keyStat = keyStatRaw;
 
   const existing = await db.query.jobClasses.findFirst({ where: eq(jobClasses.id, id) });
   if (!existing) return { ok: false, error: "Class not found" };
@@ -89,7 +96,7 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
   // manually — all in one transaction so a failure can't leave members
   // holding a name that no longer exists in the class list.
   await db.transaction(async (tx) => {
-    await tx.update(jobClasses).set({ name, emoji, colorKey, updatedAt: new Date() }).where(eq(jobClasses.id, id));
+    await tx.update(jobClasses).set({ name, emoji, colorKey, keyStat, updatedAt: new Date() }).where(eq(jobClasses.id, id));
     if (name !== existing.name) {
       await tx
         .update(members)

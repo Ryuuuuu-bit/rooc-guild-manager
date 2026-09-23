@@ -7,6 +7,8 @@ export interface JobClassClient {
   name: string;
   emoji: string;
   colorClass: string;
+  /** Built-in PVP stat key this class is judged on (jobClasses.keyStat), if set. */
+  keyStat?: string | null;
 }
 
 interface JobClassesContextValue {
@@ -15,6 +17,7 @@ interface JobClassesContextValue {
   options: string[];
   emojiOf: (name: string | null | undefined) => string;
   colorClassOf: (name: string | null | undefined) => string;
+  keyStatOf: (name: string | null | undefined) => string | null;
 }
 
 const JobClassesContext = createContext<JobClassesContextValue | null>(null);
@@ -34,6 +37,7 @@ export function JobClassesProvider({ classes, children }: { classes: JobClassCli
       options: classes.map((c) => c.name),
       emojiOf: (name) => (name ? (byName.get(name)?.emoji ?? "") : ""),
       colorClassOf: (name) => (name ? (byName.get(name)?.colorClass ?? "bg-zinc-700 text-zinc-300") : "bg-zinc-700 text-zinc-300"),
+      keyStatOf: (name) => (name ? (byName.get(name)?.keyStat ?? null) : null),
     };
   }, [classes]);
 

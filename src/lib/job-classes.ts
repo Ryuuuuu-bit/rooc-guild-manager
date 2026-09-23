@@ -17,6 +17,8 @@ export interface JobClass {
   colorKey: string;
   colorClass: string;
   sortOrder: number;
+  /** Built-in PVP stat key this class is judged on, or null — see schema.ts. */
+  keyStat: string | null;
 }
 
 export async function listJobClasses(): Promise<JobClass[]> {
@@ -28,6 +30,7 @@ export async function listJobClasses(): Promise<JobClass[]> {
     colorKey: r.colorKey,
     colorClass: colorClassFor(r.colorKey),
     sortOrder: r.sortOrder,
+    keyStat: r.keyStat,
   }));
 }
 

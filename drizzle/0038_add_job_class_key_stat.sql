@@ -1,0 +1,1 @@
+ALTER TABLE "job_classes" ADD COLUMN "key_stat" text;

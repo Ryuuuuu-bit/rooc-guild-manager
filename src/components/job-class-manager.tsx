@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createJobClass, deleteJobClass, moveJobClass, updateJobClass } from "@/app/actions/job-classes";
 import { COLOR_KEYS, SWATCH_CLASS, type ColorKey } from "@/lib/job-class-colors";
+import { PVP_KEY_STAT_OPTIONS } from "@/lib/pvp-stat-fields";
 import type { JobClassClient } from "@/components/job-classes-provider";
 
 interface JobClassItem extends JobClassClient {
@@ -36,7 +37,7 @@ function ClassForm({
   onSuccess,
   submitLabel,
 }: {
-  initial?: { name: string; emoji: string; colorKey: string };
+  initial?: { name: string; emoji: string; colorKey: string; keyStat?: string | null };
   onSubmit: (formData: FormData) => Promise<{ ok: boolean; error?: string }>;
   onCancel: () => void;
   /** Called after a successful save (in addition to router.refresh() below)
@@ -52,6 +53,7 @@ function ClassForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [emoji, setEmoji] = useState(initial?.emoji ?? "");
   const [colorKey, setColorKey] = useState<string>(initial?.colorKey ?? (COLOR_KEYS[0] as ColorKey));
+  const [keyStat, setKeyStat] = useState<string>(initial?.keyStat ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -61,6 +63,7 @@ function ClassForm({
     fd.set("name", name);
     fd.set("emoji", emoji);
     fd.set("colorKey", colorKey);
+    fd.set("keyStat", keyStat);
     startTransition(async () => {
       const res = await onSubmit(fd);
       if (!res.ok) {
@@ -99,6 +102,24 @@ function ClassForm({
         <span className="text-zinc-400">Color</span>
         <ColorPicker value={colorKey} onChange={setColorKey} />
       </div>
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-zinc-400">Key PVP stat</span>
+        <select
+          value={keyStat}
+          onChange={(e) => setKeyStat(e.target.value)}
+          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
+        >
+          <option value="">— none —</option>
+          {PVP_KEY_STAT_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-[11px] text-zinc-500">
+          The one number this class lives on (e.g. MATK for a Wizard, P.DEF for a Knight). /pvp-stats flags members far below their class&apos;s median on it.
+        </span>
+      </label>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={onCancel} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 transition hover:bg-zinc-800">
           Cancel
@@ -223,6 +244,11 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
                       <span className="text-sm">{c.emoji}</span>
                       {c.name}
                     </span>
+                    {c.keyStat && (
+                      <span className="ml-2 text-[11px] text-zinc-500" title="Key PVP stat">
+                        key: {PVP_KEY_STAT_OPTIONS.find((o) => o.key === c.keyStat)?.label ?? c.keyStat}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button

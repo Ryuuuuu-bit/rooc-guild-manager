@@ -64,6 +64,16 @@ export const PVP_STAT_FIELD_GROUPS: { title: string; fields: PvpStatFieldDef[] }
   },
 ];
 
+/** Built-in numeric stats a class can be keyed on (jobClasses.keyStat) —
+ * the one number that class lives on, used by /pvp-stats to flag members
+ * far below their class's median. */
+export const PVP_KEY_STAT_OPTIONS: { key: string; label: string }[] = PVP_STAT_FIELD_GROUPS.flatMap((g) =>
+  g.fields.map((f) => ({ key: f.key, label: f.label }))
+);
+export function isPvpKeyStat(value: string | null | undefined): value is string {
+  return !!value && PVP_KEY_STAT_OPTIONS.some((o) => o.key === value);
+}
+
 export function fmtInt(n: number | null | undefined): string {
   return n === null || n === undefined ? "—" : n.toLocaleString("th-TH");
 }

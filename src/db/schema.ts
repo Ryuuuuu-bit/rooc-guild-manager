@@ -383,6 +383,11 @@ export const jobClasses = pgTable(
     emoji: text("emoji").notNull(),
     colorKey: text("color_key").notNull().default("stone"),
     sortOrder: integer("sort_order").notNull().default(0),
+    // The one PVP stat this class lives on (e.g. "matk" for a Wizard,
+    // "pDef" for a Knight) — a built-in pvpStatEntries column key, see
+    // PVP_KEY_STAT_OPTIONS in src/lib/pvp-stat-fields.ts. /pvp-stats flags
+    // members far below their class's median on it. Null = no flagging.
+    keyStat: text("key_stat"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
