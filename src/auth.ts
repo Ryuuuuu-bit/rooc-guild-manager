@@ -3,8 +3,8 @@ import Discord from "next-auth/providers/discord";
 import { env } from "@/lib/env";
 import { discordUserFetch, discordAvatarUrl, DiscordApiError } from "@/lib/discord";
 import { db } from "@/db";
-import { discordRoles, members } from "@/db/schema";
-import { eq, ilike } from "drizzle-orm";
+import { discordRoles, lootCategories, lootQueueEntries, members, membershipEvents } from "@/db/schema";
+import { eq, ilike, sql } from "drizzle-orm";
 
 // Extend the built-in NextAuth types with the fields this app needs.
 declare module "next-auth" {
@@ -167,6 +167,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               })
               .where(eq(members.id, existing.id));
           } else {
+            // A LEFT/KICKED member signing in again is back in the guild —
+            // same reactivation the bot's sync does (JOIN log + back of every
+            // loot queue), so beating the bot to it doesn't leave them
+            // invisible in the queues.
+            const wasInactive = existing.status !== "ACTIVE";
             await db
               .update(members)
               .set({
@@ -181,6 +186,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                 updatedAt: new Date(),
               })
               .where(eq(members.id, existing.id));
+            if (wasInactive) {
+              await db.insert(membershipEvents).values({
+                memberId: existing.id,
+                type: "JOIN",
+                detail: "กลับเข้ากิลด์ (ตรวจพบตอนล็อกอินเว็บ)",
+                actor: "web:sign-in",
+              });
+              const categories = await db.select({ id: lootCategories.id }).from(lootCategories);
+              for (const { id: categoryId } of categories) {
+                const [{ maxPos } = { maxPos: -1 }] = await db
+                  .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
+                  .from(lootQueueEntries)
+                  .where(eq(lootQueueEntries.categoryId, categoryId));
+                await db.insert(lootQueueEntries).values({ categoryId, memberId: existing.id, position: maxPos + 1 }).onConflictDoNothing();
+              }
+            }
           }
         }
       } catch (err) {

@@ -199,6 +199,7 @@ export async function submitPvpStat(input: PvpStatInput): Promise<ActionResult> 
   const session = await requireUser();
   const member = await db.query.members.findFirst({ where: eq(members.discordId, session.user.discordId) });
   if (!member) return { ok: false, error: "Your member record was not found in the system" };
+  if (member.status !== "ACTIVE") return { ok: false, error: "Only current guild members can submit PVP stats" };
   return insertPvpStatEntry(member.id, input);
 }
 

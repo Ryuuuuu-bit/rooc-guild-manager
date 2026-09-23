@@ -422,12 +422,13 @@ async function renderClassPicker(member: { characterClass: string | null; altCla
         withSafeEmoji(new StringSelectMenuOptionBuilder().setLabel(c.name).setValue(c.name).setDefault(member.altClasses.includes(c.name)), c.emoji)
       )
     );
+  const components = [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(main)];
+  // A select menu with zero options is invalid — only offer the alt row
+  // when there's something to pick.
+  if (altChoices.length > 0) components.push(new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(alt));
   return {
     content: `**เลือกอาชีพของคุณ**\nตอนนี้: ${describeClasses(member.characterClass, member.altClasses)}\nอันบน = อาชีพหลัก (ใช้แสดงในผังปาร์ตี้) · อันล่าง = อาชีพรองที่เล่นแทนได้ ไม่เกิน ${MAX_ALT_CLASSES} (ติ๊กออกทั้งหมดแล้วกดยืนยัน = ไม่มีอาชีพรอง)`,
-    components: [
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(main),
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(alt),
-    ],
+    components,
   };
 }
 

@@ -86,11 +86,9 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
     return { ok: false, error: "No job classes configured yet — add some in /classes first" };
   }
 
+  // Post the new panel FIRST, then retire the old one — a failed post used
+  // to leave the guild with no class-select panel at all.
   const previous = await getCurrentMessage("CLASS_SELECT", null);
-  if (previous) {
-    await deleteChannelMessage(previous.channelId, previous.messageId);
-    await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
-  }
 
   let messageId: string;
   try {
@@ -110,6 +108,10 @@ export async function postClassSelectMessage(channelId: string): Promise<ActionR
     };
   }
 
+  if (previous) {
+    await deleteChannelMessage(previous.channelId, previous.messageId).catch(() => {});
+    await db.delete(botReactionMessages).where(eq(botReactionMessages.id, previous.id));
+  }
   await db.insert(botReactionMessages).values({ kind: "CLASS_SELECT", boardId: null, channelId, messageId });
   revalidatePath("/members");
   return { ok: true };

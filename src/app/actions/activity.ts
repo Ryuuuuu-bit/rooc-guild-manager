@@ -12,10 +12,11 @@ export interface ActionResult {
 }
 
 /**
- * Deletes a single activity-log row — e.g. to clean up test data (a member
- * tried the "ลา" reaction just to see how it works) that would otherwise
- * skew the /attendance stats page or clutter the activity feed/member
- * history. Admin-only, irreversible — the UI confirms before calling this.
+ * Deletes a single activity-log row (test data, a mistaken note) so it
+ * stops cluttering the feed / member history. Audit only: leave counts come
+ * from the `leaves` table (src/lib/leaves.ts), so this never changes
+ * /attendance — cancel the leave on the party board or via "Void leaves"
+ * for that. Admin-only, irreversible — the UI confirms before calling this.
  */
 export async function deleteMembershipEvent(eventId: string): Promise<ActionResult> {
   await requireAdmin();

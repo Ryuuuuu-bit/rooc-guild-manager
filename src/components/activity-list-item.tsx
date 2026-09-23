@@ -12,8 +12,9 @@ import { MemberAvatar } from "@/components/member-avatar";
 /** One row in the activity feed (dashboard preview, /activity page, and
  * member profile history) — color-coded by event type (green join, red
  * leave/kick, amber everything else) so the feed is scannable at a glance.
- * Admins get a delete button — e.g. to clean up a member's test "ลา" click
- * that would otherwise skew the /attendance stats page. */
+ * Admins get a delete button to remove a log line (test data, a mistaken
+ * note). Leave STATS live in the `leaves` table, not here — to un-count a
+ * leave use the party board / "Void leaves" on /attendance. */
 export function ActivityListItem({
   event,
   member,
@@ -88,7 +89,7 @@ export function ActivityListItem({
           type="button"
           onClick={handleDelete}
           disabled={pending}
-          title="Delete this entry (e.g. test data)"
+          title="Delete this log line only (leave counts are not affected — use the party board or Void leaves on /attendance for that)"
           className="shrink-0 rounded px-1.5 py-1 text-xs text-zinc-600 transition hover:bg-rose-950/40 hover:text-rose-400 disabled:opacity-50"
         >
           ✕

@@ -11,7 +11,7 @@
 // `status = ACTIVE && roundEnd(board, occurrenceDate) <= now`. Every page
 // asks the same question against the same table, so they cannot disagree,
 // and no timed job ever mutates rows (nothing for a restart to race).
-import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "../db";
 import { leaves, members, membershipEvents, partyBoards, type Leave, type Member } from "../db/schema";
 import { CHECKIN_EVENTS, getCheckinEvent, nextOccurrenceDate, windowFor } from "./checkin-events";
@@ -243,13 +243,19 @@ export type RequestLeaveOutcome = "created" | "reactivated" | "unchanged";
  * same round is left alone ("unchanged"); a cancelled one is flipped back. */
 export async function requestLeave(params: RequestLeaveParams, dbOrTx: DbOrTx = db): Promise<{ outcome: RequestLeaveOutcome; leave: Leave }> {
   const run = async (tx: DbOrTx): Promise<{ outcome: RequestLeaveOutcome; leave: Leave }> => {
-    const [existing] = params.boardId
-      ? await tx
-          .select()
-          .from(leaves)
-          .where(and(eq(leaves.memberId, params.memberId), eq(leaves.boardId, params.boardId), eq(leaves.occurrenceDate, params.occurrenceDate)))
-          .limit(1)
-      : [];
+    // Board-less rows aren't covered by the unique index (NULL is distinct
+    // in Postgres), so they're deduped here explicitly.
+    const [existing] = await tx
+      .select()
+      .from(leaves)
+      .where(
+        and(
+          eq(leaves.memberId, params.memberId),
+          params.boardId ? eq(leaves.boardId, params.boardId) : isNull(leaves.boardId),
+          eq(leaves.occurrenceDate, params.occurrenceDate)
+        )
+      )
+      .limit(1);
 
     if (existing && existing.status === "ACTIVE") return { outcome: "unchanged", leave: existing };
 
@@ -281,7 +287,13 @@ export async function requestLeave(params: RequestLeaveParams, dbOrTx: DbOrTx = 
         const [winner] = await tx
           .select()
           .from(leaves)
-          .where(and(eq(leaves.memberId, params.memberId), eq(leaves.boardId, params.boardId!), eq(leaves.occurrenceDate, params.occurrenceDate)))
+          .where(
+            and(
+              eq(leaves.memberId, params.memberId),
+              params.boardId ? eq(leaves.boardId, params.boardId) : isNull(leaves.boardId),
+              eq(leaves.occurrenceDate, params.occurrenceDate)
+            )
+          )
           .limit(1);
         return { outcome: "unchanged", leave: winner };
       }

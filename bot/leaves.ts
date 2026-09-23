@@ -5,12 +5,12 @@
 //
 // Imports only from src/lib and admin-notify (leaf helpers), never from
 // another bot/*.ts module — same cycle rule as admin-notify.ts.
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "../src/db";
-import { members, partyBoards } from "../src/db/schema";
+import { leaves, members, partyBoards } from "../src/db/schema";
 import { sendDirectMessage } from "../src/lib/discord";
 import { MONTHLY_LEAVE_LIMIT } from "../src/lib/leave-quota";
-import { countLeavesThisMonth, formatThaiDateLabel, roundEnd, roundStart } from "../src/lib/leaves";
+import { formatThaiDateLabel, roundEnd, roundStart, thaiMonthRange } from "../src/lib/leaves";
 import { adminNotifyConfigured, notifyAdmins } from "./admin-notify";
 
 export interface LeaveNotice {
@@ -18,6 +18,29 @@ export interface LeaveNotice {
   boardId: string;
   /** "YYYY-MM-DD" the leave is for. */
   date: string;
+}
+
+function monthName(date: string): string {
+  return new Date(`${date}T12:00:00+07:00`).toLocaleDateString("th-TH", { month: "short", timeZone: "Asia/Bangkok" });
+}
+
+/** This leave's position among the member's ACTIVE leaves on the board in
+ * the leave's own Thai month (1 = first that month). */
+async function leaveOrdinal(item: LeaveNotice): Promise<number> {
+  const { from } = thaiMonthRange(new Date(`${item.date}T12:00:00+07:00`));
+  const rows = await db
+    .select({ id: leaves.id })
+    .from(leaves)
+    .where(
+      and(
+        eq(leaves.memberId, item.memberId),
+        eq(leaves.boardId, item.boardId),
+        eq(leaves.status, "ACTIVE"),
+        gte(leaves.occurrenceDate, from),
+        lte(leaves.occurrenceDate, item.date)
+      )
+    );
+  return rows.length;
 }
 
 function timeLabel(d: Date): string {
@@ -35,24 +58,27 @@ export async function notifyAdminsOfLeaves(items: LeaveNotice[]): Promise<void> 
   if (!adminNotifyConfigured() || items.length === 0) return;
 
   const lines: string[] = [];
-  let overQuota = 0;
+  const overQuotaMembers = new Set<string>();
   for (const item of items) {
     const member = await db.query.members.findFirst({ where: eq(members.id, item.memberId) });
     if (!member) continue;
     const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, item.boardId) });
     const displayName = member.discordNickname || member.discordGlobalName || member.discordUsername;
-    const monthCount = await countLeavesThisMonth(item.memberId, item.boardId);
-    const over = monthCount > MONTHLY_LEAVE_LIMIT;
-    if (over) overQuota++;
+    // "ครั้งที่ N" is this leave's ordinal within ITS month on this board
+    // (a leave filed in September for October counts in October).
+    const ordinal = await leaveOrdinal(item);
+    const over = ordinal > MONTHLY_LEAVE_LIMIT;
+    if (over) overQuotaMembers.add(item.memberId);
+    const monthLabel = monthName(item.date);
     const quotaClause = over
-      ? ` ⚠️ **เกินโควต้า — ครั้งที่ ${monthCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้**`
-      : ` (ครั้งที่ ${monthCount}/${MONTHLY_LEAVE_LIMIT} เดือนนี้)`;
+      ? ` ⚠️ **เกินโควต้า — ครั้งที่ ${ordinal}/${MONTHLY_LEAVE_LIMIT} ของ${monthLabel}**`
+      : ` (ครั้งที่ ${ordinal}/${MONTHLY_LEAVE_LIMIT} ของ${monthLabel})`;
     lines.push(`• ${displayName} ลา "${board?.name ?? item.boardId}" วันที่ ${formatThaiDateLabel(item.date)}${quotaClause}`);
   }
   if (lines.length === 0) return;
 
   const header = lines.length === 1 ? "📋 แจ้งลา:" : `📋 แจ้งลา ${lines.length} รายการ:`;
-  const quotaFooter = overQuota > 0 ? `\n⚠️ มี ${overQuota} คนที่ลาเกินโควต้าเดือนนี้ — ดูรายละเอียดที่หน้า /attendance` : "";
+  const quotaFooter = overQuotaMembers.size > 0 ? `\n⚠️ มี ${overQuotaMembers.size} คนที่ลาเกินโควต้า — ดูรายละเอียดที่หน้า /attendance` : "";
   await notifyAdmins(`${header}\n${lines.join("\n")}\nยกเลิกได้จนถึงเวลากิจกรรมจบ — เช็ค /party ก่อนเริ่มงานถ้าจะย้ายคนแทนที่${quotaFooter}`);
 }
 
@@ -70,11 +96,11 @@ export async function dmMemberLeaveFiled(memberId: string, items: LeaveNotice[])
   for (const item of items) {
     const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, item.boardId) });
     if (!board) continue;
-    const count = await countLeavesThisMonth(memberId, board.id);
+    const ordinal = await leaveOrdinal(item);
     const start = roundStart(board, item.date);
     const end = roundEnd(board, item.date);
     lines.push(
-      `• ${board.name} ${formatThaiDateLabel(item.date)}${start ? ` (${timeLabel(start)}–${timeLabel(end)})` : ""} — ครั้งที่ ${count}/${MONTHLY_LEAVE_LIMIT} เดือนนี้`
+      `• ${board.name} ${formatThaiDateLabel(item.date)}${start ? ` (${timeLabel(start)}–${timeLabel(end)})` : ""} — ครั้งที่ ${ordinal}/${MONTHLY_LEAVE_LIMIT} ของ${monthName(item.date)}`
     );
   }
   if (lines.length === 0) return;

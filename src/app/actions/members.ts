@@ -115,27 +115,32 @@ export async function markMemberKicked(memberId: string, reason: string): Promis
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!existing) return { ok: false, error: "Member not found" };
 
-  await db
-    .update(members)
-    .set({ status: "KICKED", leftDiscordAt: new Date(), updatedAt: new Date() })
-    .where(eq(members.id, memberId));
-  await db
-    .update(partySlots)
-    .set({ memberId: null, updatedAt: new Date() })
-    .where(eq(partySlots.memberId, memberId));
-  // Cancel every not-yet-ended leave (past, already-counted ones stay) so
-  // /checkin and /calendar stop listing them as "on leave" for rounds
-  // they're no longer part of.
-  await cancelMemberOpenLeaves(memberId, session.user.username, `(ถูกเตะโดยแอดมิน ${session.user.username})`);
-  // Also drop them from every loot-queue category — otherwise their row
-  // just sits there forever (the members row itself is never deleted, only
-  // its status, so the table's onDelete: "cascade" never fires) and an
-  // admin has to remove them by hand before running a round.
-  await db.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
+  // One transaction, cleanup + status flip together: a redeploy landing
+  // between the statements used to leave a KICKED member still holding
+  // party slots / loot-queue rows that nothing ever revisited (the bot's
+  // sync only cleans up members it sees as ACTIVE).
+  await db.transaction(async (tx) => {
+    await tx
+      .update(partySlots)
+      .set({ memberId: null, playingAs: null, updatedAt: new Date() })
+      .where(eq(partySlots.memberId, memberId));
+    // Cancel every not-yet-ended leave (past, already-counted ones stay) so
+    // /checkin and /calendar stop listing them as "on leave" for rounds
+    // they're no longer part of.
+    await cancelMemberOpenLeaves(memberId, session.user.username, `(ถูกเตะโดยแอดมิน ${session.user.username})`, new Date(), tx);
+    // Also drop them from every loot-queue category — otherwise their row
+    // just sits there forever (the members row itself is never deleted, only
+    // its status, so the table's onDelete: "cascade" never fires) and an
+    // admin has to remove them by hand before running a round.
+    await tx.delete(lootQueueEntries).where(eq(lootQueueEntries.memberId, memberId));
+    await tx.update(members).set({ status: "KICKED", updatedAt: new Date() }).where(eq(members.id, memberId));
+  });
 
   let discordWarning: string | undefined;
   try {
     await kickGuildMember(env.discordGuildId, existing.discordId, reason || undefined);
+    // Only stamp "left Discord" once they're actually out of the server.
+    await db.update(members).set({ leftDiscordAt: new Date(), updatedAt: new Date() }).where(eq(members.id, memberId));
   } catch (err) {
     discordWarning =
       err instanceof DiscordApiError && err.status === 403
@@ -221,10 +226,8 @@ export async function restoreMemberStatus(memberId: string): Promise<UpdateMembe
   const session = await requireAdmin();
 
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
-  // Only re-add to loot queues for a member row that actually exists and was
-  // genuinely inactive — a bad/unknown memberId shouldn't attempt an insert
-  // that would just fail on the memberId foreign key.
-  const wasInactive = Boolean(existing && existing.status !== "ACTIVE");
+  if (!existing) return { ok: false, error: "Member not found" };
+  const wasInactive = existing.status !== "ACTIVE";
 
   await db
     .update(members)
@@ -269,17 +272,18 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
   const existing = await db.query.members.findFirst({ where: eq(members.id, memberId) });
   if (!existing) return { ok: false, error: "Member not found" };
 
-  await db.update(members).set({ benched, updatedAt: new Date() }).where(eq(members.id, memberId));
-
-  if (benched) {
-    await db
-      .update(partySlots)
-      .set({ memberId: null, updatedAt: new Date() })
-      .where(eq(partySlots.memberId, memberId));
-    // Same as markMemberKicked above — open leaves are cancelled, past
-    // ones stay counted.
-    await cancelMemberOpenLeaves(memberId, session.user.username, `(พักการเล่นโดยแอดมิน ${session.user.username})`);
-  }
+  await db.transaction(async (tx) => {
+    if (benched) {
+      await tx
+        .update(partySlots)
+        .set({ memberId: null, playingAs: null, updatedAt: new Date() })
+        .where(eq(partySlots.memberId, memberId));
+      // Same as markMemberKicked above — open leaves are cancelled, past
+      // ones stay counted.
+      await cancelMemberOpenLeaves(memberId, session.user.username, `(พักการเล่นโดยแอดมิน ${session.user.username})`, new Date(), tx);
+    }
+    await tx.update(members).set({ benched, updatedAt: new Date() }).where(eq(members.id, memberId));
+  });
 
   await db.insert(membershipEvents).values({
     memberId,

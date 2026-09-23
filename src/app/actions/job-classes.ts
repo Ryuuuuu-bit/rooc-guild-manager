@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, asc, eq, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { jobClasses, members } from "@/db/schema";
+import { jobClasses, members, partySlots } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
 import { COLOR_KEYS, type ColorKey } from "@/lib/job-class-colors";
 
@@ -84,23 +84,24 @@ export async function updateJobClass(id: string, formData: FormData): Promise<Ac
     if (emojiDup) return { ok: false, error: `Emoji already used by "${emojiDup.name}" — pick a different one` };
   }
 
-  await db.update(jobClasses).set({ name, emoji, colorKey, updatedAt: new Date() }).where(eq(jobClasses.id, id));
-
-  // characterClass is a plain text column (not a foreign key to jobClasses),
-  // so a rename has to cascade manually to every member currently holding
-  // the old name — otherwise they'd silently end up with an orphaned class
-  // name nothing in the admin UI can find or edit anymore.
-  if (name !== existing.name) {
-    await db
-      .update(members)
-      .set({ characterClass: name, updatedAt: new Date() })
-      .where(eq(members.characterClass, existing.name));
-    // Same cascade for the secondary-class tags (text[] column).
-    await db
-      .update(members)
-      .set({ altClasses: sql`array_replace(${members.altClasses}, ${existing.name}, ${name})`, updatedAt: new Date() })
-      .where(sql`${existing.name} = any(${members.altClasses})`);
-  }
+  // Class names are plain text everywhere they're referenced (members'
+  // main + secondary classes, a slot's "playing as"), so a rename cascades
+  // manually — all in one transaction so a failure can't leave members
+  // holding a name that no longer exists in the class list.
+  await db.transaction(async (tx) => {
+    await tx.update(jobClasses).set({ name, emoji, colorKey, updatedAt: new Date() }).where(eq(jobClasses.id, id));
+    if (name !== existing.name) {
+      await tx
+        .update(members)
+        .set({ characterClass: name, updatedAt: new Date() })
+        .where(eq(members.characterClass, existing.name));
+      await tx
+        .update(members)
+        .set({ altClasses: sql`array_replace(${members.altClasses}, ${existing.name}, ${name})`, updatedAt: new Date() })
+        .where(sql`${existing.name} = any(${members.altClasses})`);
+      await tx.update(partySlots).set({ playingAs: name }).where(eq(partySlots.playingAs, existing.name));
+    }
+  });
 
   revalidateEverywhere();
   return { ok: true };
@@ -122,13 +123,16 @@ export async function deleteJobClass(id: string): Promise<ActionResult> {
       error: `${count} member(s) currently use this class — change their class first (or rename this class instead of deleting it), then delete`,
     };
   }
-  // A secondary-class tag is just a hint, so it's simply dropped.
-  await db
-    .update(members)
-    .set({ altClasses: sql`array_remove(${members.altClasses}, ${existing.name})`, updatedAt: new Date() })
-    .where(sql`${existing.name} = any(${members.altClasses})`);
+  // A secondary-class tag / slot "playing as" is just a hint, so it's dropped.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(members)
+      .set({ altClasses: sql`array_remove(${members.altClasses}, ${existing.name})`, updatedAt: new Date() })
+      .where(sql`${existing.name} = any(${members.altClasses})`);
+    await tx.update(partySlots).set({ playingAs: null }).where(eq(partySlots.playingAs, existing.name));
+    await tx.delete(jobClasses).where(eq(jobClasses.id, id));
+  });
 
-  await db.delete(jobClasses).where(eq(jobClasses.id, id));
   revalidateEverywhere();
   return { ok: true };
 }

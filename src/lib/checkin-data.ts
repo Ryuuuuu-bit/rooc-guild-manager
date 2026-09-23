@@ -201,7 +201,10 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
       and(
         inArray(voiceAttendanceEvents.channelId, event.channelIds),
         gte(voiceAttendanceEvents.createdAt, queryFrom),
-        lte(voiceAttendanceEvents.createdAt, end)
+        // Bounded at NOW, not the window end — a LEAVE after the window
+        // closes the interval (so a past round says when they left instead
+        // of "still in channel" forever); minutes are clamped to the window.
+        lte(voiceAttendanceEvents.createdAt, now)
       )
     )
     .orderBy(voiceAttendanceEvents.memberId, voiceAttendanceEvents.createdAt);
@@ -229,7 +232,7 @@ export async function getCheckinReport(eventKey: string, date: string): Promise<
     const overlapping = intervals.filter((iv) => iv.end.getTime() > start.getTime() && iv.start.getTime() < end.getTime());
     const minutesPresent = overlapping.reduce((sum, iv) => sum + overlapMinutes(iv, { start, end }), 0);
     const last = overlapping[overlapping.length - 1];
-    const stillConnected = last ? last.end.getTime() === now.getTime() : false;
+    const stillConnected = now < end && last ? last.end.getTime() === now.getTime() : false;
     return {
       member,
       attended: minutesPresent > 0,

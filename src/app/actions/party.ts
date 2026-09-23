@@ -85,6 +85,10 @@ export async function deleteBoard(boardId: string): Promise<ActionResult> {
     // this board survives the delete instead of being wiped along with it.
     await tx.delete(partyBoards).where(eq(partyBoards.id, boardId));
   });
+  // If another board carries the freed event's name (a second "GL"), it
+  // takes over the link now instead of staying unlinked forever.
+  const remaining = await db.select({ id: partyBoards.id, name: partyBoards.name }).from(partyBoards);
+  for (const b of remaining) await syncBoardEventLink(b.id, b.name);
 
   revalidatePath("/party");
   return { ok: true };

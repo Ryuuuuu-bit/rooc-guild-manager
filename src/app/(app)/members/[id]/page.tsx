@@ -1,3 +1,4 @@
+import { thaiDateString } from "@/lib/leaves";
 import { notFound } from "next/navigation";
 import { getMemberById } from "@/lib/data";
 import { listPartyBoards } from "@/lib/party-data";
@@ -138,7 +139,7 @@ export default async function MemberDetailPage({
               <p className="mb-4 text-xs text-zinc-500">
                 For cases where a member reported their leave privately (e.g. via DM) without reacting in Discord
               </p>
-              <LogManualLeaveForm memberId={member.id} todayStr={new Date().toISOString().slice(0, 10)} boards={boards} />
+              <LogManualLeaveForm memberId={member.id} todayStr={thaiDateString()} boards={boards} />
             </section>
           )}
 

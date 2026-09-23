@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { partyBoards } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
+import { getCheckinEvent } from "@/lib/checkin-events";
 import { cancelLeavesInRange, requestLeave, thaiDateString } from "@/lib/leaves";
 
 export interface ActionResult {
@@ -44,6 +48,17 @@ export async function addManualLeave(memberId: string, formData: FormData): Prom
   }
   if (reason && reason.length > 300) {
     return { ok: false, error: "Reason is too long (300 characters max)" };
+  }
+  // A board linked to an event only has rounds on that event's weekdays —
+  // a GL leave dated a Wednesday would count in stats yet never show on the
+  // board or calendar.
+  if (boardId) {
+    const board = await db.query.partyBoards.findFirst({ where: eq(partyBoards.id, boardId) });
+    if (!board) return { ok: false, error: "Board not found" };
+    const event = board.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
+    if (event && !event.weekdays.includes(new Date(`${dateStr}T12:00:00+07:00`).getUTCDay())) {
+      return { ok: false, error: `${board.name} has no round on that date (${event.label} runs on its event days only)` };
+    }
   }
 
   await requestLeave({

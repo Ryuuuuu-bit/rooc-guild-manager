@@ -403,14 +403,29 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     placeMember(data.member, destination);
   }
 
-  function handleToggleSelect(member: PartyBoardMemberRef) {
+  // Tap-to-move needs to know whether the selection came from the ลา zone,
+  // for the same "dragging out of ลา = they're back" rewrite handleDragEnd
+  // applies — without it a tap from ลา to the pool did nothing visible.
+  const [selectedFromBusy, setSelectedFromBusy] = useState(false);
+
+  function handleToggleSelect(member: PartyBoardMemberRef, fromBusy = false) {
     setSelectedMember((prev) => (prev?.id === member.id ? null : member));
+    setSelectedFromBusy(fromBusy);
   }
 
   function handlePlaceSelected(destination: PartyDestination) {
     if (!selectedMember) return;
-    placeMember(selectedMember, destination);
+    let target = destination;
+    if (selectedFromBusy) {
+      if (target.type === "busy") {
+        setSelectedMember(null);
+        return;
+      }
+      target = target.type === "slot" ? { ...target, cancelLeave: true } : { type: "return" };
+    }
+    placeMember(selectedMember, target);
     setSelectedMember(null);
+    setSelectedFromBusy(false);
   }
 
   function handleAssignToSlot(partyId: string, slotIndex: number, memberId: string) {
@@ -655,7 +670,9 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     // Someone who's out themselves (busy now, or with a leave on file) is
     // not a substitute for anyone — including for their own row, which an
     // unassigned member with an upcoming leave would otherwise appear in.
-    const outIds = new Set<string>([...board.busy.map((m) => m.id), ...board.upcomingLeaves.map((l) => l.memberId)]);
+    // Only people out for THIS round are unavailable as substitutes — an
+    // upcoming leave (a later date) doesn't stop someone filling in tonight.
+    const outIds = new Set<string>(board.busy.map((m) => m.id));
     // Main-class matches first, then people who list it as a secondary
     // class (flagged "รอง" in the UI so the organizer knows it's not their
     // usual role).
@@ -1079,7 +1096,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                         compact
                         showClassBadge={!effectiveAdmin}
                         selected={selectedMember?.id === member.id}
-                        onSelect={effectiveAdmin ? () => handleToggleSelect(member) : undefined}
+                        onSelect={effectiveAdmin ? () => handleToggleSelect(member, true) : undefined}
                       />
                       {effectiveAdmin && (
                         <>

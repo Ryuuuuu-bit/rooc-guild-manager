@@ -4,7 +4,7 @@ import { and, arrayContains, asc, desc, eq, gte, ilike, lte, or, sql } from "dri
 import { env } from "@/lib/env";
 import { listJobClasses } from "@/lib/job-classes";
 import { MONTHLY_LEAVE_LIMIT } from "@/lib/leave-quota";
-import { isConfirmed, roundEnd, thaiDateString, thaiMonthRange } from "@/lib/leaves";
+import { addDays, isConfirmed, roundEnd, thaiDateString, thaiMonthRange } from "@/lib/leaves";
 
 export interface MemberFilters {
   search?: string;
@@ -172,9 +172,11 @@ export interface AttendanceRangeFilter {
  */
 async function confirmedLeavesInRange(filter: AttendanceRangeFilter) {
   const now = new Date();
-  const from = filter.from ?? (filter.days ? new Date(now.getTime() - filter.days * 24 * 60 * 60 * 1000) : undefined);
+  // "N days" = today and the N-1 Thai dates before it (a whole-day window,
+  // not now-minus-N×24h, which quietly stretched to N+1 days).
+  const fromDate = filter.from ? thaiDateString(filter.from) : filter.days ? addDays(thaiDateString(now), -(filter.days - 1)) : undefined;
   const conditions = [eq(leaves.status, "ACTIVE")];
-  if (from) conditions.push(gte(leaves.occurrenceDate, thaiDateString(from)));
+  if (fromDate) conditions.push(gte(leaves.occurrenceDate, fromDate));
   if (filter.to) conditions.push(lte(leaves.occurrenceDate, thaiDateString(filter.to)));
   if (filter.boardId) conditions.push(eq(leaves.boardId, filter.boardId));
   const rows = await db
@@ -186,6 +188,20 @@ async function confirmedLeavesInRange(filter: AttendanceRangeFilter) {
   return rows
     .filter((r) => isConfirmed(r.leave, r.board ?? { checkinEventKey: null }, now))
     .map((r) => ({ ...r.leave, roundEnd: roundEnd(r.board ?? { checkinEventKey: null }, r.leave.occurrenceDate) }));
+}
+
+/** confirmedLeavesInRange restricted to the current roster (ACTIVE, not
+ * benched) — the same set the /attendance table lists, so its total and
+ * per-board pills add up to the column instead of quietly including people
+ * who have since left. */
+async function rosterLeavesInRange(filter: AttendanceRangeFilter) {
+  const confirmed = await confirmedLeavesInRange(filter);
+  const roster = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(and(eq(members.status, "ACTIVE"), eq(members.benched, false)));
+  const rosterIds = new Set(roster.map((m) => m.id));
+  return confirmed.filter((l) => rosterIds.has(l.memberId));
 }
 
 /**
@@ -200,7 +216,7 @@ async function confirmedLeavesInRange(filter: AttendanceRangeFilter) {
  * (lastLeaveAt = that round's end).
  */
 export async function getAttendanceStats(filter: AttendanceRangeFilter = {}) {
-  const confirmed = await confirmedLeavesInRange(filter);
+  const confirmed = await rosterLeavesInRange(filter);
   const statsByMember = new Map<string, { leaveCount: number; lastLeaveAt: Date }>();
   for (const l of confirmed) {
     const s = statsByMember.get(l.memberId) ?? { leaveCount: 0, lastLeaveAt: l.roundEnd };
@@ -286,7 +302,7 @@ export async function getOverQuotaThisMonth(): Promise<OverQuotaEntry[]> {
  * the numbers still add up to getAttendanceStats's totalLeaveEvents.
  */
 export async function getAttendanceBoardBreakdown(filter: Omit<AttendanceRangeFilter, "boardId"> = {}) {
-  const confirmed = await confirmedLeavesInRange(filter);
+  const confirmed = await rosterLeavesInRange(filter);
   const countByBoard = new Map<string | null, number>();
   for (const l of confirmed) countByBoard.set(l.boardId, (countByBoard.get(l.boardId) ?? 0) + 1);
 
@@ -331,16 +347,18 @@ export async function getClassDistribution() {
   const classesList = await listJobClasses();
   const byName = new Map(classesList.map((c) => [c.name, c]));
 
-  const known = rows
-    .filter((r): r is { className: string; count: number } => Boolean(r.className))
-    .map((r) => ({
-      name: r.className,
-      count: r.count,
-      alsoCount: altByName.get(r.className) ?? 0,
-      emoji: byName.get(r.className)?.emoji ?? "",
-      colorKey: byName.get(r.className)?.colorKey ?? "stone",
+  const mainByName = new Map(rows.filter((r) => r.className).map((r) => [r.className as string, r.count]));
+  // A class nobody mains but some list as secondary still gets a row (0 +N).
+  const names = new Set<string>([...mainByName.keys(), ...altByName.keys()]);
+  const known = [...names]
+    .map((name) => ({
+      name,
+      count: mainByName.get(name) ?? 0,
+      alsoCount: altByName.get(name) ?? 0,
+      emoji: byName.get(name)?.emoji ?? "",
+      colorKey: byName.get(name)?.colorKey ?? "stone",
     }))
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count || b.alsoCount - a.alsoCount);
 
   const unassignedCount = rows.find((r) => !r.className)?.count ?? 0;
 

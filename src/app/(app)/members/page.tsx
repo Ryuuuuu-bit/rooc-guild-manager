@@ -22,7 +22,7 @@ export default async function MembersPage({
 }) {
   await requireUser();
   const params = await searchParams;
-  const status = (params.status ?? "ACTIVE") as "ACTIVE" | "LEFT" | "KICKED" | "ALL";
+  const status = (["ACTIVE", "LEFT", "KICKED", "ALL"] as const).find((s) => s === params.status) ?? "ACTIVE";
   const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
 
   const [membersList, discordRoleList, jobClassList] = await Promise.all([

@@ -80,8 +80,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
 
   const todayStr = thaiDateString(new Date());
   const [todayYear, todayMonth] = todayStr.split("-").map(Number);
-  const year = Number(params.y) || todayYear;
-  const month = Number(params.m) || todayMonth;
+  const yParam = Number(params.y);
+  const mParam = Number(params.m);
+  const year = Number.isInteger(yParam) && yParam >= 2020 && yParam <= 2100 ? yParam : todayYear;
+  const month = Number.isInteger(mParam) && mParam >= 1 && mParam <= 12 ? mParam : todayMonth;
 
   const calendar = await getCalendarMonth(year, month);
   const dayByDate = new Map(calendar.days.map((d) => [d.date, d]));

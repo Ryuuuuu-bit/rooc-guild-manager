@@ -269,7 +269,7 @@ export async function runLootRound(categoryId: string, count: number, label?: st
     if (!category) return { ok: false, error: "Category not found" };
 
     const queue = await tx
-      .select({ entry: lootQueueEntries, auctionBanUntil: members.auctionBanUntil })
+      .select({ entry: lootQueueEntries, auctionBanUntil: members.auctionBanUntil, benched: members.benched })
       .from(lootQueueEntries)
       .innerJoin(members, eq(members.id, lootQueueEntries.memberId))
       .where(eq(lootQueueEntries.categoryId, categoryId))
@@ -277,7 +277,9 @@ export async function runLootRound(categoryId: string, count: number, label?: st
     if (queue.length === 0) return { ok: false, error: "This category's queue has no members" };
 
     const now = Date.now();
-    const isBanned = (row: (typeof queue)[number]) => Boolean(row.auctionBanUntil && row.auctionBanUntil.getTime() > now);
+    // Benched members (not currently playing) are passed over exactly like
+    // an auction ban — they keep their place in line for when they're back.
+    const isBanned = (row: (typeof queue)[number]) => row.benched || Boolean(row.auctionBanUntil && row.auctionBanUntil.getTime() > now);
 
     // Walk the queue in order, taking non-banned members until `count` is
     // reached; a banned member encountered along the way is noted as
@@ -296,7 +298,7 @@ export async function runLootRound(categoryId: string, count: number, label?: st
       }
     }
     if (servedEntries.length === 0) {
-      return { ok: false, error: "Everyone currently at the front of this queue is auction-banned right now" };
+      return { ok: false, error: "Everyone currently at the front of this queue is auction-banned or benched right now" };
     }
     const short = servedEntries.length < count;
 
