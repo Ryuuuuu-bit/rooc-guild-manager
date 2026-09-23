@@ -284,13 +284,15 @@ export async function reviewPvpStat(
 
   const trimmedNote = note?.trim() || null;
 
+  // Clearing the status ("not reviewed yet") also clears who/when — a row
+  // that's back to pending shouldn't still claim a reviewer.
   const [updated] = await db
     .update(pvpStatEntries)
     .set({
       reviewStatus: status,
-      reviewNote: trimmedNote,
-      reviewedByUsername: session.user.username,
-      reviewedAt: new Date(),
+      reviewNote: status ? trimmedNote : null,
+      reviewedByUsername: status ? session.user.username : null,
+      reviewedAt: status ? new Date() : null,
     })
     .where(eq(pvpStatEntries.id, entryId))
     .returning({ id: pvpStatEntries.id, memberId: pvpStatEntries.memberId });
@@ -298,6 +300,7 @@ export async function reviewPvpStat(
   if (!updated) return { ok: false, error: "Entry not found" };
 
   revalidatePath("/pvp-stats");
+  revalidatePath(`/pvp-stats/${updated.memberId}`);
 
   // Best-effort — a member with DMs off or who left the server shouldn't
   // block the review itself from saving, so failures here are only logged.

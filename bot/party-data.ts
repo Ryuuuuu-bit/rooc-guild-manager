@@ -143,7 +143,8 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         const row = slotByIndex.get(i);
         const member = row?.memberId ? (membersById.get(row.memberId) ?? null) : null;
         if (member) placedMemberIds.add(member.id);
-        const playingAs = member && row?.playingAs && member.altClasses.includes(row.playingAs) ? row.playingAs : null;
+        // Any class is allowed here (mirrors src/lib/party-data.ts).
+        const playingAs = member && row?.playingAs && row.playingAs !== member.characterClass ? row.playingAs : null;
         slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, playingAs, onLeave: member ? onLeaveIds.has(member.id) : false });
       }
       return { id: p.id, label: p.label, slots: slotViews };

@@ -141,7 +141,10 @@ function patchMemberClass(prev: PartyBoardDetail, memberId: string, className: s
       ...g,
       parties: g.parties.map((p) => ({
         ...p,
-        slots: p.slots.map((s) => (s.member ? { ...s, member: patch(s.member) } : s)),
+        // "Playing as" the class that just became their main = main (mirrors setMemberClass).
+        slots: p.slots.map((s) =>
+          s.member ? { ...s, member: patch(s.member), playingAs: s.member.id === memberId && s.playingAs === className ? null : s.playingAs } : s
+        ),
       })),
     })),
     busy: prev.busy.map(patch),
@@ -683,12 +686,19 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       for (const a of m.altClasses) openByClass.set(a, [...(openByClass.get(a) ?? []), { member: m, asAlt: true }]);
     }
     const candidatesFor = (className: string) => (openByClass.get(className) ?? []).slice().sort((a, b) => Number(a.asAlt) - Number(b.asAlt));
+    // The class the party actually loses is the one they were SEATED as —
+    // someone fielded as their alt Sage needs a Sage stand-in, not their
+    // main. Unseated members fall back to their main class.
+    const seatedClass = new Map<string, string>();
+    for (const g of board.groups) for (const p of g.parties) for (const s of p.slots) if (s.member && s.playingAs) seatedClass.set(s.member.id, s.playingAs);
     for (const m of board.busy) {
-      if (!m.className) continue;
-      rows.set(m.id, { memberId: m.id, name: m.displayName, className: m.className, when: null, candidates: candidatesFor(m.className) });
+      const className = seatedClass.get(m.id) ?? m.className;
+      if (!className) continue;
+      rows.set(m.id, { memberId: m.id, name: m.displayName, className, when: null, candidates: candidatesFor(className) });
     }
     for (const l of board.upcomingLeaves) {
-      if (!l.className) continue;
+      const className = seatedClass.get(l.memberId) ?? l.className;
+      if (!className) continue;
       const existing = rows.get(l.memberId);
       if (existing) {
         if (!existing.when) existing.when = fmtLeaveDate(l.date);
@@ -697,9 +707,9 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
       rows.set(l.memberId, {
         memberId: l.memberId,
         name: l.name,
-        className: l.className,
+        className,
         when: fmtLeaveDate(l.date),
-        candidates: candidatesFor(l.className),
+        candidates: candidatesFor(className),
       });
     }
     return [...rows.values()];

@@ -288,6 +288,16 @@ export async function setMemberClass(memberId: string, className: string | null)
     })
     .where(eq(members.id, memberId));
 
+  // A slot where they were "playing as" the class that just became their
+  // main is now simply main — otherwise the picker would show it as an
+  // override (amber) of itself.
+  if (finalClassName) {
+    await db
+      .update(partySlots)
+      .set({ playingAs: null, updatedAt: new Date() })
+      .where(and(eq(partySlots.memberId, memberId), eq(partySlots.playingAs, finalClassName)));
+  }
+
   if (existing.characterClass !== finalClassName) {
     await db.insert(membershipEvents).values({
       memberId,
@@ -319,10 +329,11 @@ export async function clearSlot(partyId: string, slotIndex: number): Promise<Act
 }
 
 /**
- * Sets which of the occupant's classes they play in THIS slot — one of
- * their secondary classes, or null for their main class. Purely a board
- * choice: the member's profile (main/secondary classes) is untouched, so
- * fielding someone as their alt this week doesn't rewrite who they are.
+ * Sets which class the occupant plays in THIS slot — any class in the list
+ * (the picker tags the ones they registered as หลัก/รอง), or null for their
+ * main class. Purely a board choice: the member's profile (main/secondary
+ * classes) is untouched, so fielding someone on a class this week doesn't
+ * rewrite who they are.
  */
 export async function setSlotPlayingAs(partyId: string, slotIndex: number, className: string | null): Promise<ActionResult> {
   await requireAdmin();
@@ -336,11 +347,9 @@ export async function setSlotPlayingAs(partyId: string, slotIndex: number, class
   const member = await db.query.members.findFirst({ where: eq(members.id, slot.memberId) });
   if (!member) return { ok: false, error: "Member not found" };
 
-  // null / their main class → main; otherwise must be one of their alts.
+  // null / their main class → main; anything else must at least be a real class.
   const playingAs = !className || className === member.characterClass ? null : className;
-  if (playingAs && !member.altClasses.includes(playingAs)) {
-    return { ok: false, error: "That isn't one of this member's classes — set it on their profile or via the Discord class picker first" };
-  }
+  if (playingAs && !(await isValidJobClassName(playingAs))) return { ok: false, error: "Invalid class" };
 
   await db.update(partySlots).set({ playingAs, updatedAt: new Date() }).where(eq(partySlots.id, slot.id));
   revalidatePath("/party");

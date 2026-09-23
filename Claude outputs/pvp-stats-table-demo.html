@@ -36,13 +36,14 @@
   .ghost { background:transparent; border:0; color:var(--dim); cursor:pointer; font-size:12px; }
   .ghost:hover { color:#e4e4e7; }
   .wrap { position:relative; }
+  #scroll { max-height:calc(100vh - 96px); overflow:auto; }
   .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:rgba(24,24,27,.5); scroll-behavior:smooth; scrollbar-width:thin; scrollbar-color:#52525b #18181b; }
   .scroll::-webkit-scrollbar { height:10px; }
   .scroll::-webkit-scrollbar-track { background:#18181b; border-radius:999px; }
   .scroll::-webkit-scrollbar-thumb { background:#52525b; border:2px solid #18181b; border-radius:999px; }
   .scroll::-webkit-scrollbar-thumb:hover { background:#a1a1aa; }
   table { border-collapse:collapse; min-width:max-content; width:100%; font-size:13px; }
-  thead th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); font-weight:500; padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line); cursor:pointer; user-select:none; }
+  thead th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); font-weight:500; padding:8px 12px; text-align:right; white-space:nowrap; cursor:pointer; user-select:none; position:sticky; top:0; z-index:15; background:#18181b; box-shadow:inset 0 -1px 0 var(--line); }
   thead th.l { text-align:left; }
   thead th.sorted { color:#fcd34d; }
   tbody td { padding:6px 12px; text-align:right; white-space:nowrap; border-top:1px solid rgba(39,39,42,.8); font-variant-numeric:tabular-nums; color:#d4d4d8; }
@@ -52,6 +53,7 @@
   /* Sticky first column */
   .sticky { position:sticky; left:0; z-index:10; background:#18181b; border-right:1px solid var(--line); }
   thead .sticky { z-index:20; }
+  .scroll::-webkit-scrollbar { width:10px; }
   tbody tr:hover .sticky { background:#232326; }
   tbody tr.sel .sticky { background:#1f1a10; }
   .m { display:flex; align-items:center; gap:8px; }
@@ -109,7 +111,7 @@
   <div class="scroll" id="scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div>
   <div class="fade" id="fade"></div>
 </div>
-<p class="legend">Badges: <span style="color:#fcd34d">#1</span> / <span style="color:#e4e4e7">#2</span> / <span style="color:#fdba74">#3</span> guild-wide per stat · <span style="color:#6ee7b7">green</span> = top 10% · scroll sideways for more columns, or trim them with the Columns menu.</p>
+<p class="legend">Badges: <span style="color:#fcd34d">#1</span> / <span style="color:#e4e4e7">#2</span> / <span style="color:#fdba74">#3</span> guild-wide per stat · <span style="color:#6ee7b7">green</span> = top 10% · the table scrolls inside its own box (both ways) so the horizontal bar is always in view — or trim columns with the Columns menu.</p>
 
 <div class="overlay" id="ov"><div class="drawer">
   <div class="head"><div><h2>Compare members</h2><p id="dsub"></p></div><button class="ghost" id="close">Close ✕</button></div>
@@ -138,7 +140,8 @@ const PRESETS = [
   {key:"compact",label:"Compact",hint:"CP, DEF, ATK",keys:["class","cp","pDef","mDef","atk","matk","updatedAt"]},
 ];
 const CLASSES = {WizDPS:["🔥","#fb7185","rgba(244,63,94,.15)"],Priest:["✝","#7dd3fc","rgba(14,165,233,.15)"],Sniper:["🏹","#86efac","rgba(34,197,94,.15)"],Bio:["🧪","#c4b5fd","rgba(139,92,246,.15)"],"B/D":["🎵","#fde68a","rgba(245,158,11,.15)"],DoramINT:["🐾","#a5f3fc","rgba(6,182,212,.15)"],Knight:["🛡","#fdba74","rgba(249,115,22,.15)"]};
-const NAMES = ["GodHands666","Bacony","Cartier","Voltage","Iron2ong","ชาวบ้าน01","tOpWHATEVER","PIMMA","Glock","Plengrak","NatNM","DAMNTEE","Jaskier","Kuma","HunTer","WTSxSoPiak","Veldanava","Niceonly"];
+const BASE = ["GodHands666","Bacony","Cartier","Voltage","Iron2ong","ชาวบ้าน01","tOpWHATEVER","PIMMA","Glock","Plengrak","NatNM","DAMNTEE","Jaskier","Kuma","HunTer","WTSxSoPiak","Veldanava","Niceonly"];
+const NAMES = [...BASE, ...BASE.map(n=>n+" II"), ...BASE.map(n=>n+" III"), ...BASE.map(n=>n+" IV")];
 const CLS = Object.keys(CLASSES);
 let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
 const ROWS = NAMES.map((n,i) => {

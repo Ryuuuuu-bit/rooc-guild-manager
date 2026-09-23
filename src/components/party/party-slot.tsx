@@ -17,8 +17,8 @@ interface PartySlotProps {
   /** Occupant has NO main class yet: the dropdown lists every class and
    * this sets their main class (profile-level). */
   onClassChange: (value: string) => void;
-  /** Occupant has a main class: the dropdown lists only main + secondaries
-   * and this sets the per-slot "playing as" (null = main). */
+  /** Occupant has a main class: the dropdown lists EVERY class (their own
+   * tagged หลัก/รอง) and this sets the per-slot "playing as" (null = main). */
   onPlayingAsChange: (value: string | null) => void;
   onClear: () => void;
   /** Marks the occupant ลา for this round (they keep the slot, shown faded). */
@@ -67,13 +67,17 @@ export function PartySlot({
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const { options: allClassOptions } = useJobClasses();
-  // With a main class set, the dropdown is ONLY the member's own classes
-  // (main + secondaries) and picks what they play in this slot. Without one
-  // it falls back to the full list and sets their main class — the only
-  // way to class a brand-new member straight from the board.
+  // With a main class set, the dropdown lists every class and picks what
+  // they play in THIS slot (profile untouched); the member's own classes
+  // are tagged "(หลัก)" / "(รอง)" so the organiser sees at a glance which
+  // ones they actually registered. Without a main class it sets their main
+  // class instead — the only way to class a brand-new member from the board.
   const hasMain = Boolean(member?.className);
-  const ownOptions = member ? [member.className, ...member.altClasses].filter((c): c is string => Boolean(c)) : [];
+  const altSet = new Set(member?.altClasses ?? []);
   const effectiveClass = playingAs ?? member?.className ?? null;
+  // A class deleted from the list (or one this build doesn't know) still
+  // shows so the select isn't silently blank.
+  const slotOptions = effectiveClass && !allClassOptions.includes(effectiveClass) ? [...allClassOptions, effectiveClass] : allClassOptions;
   // What the chip shows: the class played HERE, not necessarily the main.
   const shownMember = member && effectiveClass !== member.className ? { ...member, className: effectiveClass } : member;
 
@@ -117,14 +121,14 @@ export function PartySlot({
                 <select
                   value={effectiveClass ?? ""}
                   onChange={(e) => onPlayingAsChange(e.target.value === member.className ? null : e.target.value)}
-                  title={ownOptions.length > 1 ? "Class they play in this slot (main or one of their secondary classes)" : "Main class — no secondary classes set"}
+                  title="Class they play in this slot — (หลัก) = their main, (รอง) = a secondary they registered; the profile isn't changed"
                   className={`w-0 min-w-0 flex-1 rounded border bg-zinc-900 px-1 py-1.5 text-[10px] focus:border-amber-500 focus:outline-none ${
                     playingAs ? "border-amber-500/50 text-amber-300" : "border-zinc-700 text-zinc-300"
                   }`}
                 >
-                  {ownOptions.map((c, i) => (
+                  {slotOptions.map((c) => (
                     <option key={c} value={c}>
-                      {i === 0 ? c : `${c} (รอง)`}
+                      {c === member.className ? `${c} (หลัก)` : altSet.has(c) ? `${c} (รอง)` : c}
                     </option>
                   ))}
                 </select>

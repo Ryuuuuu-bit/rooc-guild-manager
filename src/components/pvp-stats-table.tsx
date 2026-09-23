@@ -672,11 +672,16 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
       {/* Table: shown from lg up (it scrolls inside its own box, so no page overflow); cards below lg or on toggle. */}
       <div className={viewMode === "cards" ? "hidden" : "hidden lg:block"}>
         <div className="relative">
-          <div ref={scrollRef} className="pvp-scroll overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
+          {/* The table scrolls BOTH ways inside its own viewport-tall box, so the
+              horizontal scrollbar is always on screen (a 70-row table used to
+              push it below the fold) and the header stays pinned. Sticky
+              borders don't survive border-collapse, so the header rule is an
+              inset shadow. */}
+          <div ref={scrollRef} className="pvp-scroll max-h-[calc(100dvh-7rem)] overflow-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
             <table className="w-full min-w-max text-left text-sm">
-              <thead>
-                <tr className="border-b border-zinc-800 text-[11px] uppercase tracking-wide text-zinc-500">
-                  <th className="sticky left-0 z-20 border-r border-zinc-800 bg-zinc-900 px-3 py-2">
+              <thead className="sticky top-0 z-20 [&_th]:shadow-[inset_0_-1px_0_#27272a]">
+                <tr className="text-[11px] uppercase tracking-wide text-zinc-500">
+                  <th className="sticky left-0 z-30 border-r border-zinc-800 bg-zinc-900 px-3 py-2">
                     <div className="flex items-center gap-2">
                       <span className="w-4 shrink-0" />
                       <SortHeader label="Member" sortKey="name" active={sort.key === "name"} dir={sort.key === "name" ? sort.dir : "asc"} onSort={handleSort} />
@@ -684,20 +689,20 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                   </th>
                   {visibleColumns.map((col) =>
                     col.numeric ? (
-                      <th key={col.key} className={`${cell} text-right`}>
+                      <th key={col.key} className={`${cell} bg-zinc-900 text-right`}>
                         <SortHeader label={col.label} sortKey={col.key} active={sort.key === col.key} dir={sort.key === col.key ? sort.dir : "desc"} onSort={handleSort} align="right" />
                       </th>
                     ) : col.key === "class" ? (
-                      <th key={col.key} className={cell}>
+                      <th key={col.key} className={`${cell} bg-zinc-900`}>
                         <SortHeader label="Class" sortKey="class" active={sort.key === "class"} dir={sort.key === "class" ? sort.dir : "asc"} onSort={handleSort} />
                       </th>
                     ) : (
-                      <th key={col.key} className={`${cell} font-medium`}>
+                      <th key={col.key} className={`${cell} bg-zinc-900 font-medium`}>
                         {col.label}
                       </th>
                     )
                   )}
-                  {isAdmin && <th className={`${cell} font-medium`}>Edit</th>}
+                  {isAdmin && <th className={`${cell} bg-zinc-900 font-medium`}>Edit</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/80">
@@ -792,7 +797,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
           <div className={`pointer-events-none absolute inset-y-0 right-0 w-12 rounded-r-2xl bg-gradient-to-l from-zinc-900 to-transparent transition-opacity duration-200 ${showRightShadow ? "opacity-100" : "opacity-0"}`} />
         </div>
         <p className="mt-1.5 text-[11px] text-zinc-600">
-          Badges: <span className="text-amber-300">#1</span> / <span className="text-zinc-300">#2</span> / <span className="text-orange-300">#3</span> guild-wide per stat · <span className="text-emerald-300">green</span> = top 10% · scroll sideways for more columns, or trim them with the Columns menu.
+          Badges: <span className="text-amber-300">#1</span> / <span className="text-zinc-300">#2</span> / <span className="text-orange-300">#3</span> guild-wide per stat · <span className="text-emerald-300">green</span> = top 10% · the table scrolls inside its own box (both ways), so the sideways scrollbar is always in view — or trim columns with the Columns menu.
         </p>
       </div>
 
