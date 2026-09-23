@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PVP Stats — table redesign demo</title>
+<style>
+  :root { --bg:#09090b; --panel:#18181b; --panel2:#27272a; --line:#27272a; --line2:#3f3f46; --text:#f4f4f5; --muted:#a1a1aa; --dim:#71717a; --amber:#fbbf24; --amber-dim:rgba(245,158,11,.15); --emerald:#6ee7b7; --rose:#fda4af; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 ui-sans-serif,system-ui,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+  .pill { border:1px solid var(--line); background:rgba(24,24,27,.5); color:var(--muted); border-radius:12px; padding:8px 12px; font-size:13px; font-weight:500; cursor:pointer; white-space:nowrap; }
+  .pill:hover { border-color:var(--line2); color:#e4e4e7; }
+  .pill.on { border-color:rgba(245,158,11,.6); background:var(--amber-dim); color:#fcd34d; }
+  .search { border:1px solid var(--line); background:rgba(24,24,27,.5); color:var(--text); border-radius:12px; padding:8px 12px; font-size:13px; width:260px; }
+  .dd { position:relative; }
+  .menu { position:absolute; left:0; top:calc(100% + 4px); z-index:30; width:260px; max-height:380px; overflow:auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:6px; box-shadow:0 20px 40px rgba(0,0,0,.5); display:none; }
+  .menu.open { display:block; }
+  .menu .h { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); font-weight:600; padding:6px 10px 2px; }
+  .menu .row { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:13px; color:#d4d4d8; }
+  .menu .row:hover { background:rgba(39,39,42,.5); }
+  .menu .row.on { background:var(--amber-dim); color:#fcd34d; }
+  .menu .chk { display:flex; align-items:center; gap:8px; }
+  .menu .box { width:16px; height:16px; border:1px solid var(--line2); border-radius:4px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; }
+  .menu .box.on { background:#f59e0b; border-color:#f59e0b; color:#111; }
+  .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+  .compare-bar { display:none; align-items:center; gap:8px; flex-wrap:wrap; border:1px solid rgba(245,158,11,.3); background:rgba(245,158,11,.1); border-radius:12px; padding:8px 12px; margin-bottom:10px; font-size:13px; }
+  .compare-bar.show { display:flex; }
+  .chip { display:inline-flex; align-items:center; gap:6px; background:rgba(24,24,27,.8); border:1px solid var(--line2); border-radius:999px; padding:2px 8px 2px 4px; font-size:12px; }
+  .chip .av { width:18px; height:18px; border-radius:50%; }
+  .btn { background:#d97706; color:#fff; border:0; border-radius:8px; padding:6px 12px; font-size:12px; font-weight:500; cursor:pointer; margin-left:auto; }
+  .btn:hover { background:#f59e0b; }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .ghost { background:transparent; border:0; color:var(--dim); cursor:pointer; font-size:12px; }
+  .ghost:hover { color:#e4e4e7; }
+  .wrap { position:relative; }
+  .scroll { overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:rgba(24,24,27,.5); scroll-behavior:smooth; scrollbar-width:thin; scrollbar-color:#52525b #18181b; }
+  .scroll::-webkit-scrollbar { height:10px; }
+  .scroll::-webkit-scrollbar-track { background:#18181b; border-radius:999px; }
+  .scroll::-webkit-scrollbar-thumb { background:#52525b; border:2px solid #18181b; border-radius:999px; }
+  .scroll::-webkit-scrollbar-thumb:hover { background:#a1a1aa; }
+  table { border-collapse:collapse; min-width:max-content; width:100%; font-size:13px; }
+  thead th { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); font-weight:500; padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line); cursor:pointer; user-select:none; }
+  thead th.l { text-align:left; }
+  thead th.sorted { color:#fcd34d; }
+  tbody td { padding:6px 12px; text-align:right; white-space:nowrap; border-top:1px solid rgba(39,39,42,.8); font-variant-numeric:tabular-nums; color:#d4d4d8; }
+  tbody td.l { text-align:left; }
+  tbody tr:hover td { background:rgba(39,39,42,.4); }
+  tbody tr.sel td { background:rgba(245,158,11,.05); }
+  /* Sticky first column */
+  .sticky { position:sticky; left:0; z-index:10; background:#18181b; border-right:1px solid var(--line); }
+  thead .sticky { z-index:20; }
+  tbody tr:hover .sticky { background:#232326; }
+  tbody tr.sel .sticky { background:#1f1a10; }
+  .m { display:flex; align-items:center; gap:8px; }
+  .m input { width:16px; height:16px; accent-color:#f59e0b; cursor:pointer; }
+  .m img { width:24px; height:24px; border-radius:50%; box-shadow:0 0 0 1px #3f3f46; }
+  .m .n { font-weight:500; color:var(--text); max-width:160px; overflow:hidden; text-overflow:ellipsis; }
+  .cls { display:inline-flex; align-items:center; gap:4px; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:500; }
+  .alt { display:inline-flex; gap:1px; background:rgba(39,39,42,.6); border:1px solid rgba(63,63,70,.6); border-radius:999px; padding:1px 4px; font-size:10px; margin-left:4px; }
+  .status { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:500; }
+  .st-pass { background:rgba(16,185,129,.15); color:#6ee7b7; } .st-pend { background:#27272a; color:var(--muted); } .st-fail { background:rgba(244,63,94,.15); color:#fda4af; }
+  .cp { color:#fde68a; font-weight:500; }
+  .top { color:var(--emerald); font-weight:500; }
+  .badge { display:inline-flex; align-items:center; gap:4px; border-radius:6px; padding:2px 6px; font-size:11px; font-weight:600; box-shadow:inset 0 0 0 1px; }
+  .badge small { font-size:9px; opacity:.7; }
+  .r1 { background:rgba(251,191,36,.2); color:#fcd34d; } .r2 { background:rgba(212,212,216,.15); color:#e4e4e7; } .r3 { background:rgba(194,65,12,.25); color:#fdba74; }
+  .stale { color:var(--rose); }
+  .fade { pointer-events:none; position:absolute; top:0; bottom:0; right:0; width:48px; border-radius:0 16px 16px 0; background:linear-gradient(to left,#18181b,transparent); transition:opacity .2s; }
+  .legend { font-size:11px; color:#52525b; margin-top:6px; }
+  /* Drawer */
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; justify-content:flex-end; z-index:50; }
+  .overlay.open { display:flex; }
+  .drawer { width:100%; max-width:760px; height:100%; background:var(--bg); border-left:1px solid var(--line); display:flex; flex-direction:column; box-shadow:-20px 0 60px rgba(0,0,0,.6); }
+  .drawer .head { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-bottom:1px solid var(--line); }
+  .drawer .head h2 { font-size:14px; margin:0; } .drawer .head p { margin:2px 0 0; font-size:12px; color:var(--dim); }
+  .drawer .body { flex:1; overflow:auto; }
+  .drawer table thead th { position:sticky; top:0; background:var(--bg); text-align:left; text-transform:none; letter-spacing:0; }
+  .drawer .who { display:flex; gap:8px; align-items:flex-start; min-width:150px; }
+  .drawer .who img { width:32px; height:32px; border-radius:50%; box-shadow:0 0 0 1px #3f3f46; }
+  .drawer .who .n { font-size:13px; font-weight:500; color:var(--text); }
+  .drawer tbody td { text-align:left; }
+  .drawer tbody td.k { color:var(--muted); font-size:12px; position:sticky; left:0; background:var(--bg); }
+  .drawer tbody td.k small { color:#52525b; text-transform:uppercase; font-size:9px; margin-left:6px; }
+  .best { color:var(--emerald); font-weight:600; } .worst { color:var(--rose); }
+  @media (max-width:640px){ body{padding:12px} .search{width:100%} }
+</style>
+</head>
+<body>
+<h1>PVP Stats</h1>
+<p class="sub">ตัวอย่าง redesign: คอลัมน์สมาชิกปักหมุด · เลื่อนซ้าย-ขวาในกล่อง (หน้าไม่ล้น) · เลือกเทียบสูงสุด 4 คน · เลือกคอลัมน์ / presets · badge อันดับต่อสถิติ</p>
+
+<div class="bar">
+  <input class="search" id="q" placeholder="Search members..." />
+  <div class="dd"><button class="pill" id="colBtn">Columns · 18/18</button><div class="menu" id="colMenu"></div></div>
+  <button class="pill" id="pend">Pending Review · 3</button>
+</div>
+
+<div class="compare-bar" id="cbar">
+  <span style="color:#fde68a" id="cbarLabel">Selected 0/4:</span>
+  <span id="chips"></span>
+  <button class="btn" id="cmpBtn" disabled>Compare Selected (0/4)</button>
+  <button class="ghost" id="clearSel">Clear</button>
+</div>
+
+<div class="wrap">
+  <div class="scroll" id="scroll"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+  <div class="fade" id="fade"></div>
+</div>
+<p class="legend">Badges: <span style="color:#fcd34d">#1</span> / <span style="color:#e4e4e7">#2</span> / <span style="color:#fdba74">#3</span> guild-wide per stat · <span style="color:#6ee7b7">green</span> = top 10% · scroll sideways for more columns, or trim them with the Columns menu.</p>
+
+<div class="overlay" id="ov"><div class="drawer">
+  <div class="head"><div><h2>Compare members</h2><p id="dsub"></p></div><button class="ghost" id="close">Close ✕</button></div>
+  <div class="body scroll"><table id="cmp"><thead></thead><tbody></tbody></table></div>
+</div></div>
+
+<script>
+const COLS = [
+  {key:"class",label:"Class",group:"identity"},
+  {key:"role",label:"Role",group:"identity"},
+  {key:"status",label:"Status",group:"identity"},
+  {key:"cp",label:"CP",group:"base",num:1},
+  {key:"pDef",label:"P.DEF",group:"defense",num:1},{key:"mDef",label:"M.DEF",group:"defense",num:1},
+  {key:"pvpReduction",label:"PVP Red.",group:"defense",num:1},
+  {key:"pDmgReductionPct",label:"P.DMG Red%",group:"defense",num:1,pct:1},{key:"mDmgReductionPct",label:"M.DMG Red%",group:"defense",num:1,pct:1},
+  {key:"atk",label:"ATK",group:"attack",num:1},{key:"matk",label:"MATK",group:"attack",num:1},
+  {key:"pvpBonus",label:"PVP Bonus",group:"attack",num:1},{key:"ignorePDef",label:"Ign. P.DEF",group:"attack",num:1},{key:"ignoreMDef",label:"Ign. M.DEF",group:"attack",num:1},
+  {key:"pDmgBonusPct",label:"P.DMG Bonus%",group:"attack",num:1,pct:1},{key:"mDmgBonusPct",label:"M.DMG Bonus%",group:"attack",num:1,pct:1},
+  {key:"bossCards",label:"Boss Cards",group:"meta"},{key:"updatedAt",label:"Last Updated",group:"meta"},
+];
+const GROUPS = {identity:"Member",base:"Base",defense:"Defense",attack:"Attack",meta:"Meta"};
+const PRESETS = [
+  {key:"all",label:"All columns",hint:"Everything"},
+  {key:"tank",label:"Tank / Defensive",hint:"CP + defense",groups:["identity","base","defense","meta"]},
+  {key:"dps",label:"DPS / Offensive",hint:"CP + attack",groups:["identity","base","attack","meta"]},
+  {key:"compact",label:"Compact",hint:"CP, DEF, ATK",keys:["class","cp","pDef","mDef","atk","matk","updatedAt"]},
+];
+const CLASSES = {WizDPS:["🔥","#fb7185","rgba(244,63,94,.15)"],Priest:["✝","#7dd3fc","rgba(14,165,233,.15)"],Sniper:["🏹","#86efac","rgba(34,197,94,.15)"],Bio:["🧪","#c4b5fd","rgba(139,92,246,.15)"],"B/D":["🎵","#fde68a","rgba(245,158,11,.15)"],DoramINT:["🐾","#a5f3fc","rgba(6,182,212,.15)"],Knight:["🛡","#fdba74","rgba(249,115,22,.15)"]};
+const NAMES = ["GodHands666","Bacony","Cartier","Voltage","Iron2ong","ชาวบ้าน01","tOpWHATEVER","PIMMA","Glock","Plengrak","NatNM","DAMNTEE","Jaskier","Kuma","HunTer","WTSxSoPiak","Veldanava","Niceonly"];
+const CLS = Object.keys(CLASSES);
+let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+const ROWS = NAMES.map((n,i) => {
+  const cls = CLS[i % CLS.length]; const tank = cls==="Knight"||cls==="Priest";
+  const e = i===5 ? null : {
+    role: tank?"Tank":"DPS", status: i%7===0?"pend":i%9===0?"fail":"pass",
+    cp: 60000+Math.round(rnd()*90000), pDef: 3000+Math.round(rnd()*(tank?9000:4000)), mDef: 2500+Math.round(rnd()*(tank?8000:3500)),
+    pvpReduction: 800+Math.round(rnd()*2500), pDmgReductionPct: +(10+rnd()*40).toFixed(1), mDmgReductionPct: +(10+rnd()*40).toFixed(1),
+    atk: 4000+Math.round(rnd()*(tank?3000:9000)), matk: 3000+Math.round(rnd()*(cls==="WizDPS"?12000:5000)), pvpBonus: 500+Math.round(rnd()*2500),
+    ignorePDef: Math.round(rnd()*40), ignoreMDef: Math.round(rnd()*40), pDmgBonusPct: +(rnd()*60).toFixed(1), mDmgBonusPct: +(rnd()*60).toFixed(1),
+    bossCards: ["Eddga","Angeling","Drake","Osiris","Bapho"].filter(()=>rnd()>.5).join("/")||"—", days: Math.round(rnd()*30),
+  };
+  return {id:"m"+i, name:n, cls, alts: rnd()>.5?[CLS[(i+2)%CLS.length]]:[], avatar:`https://api.dicebear.com/9.x/thumbs/svg?seed=${encodeURIComponent(n)}`, e};
+});
+const fmt = (c,v) => v==null?"—":c.pct?v.toLocaleString("th-TH",{maximumFractionDigits:2})+"%":v.toLocaleString("th-TH");
+
+let hidden = new Set(), preset="all", sort={key:"cp",dir:"desc"}, q="", pendOnly=false, sel=[];
+const vis = () => COLS.filter(c=>!hidden.has(c.key));
+const hl = {}; for (const c of COLS.filter(c=>c.num)) { const v=ROWS.filter(r=>r.e).map(r=>({id:r.id,v:r.e[c.key]})).sort((a,b)=>b.v-a.v); hl[c.key]={}; const cut=Math.max(3,Math.ceil(v.length*.1)); v.forEach((x,i)=>hl[c.key][x.id]={rank:i+1,top:i<cut}); }
+
+function cell(c,r){
+  const e=r.e;
+  if(c.num){ const v=e?e[c.key]:null; if(v==null) return '<span style="color:#52525b">—</span>'; const h=hl[c.key][r.id];
+    if(h.rank<=3) return `<span class="badge r${h.rank}" title="#${h.rank} in ${c.label}"><small>#${h.rank}</small>${fmt(c,v)}</span>`;
+    return `<span class="${h.top?"top":c.key==="cp"?"cp":""}">${fmt(c,v)}</span>`; }
+  if(c.key==="class"){ const [em,col,bg]=CLASSES[r.cls]; return `<span class="cls" style="color:${col};background:${bg}">${em} ${r.cls}</span>${r.alts.length?`<span class="alt" title="รอง: ${r.alts.join(", ")}">${r.alts.map(a=>CLASSES[a][0]).join("")}</span>`:""}`; }
+  if(c.key==="role") return e?e.role:"—";
+  if(c.key==="status") return e?`<span class="status st-${e.status}">${{pass:"Passed",pend:"Pending Review",fail:"Needs Fix"}[e.status]}</span>`:"";
+  if(c.key==="bossCards") return `<span style="color:#a1a1aa;font-size:12px">${e?e.bossCards:"—"}</span>`;
+  if(c.key==="updatedAt"){ if(!e) return '<span class="stale">⚠ Not submitted</span>'; const d=new Date(Date.now()-e.days*864e5).toLocaleDateString("th-TH"); return e.days>14?`<span class="stale">⚠ ${d}</span>`:`<span style="color:#71717a">${d}</span>`; }
+  return "";
+}
+function render(){
+  const cols=vis(); const ths=[`<th class="l sticky ${sort.key==="name"?"sorted":""}" data-k="name"><span style="display:inline-block;width:24px"></span>Member ${sort.key==="name"?(sort.dir==="asc"?"▲":"▼"):""}</th>`]
+    .concat(cols.map(c=>`<th class="${c.num?"":"l"} ${sort.key===c.key?"sorted":""}" data-k="${c.num||c.key==="class"?c.key:""}">${c.label} ${sort.key===c.key?(sort.dir==="asc"?"▲":"▼"):""}</th>`));
+  document.querySelector("#tbl thead").innerHTML=`<tr>${ths.join("")}</tr>`;
+  let rows=ROWS.filter(r=>r.name.toLowerCase().includes(q)&&(!pendOnly||(r.e&&r.e.status==="pend")));
+  const sign=sort.dir==="asc"?1:-1;
+  rows.sort((a,b)=>{ if(sort.key==="name") return sign*a.name.localeCompare(b.name,"th"); if(sort.key==="class") return sign*a.cls.localeCompare(b.cls); const va=a.e?a.e[sort.key]:null, vb=b.e?b.e[sort.key]:null; if(va==null&&vb==null) return 0; if(va==null) return 1; if(vb==null) return -1; return sign*(va-vb); });
+  document.querySelector("#tbl tbody").innerHTML=rows.map(r=>{ const on=sel.includes(r.id), full=!on&&sel.length>=4;
+    return `<tr class="${on?"sel":""}"><td class="l sticky"><div class="m"><input type="checkbox" data-id="${r.id}" ${on?"checked":""} ${full?"disabled":""} title="${full?"Up to 4 members":"Select to compare"}"><img src="${r.avatar}" alt=""><span class="n">${r.name}</span></div></td>${cols.map(c=>`<td class="${c.num?"":"l"}">${cell(c,r)}</td>`).join("")}</tr>`; }).join("")||`<tr><td colspan="40" style="text-align:center;padding:40px;color:#71717a">No members match the filters</td></tr>`;
+  document.getElementById("colBtn").textContent=`Columns · ${cols.length}/${COLS.length}`; document.getElementById("colBtn").className="pill"+(hidden.size?" on":"");
+  renderMenu(); renderBar(); fade();
+}
+function renderMenu(){
+  const m=document.getElementById("colMenu"); let h=`<div class="h">View presets</div>`+PRESETS.map(p=>`<div class="row ${preset===p.key?"on":""}" data-p="${p.key}"><span>${p.label}</span><span style="font-size:10px;color:#71717a">${p.hint}</span></div>`).join("");
+  for(const g of Object.keys(GROUPS)){ h+=`<hr><div class="h">${GROUPS[g]}</div>`+COLS.filter(c=>c.group===g).map(c=>`<div class="row chk" data-c="${c.key}"><span class="box ${hidden.has(c.key)?"":"on"}">${hidden.has(c.key)?"":"✓"}</span><span>${c.label}</span></div>`).join(""); }
+  m.innerHTML=h;
+}
+function renderBar(){
+  const b=document.getElementById("cbar"); b.className="compare-bar"+(sel.length?" show":""); document.getElementById("cbarLabel").textContent=`Selected ${sel.length}/4:`;
+  document.getElementById("chips").innerHTML=sel.map(id=>{const r=ROWS.find(x=>x.id===id); return `<span class="chip"><img class="av" src="${r.avatar}">${r.name}<button class="ghost" data-rm="${id}">✕</button></span>`;}).join(" ");
+  const btn=document.getElementById("cmpBtn"); btn.disabled=sel.length<2; btn.textContent=`Compare Selected (${sel.length}/4)`;
+}
+function fade(){ const el=document.getElementById("scroll"); document.getElementById("fade").style.opacity=(el.scrollWidth-el.clientWidth-el.scrollLeft>2)?1:0; }
+function openCompare(){
+  const rows=sel.map(id=>ROWS.find(r=>r.id===id)); const cols=vis().filter(c=>c.num);
+  document.getElementById("dsub").innerHTML=`${rows.length} of 4 · <span class="best">green</span> = best, <span class="worst">red</span> = lowest per stat`;
+  document.querySelector("#cmp thead").innerHTML=`<tr><th class="k" style="position:sticky;left:0;z-index:20">Stat</th>${rows.map(r=>{const [em,col,bg]=CLASSES[r.cls]; return `<th><div class="who"><img src="${r.avatar}"><div><div class="n">${r.name}</div><span class="cls" style="color:${col};background:${bg}">${em} ${r.cls}</span><div style="font-size:10px;color:#71717a;margin-top:2px">${r.e?r.e.role:"—"}</div></div></div></th>`;}).join("")}</tr>`;
+  document.querySelector("#cmp tbody").innerHTML=cols.map(c=>{ const vs=rows.map(r=>r.e?r.e[c.key]:null); const ns=vs.filter(v=>v!=null); const best=ns.length>1?Math.max(...ns):null, worst=ns.length>1?Math.min(...ns):null;
+    return `<tr><td class="k">${c.label}<small>${GROUPS[c.group]}</small></td>${vs.map(v=>`<td class="${v==null?"":best!==worst&&v===best?"best":best!==worst&&v===worst?"worst":""}">${fmt(c,v)}</td>`).join("")}</tr>`; }).join("");
+  document.getElementById("ov").classList.add("open");
+}
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-k],[data-p],[data-c],[data-rm],#colBtn,#pend,#cmpBtn,#clearSel,#close,#ov");
+  if(!t) { if(!e.target.closest("#colMenu")) document.getElementById("colMenu").classList.remove("open"); return; }
+  if(t.id==="colBtn"){ document.getElementById("colMenu").classList.toggle("open"); return; }
+  if(t.dataset.k){ const k=t.dataset.k; sort= sort.key===k?{key:k,dir:sort.dir==="asc"?"desc":"asc"}:{key:k,dir:(k==="name"||k==="class")?"asc":"desc"}; render(); }
+  if(t.dataset.p){ const p=PRESETS.find(x=>x.key===t.dataset.p); hidden=new Set(COLS.filter(c=>p.keys?!p.keys.includes(c.key):p.groups?!p.groups.includes(c.group):false).map(c=>c.key)); preset=p.key; render(); }
+  if(t.dataset.c){ hidden.has(t.dataset.c)?hidden.delete(t.dataset.c):hidden.add(t.dataset.c); preset=null; render(); }
+  if(t.dataset.rm){ sel=sel.filter(x=>x!==t.dataset.rm); render(); }
+  if(t.id==="pend"){ pendOnly=!pendOnly; t.className="pill"+(pendOnly?" on":""); render(); }
+  if(t.id==="cmpBtn") openCompare();
+  if(t.id==="clearSel"){ sel=[]; render(); }
+  if(t.id==="close"||t.id==="ov"){ document.getElementById("ov").classList.remove("open"); }
+});
+document.addEventListener("change",e=>{ if(e.target.dataset.id){ const id=e.target.dataset.id; sel=sel.includes(id)?sel.filter(x=>x!==id):sel.length<4?[...sel,id]:sel; render(); }});
+document.getElementById("q").addEventListener("input",e=>{ q=e.target.value.trim().toLowerCase(); render(); });
+document.getElementById("scroll").addEventListener("scroll",fade); window.addEventListener("resize",fade);
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") document.getElementById("ov").classList.remove("open"); });
+render();
+</script>
+</body>
+</html>
