@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Member, PvpStatEntry } from "@/db/schema";
 import { memberDisplayName } from "@/lib/ui";
@@ -345,11 +345,33 @@ function ColumnMenu({
 }
 
 // ---------------------------------------------------------------------------
-// Compare drawer — up to 4 members side by side, best value per stat in
-// green, worst in red, so the gap is obvious at a glance.
+// Compare modal — up to 4 members side by side in a centred dialog (a
+// right-hand drawer was too narrow for four columns). Best value per stat
+// in green, worst in red; click a member's header to make them the
+// baseline and read everyone else as ± against them; per-cell bars show
+// each value against the row's max; "Only differences" hides rows where
+// everyone matches.
 // ---------------------------------------------------------------------------
 
+function CompareToggle({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      className={`rounded-lg border px-2.5 py-1 text-[11px] transition ${on ? "border-amber-500/60 bg-amber-500/10 text-amber-300" : "border-zinc-700 text-zinc-400 hover:text-zinc-200"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function CompareDrawer({ rows, columns, onClose, onRemove }: { rows: PvpStatsRow[]; columns: ColumnDef[]; onClose: () => void; onRemove: (id: string) => void }) {
+  const [baseId, setBaseId] = useState<string>(rows[0]?.member.id ?? "");
+  const [showDelta, setShowDelta] = useState(false);
+  const [showBars, setShowBars] = useState(true);
+  const [onlyDiff, setOnlyDiff] = useState(false);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -358,82 +380,193 @@ function CompareDrawer({ rows, columns, onClose, onRemove }: { rows: PvpStatsRow
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // The baseline may have been removed from the comparison — fall back to
+  // whoever is first rather than comparing against nobody.
+  const baseline = rows.find((r) => r.member.id === baseId) ?? rows[0];
   const statCols = columns.filter((c) => c.numeric);
+  const groups: ColumnGroup[] = ["base", "defense", "attack", "custom"];
+
+  // Per-row numbers and a "who won the most stats" tally for the footer.
+  const wins = new Map<string, number>();
+  const sections = groups
+    .map((g) => {
+      const cols = statCols
+        .filter((c) => c.group === g)
+        .map((col) => {
+          const values = rows.map((r) => getStatValue(r.entry, col.key));
+          const nums = values.filter((v): v is number => v !== null);
+          const max = nums.length > 1 ? Math.max(...nums) : null;
+          const min = nums.length > 1 ? Math.min(...nums) : null;
+          const allSame = max !== null && max === min;
+          if (!allSame && max !== null) {
+            values.forEach((v, i) => {
+              if (v === max) wins.set(rows[i].member.id, (wins.get(rows[i].member.id) ?? 0) + 1);
+            });
+          }
+          return { col, values, max, min, allSame };
+        })
+        .filter((r) => !(onlyDiff && r.allSame));
+      return { group: g, cols };
+    })
+    .filter((s) => s.cols.length > 0);
+  const topWinner = [...wins.entries()].sort((a, b) => b[1] - a[1])[0];
+  const winnerRow = topWinner ? rows.find((r) => r.member.id === topWinner[0]) : undefined;
+
+  function fmtDelta(col: ColumnDef, d: number): string {
+    const sign = d > 0 ? "+" : "";
+    return col.isPercent ? `${sign}${d.toFixed(2)}%` : `${sign}${Math.round(d).toLocaleString("en-US")}`;
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60" onClick={onClose}>
-      <div className="flex h-full w-full max-w-3xl flex-col border-l border-zinc-800 bg-zinc-950 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
-          <div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px] sm:p-6" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Compare members"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl sm:max-h-[calc(100dvh-3rem)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-zinc-800 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
             <h2 className="text-sm font-semibold text-zinc-100">Compare members</h2>
-            <p className="text-xs text-zinc-500">
-              {rows.length} of {MAX_COMPARE} · <span className="text-emerald-300">green</span> = best, <span className="text-rose-300">red</span> = lowest per stat
+            <p className="text-[11px] text-zinc-500">
+              <span className="text-emerald-300">green</span> = best · <span className="text-rose-300">red</span> = lowest per stat · click a name to set the baseline
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
-            Close ✕
-          </button>
+          <div className="ml-auto flex items-center gap-1.5">
+            <CompareToggle on={showDelta} onClick={() => setShowDelta((v) => !v)}>
+              Δ vs baseline
+            </CompareToggle>
+            <CompareToggle on={showBars} onClick={() => setShowBars((v) => !v)}>
+              Bars
+            </CompareToggle>
+            <CompareToggle on={onlyDiff} onClick={() => setOnlyDiff((v) => !v)}>
+              Only differences
+            </CompareToggle>
+            <button type="button" onClick={onClose} title="Close (Esc)" className="ml-1 rounded-lg px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200">
+              ✕
+            </button>
+          </div>
         </div>
+
         <div className="pvp-scroll flex-1 overflow-auto">
-          <table className="w-full min-w-max text-sm">
-            <thead className="sticky top-0 z-10 bg-zinc-950">
-              <tr className="border-b border-zinc-800">
-                <th className="sticky left-0 z-20 bg-zinc-950 px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Stat</th>
-                {rows.map(({ member, entry }) => (
-                  <th key={member.id} className="min-w-[150px] px-3 py-3 text-left align-top">
-                    <div className="flex items-start gap-2">
-                      <MemberAvatar src={member.discordAvatar} alt={member.discordUsername} width={32} height={32} className="h-8 w-8 shrink-0 rounded-full ring-1 ring-zinc-700" />
-                      <div className="min-w-0">
-                        <Link href={`/pvp-stats/${member.id}`} className="block truncate text-sm font-medium text-zinc-100 hover:text-amber-300">
-                          {memberDisplayName(member)}
+          <table className="w-full min-w-[640px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[150px] sm:w-[180px]" />
+              {rows.map((r) => (
+                <col key={r.member.id} />
+              ))}
+            </colgroup>
+            <thead className="sticky top-0 z-20 bg-zinc-900 [&_th]:shadow-[inset_0_-1px_0_#27272a]">
+              <tr>
+                <th className="sticky left-0 z-30 bg-zinc-900 px-4 py-3 text-left align-top text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Stat</th>
+                {rows.map(({ member, entry }) => {
+                  const isBase = member.id === baseline?.member.id;
+                  return (
+                    <th key={member.id} className="px-2 py-2 align-top">
+                      <div className={`relative rounded-xl border px-2 py-2 transition ${isBase ? "border-amber-500/50 bg-amber-500/10" : "border-transparent hover:bg-zinc-800/70"}`}>
+                        <button
+                          type="button"
+                          onClick={() => setBaseId(member.id)}
+                          title="Use as baseline"
+                          className="flex w-full flex-col items-center gap-1 text-center"
+                        >
+                          <MemberAvatar src={member.discordAvatar} alt={member.discordUsername} width={36} height={36} className="h-9 w-9 rounded-full ring-2 ring-zinc-800" />
+                          <span className="max-w-full truncate text-[13px] font-semibold text-zinc-100">{memberDisplayName(member)}</span>
+                          <span className="flex flex-wrap items-center justify-center gap-1">
+                            <ClassBadge className={member.characterClass} />
+                            <AltClassIcons altClasses={member.altClasses} />
+                          </span>
+                          <span className="text-[10px] font-normal text-zinc-500">{entry?.role ?? "—"}</span>
+                          {isBase && <span className="text-[9px] font-semibold uppercase tracking-wider text-amber-300">baseline</span>}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRemove(member.id)}
+                          title="Remove from comparison"
+                          className="absolute right-1 top-1 rounded px-1 text-xs text-zinc-600 hover:text-rose-400"
+                        >
+                          ✕
+                        </button>
+                        <Link href={`/pvp-stats/${member.id}`} className="absolute left-1 top-1 rounded px-1 text-[10px] text-zinc-600 hover:text-amber-300" title="Full history">
+                          ↗
                         </Link>
-                        <div className="mt-1 flex flex-wrap items-center gap-1">
-                          <ClassBadge className={member.characterClass} />
-                          <AltClassIcons altClasses={member.altClasses} />
-                        </div>
-                        <div className="mt-1 text-[10px] font-normal text-zinc-500">{entry?.role ?? "—"}</div>
                       </div>
-                      <button type="button" onClick={() => onRemove(member.id)} title="Remove from comparison" className="ml-auto text-xs text-zinc-600 hover:text-rose-400">
-                        ✕
-                      </button>
-                    </div>
-                  </th>
-                ))}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800/70">
-              {statCols.map((col) => {
-                const values = rows.map((r) => getStatValue(r.entry, col.key));
-                const nums = values.filter((v): v is number => v !== null);
-                const best = nums.length > 1 ? Math.max(...nums) : null;
-                const worst = nums.length > 1 ? Math.min(...nums) : null;
-                return (
-                  <tr key={col.key} className="hover:bg-zinc-900/60">
-                    <td className="sticky left-0 z-10 bg-zinc-950 px-4 py-2 text-xs text-zinc-400">
-                      {col.label}
-                      <span className="ml-1.5 text-[9px] uppercase text-zinc-600">{GROUP_LABEL[col.group]}</span>
+            <tbody>
+              {sections.map(({ group, cols }) => (
+                <Fragment key={group}>
+                  <tr>
+                    <td colSpan={rows.length + 1} className="sticky left-0 bg-zinc-900 px-4 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                      {GROUP_LABEL[group]}
                     </td>
-                    {values.map((v, i) => {
-                      const tone =
-                        v === null ? "text-zinc-600" : best !== null && v === best && best !== worst ? "text-emerald-300 font-semibold" : worst !== null && v === worst && best !== worst ? "text-rose-300" : "text-zinc-200";
-                      return (
-                        <td key={rows[i].member.id} className={`px-3 py-2 tabular-nums ${tone}`}>
-                          {fmtStat(col, v)}
-                        </td>
-                      );
-                    })}
                   </tr>
-                );
-              })}
+                  {cols.map(({ col, values, max, min, allSame }) => {
+                    const baseValue = baseline ? getStatValue(baseline.entry, col.key) : null;
+                    return (
+                      <tr key={col.key} className="border-b border-zinc-800/70 hover:bg-zinc-800/30">
+                        <td className={`sticky left-0 z-10 bg-zinc-900 px-4 py-2 text-xs ${allSame ? "text-zinc-600" : "text-zinc-400"}`}>{col.label}</td>
+                        {values.map((v, i) => {
+                          const isBest = !allSame && max !== null && v === max;
+                          const isWorst = !allSame && min !== null && v === min;
+                          const tone = v === null ? "text-zinc-600" : allSame ? "text-zinc-500" : isBest ? "text-emerald-300" : isWorst ? "text-rose-300" : "text-zinc-200";
+                          const barTone = isBest ? "bg-emerald-400" : isWorst ? "bg-rose-400" : "bg-zinc-500";
+                          const isBaseCol = rows[i].member.id === baseline?.member.id;
+                          const delta = v !== null && baseValue !== null && !isBaseCol ? v - baseValue : null;
+                          const width = v !== null && max ? Math.max(4, (v / max) * 100) : 0;
+                          return (
+                            <td key={rows[i].member.id} className={`relative px-3 py-2 text-right tabular-nums ${showBars ? "pb-4" : ""}`}>
+                              <span className={`font-medium ${tone}`}>{fmtStat(col, v)}</span>
+                              {showDelta && (
+                                <span className={`block text-[10px] ${delta === null ? "text-zinc-600" : delta > 0 ? "text-emerald-300/80" : delta < 0 ? "text-rose-300/80" : "text-zinc-500"}`}>
+                                  {isBaseCol ? "—" : delta === null ? "" : fmtDelta(col, delta)}
+                                </span>
+                              )}
+                              {showBars && v !== null && (
+                                <span className="absolute bottom-1.5 left-3 right-3 h-[3px] overflow-hidden rounded-full bg-zinc-800">
+                                  <span className={`block h-full rounded-full ${barTone}`} style={{ width: `${width}%` }} />
+                                </span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
+              {sections.length === 0 && (
+                <tr>
+                  <td colSpan={rows.length + 1} className="px-4 py-8 text-center text-xs text-zinc-500">
+                    Every visible stat is identical across these members.
+                  </td>
+                </tr>
+              )}
               <tr>
-                <td className="sticky left-0 z-10 bg-zinc-950 px-4 py-2 text-xs text-zinc-400">Last updated</td>
+                <td className="sticky left-0 z-10 bg-zinc-900 px-4 py-2 text-xs text-zinc-400">Last updated</td>
                 {rows.map(({ member, entry }) => (
-                  <td key={member.id} className={`px-3 py-2 text-xs ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
+                  <td key={member.id} className={`px-3 py-2 text-right text-xs ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
                     {entry ? pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
                   </td>
                 ))}
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-800 px-4 py-2.5 text-[11px] text-zinc-500 sm:px-5">
+          <span>
+            {rows.length} of {MAX_COMPARE} members · {statCols.length} stats
+          </span>
+          {winnerRow && topWinner && (
+            <span className="ml-auto text-zinc-300">
+              Most &quot;best&quot; stats: <span className="font-semibold text-emerald-300">{memberDisplayName(winnerRow.member)}</span> ({topWinner[1]}/{statCols.length})
+            </span>
+          )}
         </div>
       </div>
     </div>
