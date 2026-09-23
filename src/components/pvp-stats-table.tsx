@@ -68,7 +68,12 @@ const FIXED_COLUMNS: ColumnDef[] = [
  * admin's group title so the Tank/DPS presets pick them up too. */
 function customToColumn(f: PvpCustomFieldDef): ColumnDef {
   const t = f.groupTitle.toLowerCase();
-  const group: ColumnGroup = /def|reduc|tank|hp|guard/.test(t) ? "defense" : /atk|attack|dmg|damage|dps|offen/.test(t) ? "attack" : "custom";
+  // English or Thai group titles both route into the Tank/DPS presets.
+  const group: ColumnGroup = /def|reduc|tank|hp|guard|ป้องกัน|ลดดาเมจ|ถึก/.test(t)
+    ? "defense"
+    : /atk|attack|dmg|damage|dps|offen|โจมตี|ดาเมจ|ตี/.test(t)
+      ? "attack"
+      : "custom";
   return { key: `custom:${f.key}`, label: f.label, group, numeric: true, isPercent: f.isPercent };
 }
 
@@ -709,7 +714,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                   return (
                     <tr key={member.id} className={`group transition ${checked ? "bg-amber-500/5" : "hover:bg-zinc-800/40"}`}>
                       {/* Sticky member cell: position: sticky; left: 0; z-index: 10 (Tailwind sticky/left-0/z-10). */}
-                      <td className={`sticky left-0 z-10 border-r border-zinc-800 bg-zinc-900 px-3 py-1.5 group-hover:bg-zinc-800/95 ${checked ? "bg-[#1f1a10]" : ""}`}>
+                      <td className={`sticky left-0 z-10 border-r border-zinc-800 px-3 py-1.5 ${checked ? "bg-[#1f1a10]" : "bg-zinc-900 group-hover:bg-zinc-800/95"}`}>
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -801,7 +806,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
             customFieldDefs={activeFieldDefs}
             header={
               <div className="flex items-center justify-between gap-3">
-                <label className="flex min-w-0 items-center gap-2.5">
+                <div className="flex min-w-0 items-center gap-2.5">
                   <input
                     type="checkbox"
                     checked={compareIds.includes(member.id)}
@@ -813,7 +818,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                     <MemberAvatar src={member.discordAvatar} alt={member.discordUsername} width={32} height={32} className="h-8 w-8 shrink-0 rounded-full ring-1 ring-zinc-700" />
                     <span className="truncate font-medium text-zinc-100">{memberDisplayName(member)}</span>
                   </Link>
-                </label>
+                </div>
                 <ClassBadge className={member.characterClass} />
                 <AltClassIcons altClasses={member.altClasses} />
               </div>
@@ -849,7 +854,8 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
       {compareOpen && compareRows.length > 0 && (
         <CompareDrawer
           rows={compareRows}
-          columns={visibleColumns.length ? visibleColumns : columns}
+          // Compare what's on screen; if every stat column is hidden, fall back to all of them.
+          columns={visibleColumns.some((c) => c.numeric) ? visibleColumns : columns}
           onClose={() => setCompareOpen(false)}
           onRemove={(id) => {
             toggleCompare(id);
