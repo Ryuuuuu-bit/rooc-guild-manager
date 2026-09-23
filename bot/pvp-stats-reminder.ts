@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../src/db";
 import { members, pvpStatEntries } from "../src/db/schema";
 import { sendDirectMessage } from "../src/lib/discord";
+import { pvpEntryLastUpdated } from "../src/lib/pvp-stat-fields";
 
 const STALE_AFTER_MS = 21 * 24 * 60 * 60 * 1000; // 3 weeks
 
@@ -19,8 +20,9 @@ function appBaseUrl(): string {
 
 /**
  * DMs every ACTIVE, non-benched member whose PVP-stat submission is 3+
- * weeks stale — "stale" measured from their most recent submission's
- * createdAt, or from joinedDiscordAt (falling back to the member row's own
+ * weeks stale — "stale" measured from the last time any of their
+ * submissions was touched (filed, or corrected by an admin — see
+ * pvpEntryLastUpdated), or from joinedDiscordAt (falling back to the member row's own
  * createdAt) if they've never submitted at all, so a member who's simply
  * never filled the form in doesn't slip through unreminded.
  *
@@ -47,15 +49,18 @@ export async function sendPvpStatsReminders(): Promise<{ reminded: number }> {
 
   const memberIds = activeMembers.map((m) => m.id);
   const entries = await db
-    .select({ memberId: pvpStatEntries.memberId, createdAt: pvpStatEntries.createdAt })
+    .select({ memberId: pvpStatEntries.memberId, createdAt: pvpStatEntries.createdAt, updatedAt: pvpStatEntries.updatedAt })
     .from(pvpStatEntries)
     .where(inArray(pvpStatEntries.memberId, memberIds))
     .orderBy(desc(pvpStatEntries.createdAt));
 
-  // First entry seen per member wins — entries is already newest-first.
+  // Latest touch per member — an admin correcting an OLDER row counts too,
+  // so take the max over every entry rather than just the newest filing.
   const latestByMember = new Map<string, Date>();
   for (const e of entries) {
-    if (!latestByMember.has(e.memberId)) latestByMember.set(e.memberId, e.createdAt);
+    const touched = pvpEntryLastUpdated(e);
+    const prev = latestByMember.get(e.memberId);
+    if (!prev || touched > prev) latestByMember.set(e.memberId, touched);
   }
 
   let reminded = 0;

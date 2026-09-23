@@ -1,3 +1,16 @@
+/**
+ * When a submission was last touched: an admin correction (updatedAt, see
+ * adminEditPvpStatEntry) counts as an update — the guild treats "admin
+ * typed in the numbers I sent on Discord" the same as the member filing
+ * them — otherwise the original filing. Drives "Last Updated", the stale
+ * marker, and the bot's stale-stats reminder alike.
+ */
+export function pvpEntryLastUpdated(entry: { createdAt: Date | string; updatedAt?: Date | string | null }): Date {
+  const created = new Date(entry.createdAt);
+  const updated = entry.updatedAt ? new Date(entry.updatedAt) : null;
+  return updated && updated > created ? updated : created;
+}
+
 // Client-safe (no "@/db" import — see the Client Component gotcha noted in
 // schema.ts/pvp-stats.ts) shared field list + formatters, used by the entry
 // form, the desktop table, and the mobile card layout so all three read the

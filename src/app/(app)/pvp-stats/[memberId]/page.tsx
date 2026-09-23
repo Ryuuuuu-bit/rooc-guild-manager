@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { members } from "@/db/schema";
 import { requireUser } from "@/lib/authz";
 import { getPvpStatHistory, getPvpStatFieldDefs } from "@/lib/pvp-stats";
-import { fmtInt, fmtPct } from "@/lib/pvp-stat-fields";
+import { fmtInt, fmtPct, pvpEntryLastUpdated } from "@/lib/pvp-stat-fields";
 import { memberDisplayName } from "@/lib/ui";
 import { AltClassBadges, ClassBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
@@ -94,8 +94,13 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                     i === 0 ? "bg-zinc-900" : "bg-zinc-900 group-hover:bg-zinc-800/90"
                   }`}
                 >
-                  {new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
+                  {pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
                   {i === 0 && <span className="ml-2 text-xs text-amber-400">Latest</span>}
+                  {entry.editedByUsername && (
+                    <span className="ml-2 text-[10px] text-zinc-500" title={`Filed ${new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}`}>
+                      edited by {entry.editedByUsername}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-zinc-300">{entry.role ?? "—"}</td>
                 <td className="px-4 py-3">
@@ -154,8 +159,9 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
             header={
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-100">
-                  {new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
+                  {pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })}
                   {i === 0 && <span className="ml-2 text-xs text-amber-400">Latest</span>}
+                  {entry.editedByUsername && <span className="ml-2 text-[10px] font-normal text-zinc-500">edited by {entry.editedByUsername}</span>}
                 </p>
               </div>
             }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Member, PvpStatEntry } from "@/db/schema";
 import { memberDisplayName } from "@/lib/ui";
-import { fmtInt, fmtPct, type PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
+import { fmtInt, fmtPct, pvpEntryLastUpdated, type PvpCustomFieldDef } from "@/lib/pvp-stat-fields";
 import { useJobClasses } from "@/components/job-classes-provider";
 import { AltClassIcons, ClassBadge } from "@/components/badges";
 import { ClassIcon } from "@/components/class-icon";
@@ -120,7 +120,7 @@ function daysSince(date: Date | string | number): number {
 }
 
 function isStale(entry: PvpStatEntry | null): boolean {
-  return !entry || daysSince(entry.createdAt) > STALE_DAYS;
+  return !entry || daysSince(pvpEntryLastUpdated(entry)) > STALE_DAYS;
 }
 
 function StaleIcon() {
@@ -428,7 +428,7 @@ function CompareDrawer({ rows, columns, onClose, onRemove }: { rows: PvpStatsRow
                 <td className="sticky left-0 z-10 bg-zinc-950 px-4 py-2 text-xs text-zinc-400">Last updated</td>
                 {rows.map(({ member, entry }) => (
                   <td key={member.id} className={`px-3 py-2 text-xs ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
-                    {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
+                    {entry ? pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
                   </td>
                 ))}
               </tr>
@@ -780,7 +780,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                             return (
                               <td key={col.key} className={`${cell} whitespace-nowrap text-xs ${isStale(entry) ? "text-rose-400" : "text-zinc-500"}`}>
                                 {isStale(entry) && <StaleIcon />}
-                                {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
+                                {entry ? pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
                               </td>
                             );
                           default:
@@ -845,7 +845,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-xs text-zinc-500">
                 <span className={isStale(entry) ? "text-rose-400" : "text-zinc-500"}>
                   {isStale(entry) && <StaleIcon />}
-                  {entry ? new Date(entry.createdAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
+                  {entry ? pvpEntryLastUpdated(entry).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" }) : "Not submitted"}
                 </span>
                 <Link href={`/pvp-stats/${member.id}`} className="text-amber-400 transition hover:text-amber-300">
                   View full history →
