@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Scratch copies of files handed over by Claude — not part of the app.
+    "Claude outputs/**",
   ]),
 ]);
 

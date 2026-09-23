@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar mockup</title>
+<style>
+  :root { --bg:#09090b; --panel:#18181b; --panel2:#1f1f23; --line:#27272a; --muted:#a1a1aa; --dim:#71717a; --gl:#38bdf8; --woe:#818cf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#e4e4e7; font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:1240px; margin:0 auto; padding:24px 20px 40px; display:flex; flex-direction:column; gap:14px; }
+  .note { background:rgba(56,189,248,.08); border:1px dashed rgba(56,189,248,.35); color:#bae6fd; border-radius:12px; padding:10px 14px; font-size:12px; }
+  h1 { font-size:24px; margin:0; font-weight:600; } .sub { color:var(--muted); margin-top:4px; }
+  .top { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:12px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px 16px; }
+  .card .l { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .next { background:linear-gradient(135deg,rgba(56,189,248,.14),transparent 60%),var(--panel); }
+  .next .row { display:flex; align-items:baseline; gap:10px; margin-top:6px; } .next .big { font-size:22px; font-weight:700; } .next .cd { color:#7dd3fc; font-variant-numeric:tabular-nums; }
+  .next .meta { color:var(--dim); font-size:12px; margin-top:4px; }
+  .v { font-size:24px; font-weight:700; margin-top:6px; } .h { color:var(--dim); font-size:11px; }
+  .absent { display:flex; flex-direction:column; gap:5px; margin-top:8px; }
+  .absent div { display:flex; align-items:center; gap:7px; font-size:12px; } .absent .q { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--muted); } .absent .q.over { color:#fb7185; font-weight:600; }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .nav { display:flex; align-items:center; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:4px 6px; }
+  .nav button { background:none; border:0; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 8px; border-radius:8px; } .nav button:hover { background:#27272a; color:#fff; }
+  .nav b { min-width:130px; text-align:center; }
+  .seg { display:inline-flex; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:2px; }
+  .seg button { background:none; border:0; color:var(--dim); padding:6px 11px; font:inherit; font-size:12px; font-weight:500; border-radius:9px; cursor:pointer; } .seg button.on { background:#27272a; color:#f4f4f5; }
+  .search { position:relative; } .search input { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:7px 10px 7px 30px; color:#e4e4e7; font:inherit; width:220px; }
+  .search svg { position:absolute; left:9px; top:50%; transform:translateY(-50%); width:14px; color:var(--dim); }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--dim); margin-left:auto; } .legend i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  .main { display:grid; grid-template-columns:1fr 340px; gap:14px; align-items:start; }
+  .grid { border:1px solid var(--line); border-radius:16px; overflow:hidden; background:var(--panel); }
+  .wd { display:grid; grid-template-columns:repeat(7,1fr); background:#141417; } .wd div { padding:8px; text-align:center; font-size:11px; color:var(--dim); letter-spacing:.06em; }
+  .wd div.evd { color:#d4d4d8; }
+  .days { display:grid; grid-template-columns:repeat(7,1fr); }
+  .d { min-height:104px; border-top:1px solid var(--line); border-left:1px solid var(--line); padding:6px; position:relative; cursor:default; }
+  .d:nth-child(7n+1) { border-left:0; } .d.blank { background:#111113; } .d.past { background:#16161a; } .d.past .n { color:#52525b; }
+  .d.today { box-shadow:inset 0 0 0 2px #f59e0b; }
+  .d .n { font-size:12px; color:#d4d4d8; display:flex; align-items:center; gap:6px; } .d.today .n b { background:#f59e0b; color:#111; border-radius:999px; padding:0 6px; }
+  .d.quiet .n { color:#3f3f46; }
+  .ev { margin-top:5px; border-radius:10px; padding:5px 6px; cursor:pointer; border:1px solid transparent; transition:.12s; }
+  .ev:hover { border-color:#52525b; } .ev.sel { border-color:#f59e0b; box-shadow:0 0 0 1px rgba(245,158,11,.4); }
+  .ev.gl { background:rgba(56,189,248,.08); } .ev.woe { background:rgba(129,140,248,.1); }
+  .ev .t { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; } .ev.gl .t { color:#7dd3fc; } .ev.woe .t { color:#a5b4fc; }
+  .ev .t .c { margin-left:auto; font-variant-numeric:tabular-nums; font-weight:700; }
+  .c.lo { color:#a1a1aa; } .c.mid { color:#fbbf24; } .c.hi { color:#fb7185; } .c.zero { color:#34d399; }
+  .ev .meter { height:4px; background:#27272a; border-radius:3px; margin-top:4px; overflow:hidden; } .ev .meter i { display:block; height:100%; border-radius:3px; }
+  .ev .avs { display:flex; margin-top:5px; } .ev .avs .av { width:18px; height:18px; margin-right:-5px; box-shadow:0 0 0 2px #18181b; font-size:8px; } .ev .avs .more { font-size:10px; color:var(--dim); margin-left:9px; align-self:center; }
+  .ev .up { font-size:9px; color:#fbbf24; letter-spacing:.04em; margin-top:3px; text-transform:uppercase; }
+  .ev.void { background:repeating-linear-gradient(135deg,rgba(63,63,70,.25) 0 6px,transparent 6px 12px); } .ev.void .t { color:#71717a; } .ev.void .vv { font-size:10px; color:#71717a; margin-top:3px; }
+  .ev.hit { box-shadow:0 0 0 2px #f472b6; }
+  .av { width:22px; height:22px; border-radius:50%; background:#3f3f46; object-fit:cover; display:inline-flex; align-items:center; justify-content:center; font-size:10px; color:#e4e4e7; flex:none; }
+  .panel { position:sticky; top:14px; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px; max-height:calc(100vh - 28px); overflow:auto; }
+  .panel h3 { margin:0; font-size:15px; } .panel .when { color:var(--dim); font-size:12px; }
+  .pill { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:999px; font-weight:500; }
+  .p-gl { background:rgba(56,189,248,.15); color:#7dd3fc; } .p-woe { background:rgba(129,140,248,.15); color:#a5b4fc; } .p-up { background:rgba(245,158,11,.15); color:#fcd34d; } .p-done { background:#27272a; color:#a1a1aa; } .p-void { background:#27272a; color:#71717a; }
+  .stat3 { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; } .stat3 div { background:#141417; border-radius:10px; padding:8px; text-align:center; } .stat3 b { display:block; font-size:18px; } .stat3 span { font-size:10px; color:var(--dim); }
+  .sec { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+  .impact { display:flex; flex-direction:column; gap:5px; } .impact .r { display:grid; grid-template-columns:110px 1fr 38px; gap:8px; align-items:center; font-size:12px; }
+  .impact .bb { height:6px; background:#27272a; border-radius:3px; overflow:hidden; } .impact .bb i { display:block; height:100%; background:#fb7185; }
+  .impact .x { text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); }
+  .who { display:flex; flex-direction:column; gap:4px; } .who .m { display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:8px; } .who .m:hover { background:#1f1f23; }
+  .who .m .nm { font-weight:500; } .who .m .src { margin-left:auto; font-size:10px; color:var(--dim); } .who .m .q { font-size:10px; color:#fb7185; }
+  .cls { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:500; padding:1px 7px; border-radius:999px; white-space:nowrap; }
+  .empty { color:var(--dim); font-size:12px; text-align:center; padding:12px; }
+  .act { display:flex; gap:6px; } .act button { flex:1; background:#27272a; border:0; color:#e4e4e7; border-radius:8px; padding:7px; font:inherit; font-size:12px; cursor:pointer; } .act button.pri { background:#d97706; color:#fff; }
+  /* rounds list view */
+  .list { border:1px solid var(--line); border-radius:16px; background:var(--panel); overflow:hidden; }
+  .list .row { display:grid; grid-template-columns:120px 90px 1fr 70px; gap:12px; align-items:center; padding:10px 14px; border-top:1px solid var(--line); cursor:pointer; } .list .row:first-child { border-top:0; } .list .row:hover { background:#1f1f23; } .list .row.sel { background:rgba(245,158,11,.06); }
+  .list .date b { display:block; } .list .date span { font-size:11px; color:var(--dim); }
+  .list .avs { display:flex; align-items:center; } .list .avs .av { margin-right:-6px; box-shadow:0 0 0 2px #18181b; } .list .avs .more { margin-left:12px; color:var(--dim); font-size:11px; }
+  .list .cnt { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  @media (max-width:980px){ .main { grid-template-columns:1fr; } .panel { position:static; max-height:none; } .top { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note"><b>Mockup</b> — ชื่อ/อาชีพ/รูปเป็นสมาชิกจริงจาก snapshot แต่ <b>ใครลาวันไหนเป็นข้อมูลสมมติ</b> (ให้จำนวนต่อรอบตรงกับหน้าจริงเดือน ก.ย.) · ลอง: คลิกรอบกิจกรรม, พิมพ์ชื่อในช่องค้นหา, สลับ Month / Rounds</div>
+  <div><h1>Calendar</h1><div class="sub">Who's on leave for each GL/WOE round — same data as the party board and /checkin.</div></div>
+
+  <div class="top">
+    <div class="card next" id="next"></div>
+    <div class="card" id="month"></div>
+    <div class="card"><div class="l">Most leave this month</div><div class="absent" id="absent"></div></div>
+  </div>
+
+  <div class="bar">
+    <div class="nav"><button>←</button><b>September 2026</b><button>→</button></div>
+    <div class="seg" id="seg"><button class="on" data-v="month">Month</button><button data-v="rounds">Rounds</button></div>
+    <div class="search"><svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 3.5a5.5 5.5 0 1 0 3.61 9.65l3.62 3.62a.75.75 0 1 0 1.06-1.06l-3.62-3.62A5.5 5.5 0 0 0 9 3.5ZM5 9a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z" clip-rule="evenodd"/></svg><input id="q" placeholder="Find a member…"></div>
+    <div class="legend"><span><i style="background:var(--gl)"></i>GL (Tyr Cup)</span><span><i style="background:var(--woe)"></i>WOE</span><span><i style="background:#fbbf24"></i>upcoming — cancellable</span><span><i style="background:repeating-linear-gradient(135deg,#52525b 0 3px,transparent 3px 6px)"></i>พักการแข่ง (voided)</span></div>
+  </div>
+
+  <div class="main">
+    <div id="view"></div>
+    <aside class="panel" id="panel"></aside>
+  </div>
+</div>
+<script>
+const DATA = {"classes": [{"name": "Bio", "emoji": "🧪", "color_key": "orange", "key_stat": null, "sort_order": 0}, {"name": "B/D", "emoji": "🎵", "color_key": "yellow", "key_stat": null, "sort_order": 1}, {"name": "DoramSTR", "emoji": "🐾", "color_key": "violet", "key_stat": null, "sort_order": 2}, {"name": "DoramINT", "emoji": "🪄", "color_key": "purple", "key_stat": null, "sort_order": 3}, {"name": "Knight", "emoji": "⚔️", "color_key": "rose", "key_stat": null, "sort_order": 4}, {"name": "Priest", "emoji": "✝️", "color_key": "emerald", "key_stat": null, "sort_order": 5}, {"name": "WizDPS", "emoji": "🔥", "color_key": "sky", "key_stat": null, "sort_order": 6}, {"name": "WizCC", "emoji": "❄️", "color_key": "sky", "key_stat": null, "sort_order": 7}, {"name": "Rouge", "emoji": "🥷", "color_key": "purple", "key_stat": null, "sort_order": 8}, {"name": "Paladin", "emoji": "🛡️", "color_key": "red", "key_stat": null, "sort_order": 9}, {"name": "Assassin", "emoji": "🔪", "color_key": "purple", "key_stat": null, "sort_order": 10}, {"name": "Sage", "emoji": "📖", "color_key": "sky", "key_stat": null, "sort_order": 11}, {"name": "Champion", "emoji": "👊", "color_key": "emerald", "key_stat": null, "sort_order": 12}, {"name": "Sniper", "emoji": "🏹", "color_key": "yellow", "key_stat": null, "sort_order": 13}, {"name": "Blacksmith", "emoji": "🪓", "color_key": "orange", "key_stat": null, "sort_order": 14}, {"name": "Gunslinger", "emoji": "🔫", "color_key": "stone", "key_stat": null, "sort_order": 15}], "rows": [{"id": "f75wtfctgrn7siau8ew85atu", "name": "Veldanava", "avatar": "https://cdn.discordapp.com/avatars/524941955960930330/bfd2a20520c3334b543163f1395ff83f.png?size=128", "cls": "WizDPS"}, {"id": "wlwzlu7ldzca86ok1mafrh1p", "name": "Niceonly", "avatar": "https://cdn.discordapp.com/avatars/274178563186491392/0ee9b4c5cf0b5a099cc02d7b54e3e3f8.png?size=128", "cls": "DoramSTR"}, {"id": "zi82cmdolwa2kdaf38gdfb6p", "name": "โกฮังง", "avatar": "https://cdn.discordapp.com/avatars/560463614310350851/666cddd6905f52a6024842f3dbd217a7.png?size=128", "cls": "WizDPS"}, {"id": "nawrxjfbgw7e1pcmsk80hthl", "name": "Innit", "avatar": "https://cdn.discordapp.com/avatars/872788637723525150/f08382bf09d6ab501d97a57652536648.png?size=128", "cls": "Priest"}, {"id": "bs9cpwog65e0d6fkxj1jxgv1", "name": "tOpMoSt | ท๊อป", "avatar": "https://cdn.discordapp.com/avatars/718840573674389524/fd296cd5930268312b6d12236c455d4d.png?size=128", "cls": "DoramSTR"}, {"id": "lsc120zkbr8esvnerq2unoi1", "name": ".silverbacks", "avatar": "https://cdn.discordapp.com/avatars/1096671635014172693/33568d85adea12355f18c69809e3b92e.png?size=128", "cls": "WizDPS"}, {"id": "kgnevoenfk5zokvv6fclvyhc", "name": "KOKI", "avatar": "https://cdn.discordapp.com/embed/avatars/4.png", "cls": "DoramSTR"}, {"id": "tzxbtrq9sku8g4g0t68t4zok", "name": "ชาวบ้าน2", "avatar": "https://cdn.discordapp.com/avatars/381810867416858625/c2abd0d1842565680cba8b86edab6ccc.png?size=128", "cls": "Bio"}, {"id": "ujitkhmpcjdf2qyuocr7qjns", "name": "Corgii(CKHusK)", "avatar": "https://cdn.discordapp.com/avatars/902128071405076541/82edbce335b97abe62bac43f8bdca15e.png?size=128", "cls": "DoramSTR"}, {"id": "vgi56en1ggqi3kir2hd9bk05", "name": "Visionary", "avatar": "https://cdn.discordapp.com/avatars/599581955943694336/ce8f44c20af1e4f9f63a668a121cf39d.png?size=128", "cls": "Sage"}, {"id": "fpa2navq7txe6ecby9x6eoam", "name": "ＳＣＯＲＰＩＯ", "avatar": "https://cdn.discordapp.com/avatars/802149653957050388/d711f44ec73aeecdbffe8744b3f283ef.png?size=128", "cls": "DoramINT"}, {"id": "p8jt66wznksef6vs4jvylrk3", "name": "Ztabux", "avatar": "https://cdn.discordapp.com/embed/avatars/5.png", "cls": "WizDPS"}, {"id": "wxg2a8tmg6oexgl039freyrs", "name": "อัศวินหอยทาก/ปาล์ม", "avatar": "https://cdn.discordapp.com/avatars/337850808806932480/740a7fbb79203ae9a25bbb3cdd9a2b0e.png?size=128", "cls": "DoramSTR"}, {"id": "fuefj564dgg5rqpo9f6kn5w9", "name": "WTSxSoPiak", "avatar": "https://cdn.discordapp.com/avatars/424107272529248267/05222fde1fc4dbc915794f3156d348ed.png?size=128", "cls": "Sniper"}, {"id": "sks1walbz6hanfk73b14nqqn", "name": "MyName", "avatar": "https://cdn.discordapp.com/avatars/376740780724715530/e5531d86f53df6b804c336534d3962ef.png?size=128", "cls": "DoramSTR"}, {"id": "dor4nqx5cn90ig6qi8gq7w5t", "name": "Yorkiie", "avatar": "https://cdn.discordapp.com/guilds/1452115666151673890/users/542728524470026241/avatars/6bd05f6e395c542fcfee3a0c06c488a0.png?size=128", "cls": "DoramINT"}, {"id": "nfi5pxfwarob5s8pyd3h8826", "name": "WTSxอินทรี", "avatar": "https://cdn.discordapp.com/avatars/357447869260759040/dedc92d28df26af0c302612fa1ed092e.png?size=128", "cls": "WizDPS"}, {"id": "rfw4cx5regivr0fd1yegofsg", "name": "REGEN || Priest || owen", "avatar": "https://cdn.discordapp.com/avatars/276011224842502146/a8b6e8ee4cac05df294bed161c605f06.png?size=128", "cls": "Priest"}, {"id": "xyq2qts4y2nll3k1cv6y00ax", "name": "Cartier", "avatar": "https://cdn.discordapp.com/avatars/431427847635337216/f1cdf3757931e2f768f60f76e994af5f.png?size=128", "cls": "Bio"}, {"id": "wsboqdaadogr7zn7dxlnnptp", "name": "Lง0ะงะ", "avatar": "https://cdn.discordapp.com/avatars/545620965942624274/ebf660c8c2f97064c5392a1cb11406c5.png?size=128", "cls": "B/D"}, {"id": "qb0np2di9o9fwixvkqmo84g9", "name": "OXMz", "avatar": "https://cdn.discordapp.com/avatars/501708737787199488/16e8371eaef4dc4b8baca65bef5938a6.png?size=128", "cls": "Bio"}, {"id": "wdedyj89jp6yqlb42r5jnalg", "name": "Violina (ญาดา)", "avatar": "https://cdn.discordapp.com/avatars/431436400496345090/11ce82c67fae33287bfe54c581a5392b.png?size=128", "cls": "B/D"}, {"id": "ludv7m1qxehudq1x5y18vir6", "name": "เมโลดี้  🎶น้องเมย์", "avatar": "https://cdn.discordapp.com/avatars/717714063114764348/91d5773676d2b3c72af8956aa24bda2c.png?size=128", "cls": "B/D"}, {"id": "p3nzccvjkvpjid6kr3qnv8wv", "name": "Plengrak", "avatar": "https://cdn.discordapp.com/avatars/365877486954741761/b08f762f35319780ad076fc828e057d8.png?size=128", "cls": "Bio"}, {"id": "ogb29jkja94lt3tqcan5u83g", "name": "JaiLกLร456 | หมี", "avatar": "https://cdn.discordapp.com/avatars/972418298903953458/831e3ad67c3b9c43c78884092322ffec.png?size=128", "cls": "Bio"}, {"id": "jez2450bjr8vn4q670l2tgav", "name": "รูห์เทอร์", "avatar": "https://cdn.discordapp.com/avatars/363734437827182603/f6d95999326eb4e346fc8bc26bd5be22.png?size=128", "cls": "Bio"}, {"id": "xhs9v52dfm4gcdkkyqhxjjaq", "name": "GanDo", "avatar": "https://cdn.discordapp.com/avatars/411141990533693452/da0717cdbd92bb82fc95c48d08ece028.png?size=128", "cls": "DoramSTR"}, {"id": "gqn45xaovc11o26yd4k5hjs6", "name": "T0l2", "avatar": "https://cdn.discordapp.com/avatars/404942606678622211/1a7318db1227c59f4faf49fff429e5eb.png?size=128", "cls": "Bio"}, {"id": "yrenrn8g3hig3gl261q7zbmj", "name": "Godusop", "avatar": "https://cdn.discordapp.com/avatars/375290162864717825/14eb24328bea9a614812119d6bf40b77.png?size=128", "cls": "WizDPS"}, {"id": "yir56g87dbkrt01f99d8nb84", "name": "AryaEiEi", "avatar": "https://cdn.discordapp.com/guilds/1452115666151673890/users/1288523431121256579/avatars/a_1843cf73b999d8a2099f444ee1c412ed.gif?size=128", "cls": "B/D"}, {"id": "uyej09cgaodh8rwq7kh75e60", "name": "NutCrisp", "avatar": "https://cdn.discordapp.com/avatars/431429256615034882/087ea1c532355664a8962f60c97fb030.png?size=128", "cls": "Priest"}, {"id": "hw3iygt4dj3uq6f09ymnvsm1", "name": "ปะออน / ปอนด์", "avatar": "https://cdn.discordapp.com/avatars/342318490755006465/d94d00421994da373bdf75a73ee1c4bc.png?size=128", "cls": "Sage"}, {"id": "i4lmf61x5e0s4wwjxm18iv9j", "name": "𖹭 อัมพล 𖹭  / พลอย", "avatar": "https://cdn.discordapp.com/avatars/328898807310057482/3e33dda4ed45fe47503b09bdc1c6baf0.png?size=128", "cls": "B/D"}, {"id": "fjtye6a6wdrj373vd80bflzv", "name": "WTSxเฟอร์กี้93", "avatar": "https://cdn.discordapp.com/avatars/834441217366032474/44872947925f07a5561f0429e7c9edf2.png?size=128", "cls": "B/D"}, {"id": "lf2be0xxepdaeymb3ld6cbyx", "name": "BABYMOON", "avatar": "https://cdn.discordapp.com/avatars/897599171220103238/4874de4822dfef06d35863c395e79f7f.png?size=128", "cls": "WizDPS"}, {"id": "o4tofolvst9o1s88x4o2sfpx", "name": "PIMMA 👽[ดั้ม]", "avatar": "https://cdn.discordapp.com/avatars/706732771447537665/af9272c1a868fb24f3c06388cacd42ed.png?size=128", "cls": "Priest"}, {"id": "h1hui02j0uvfxwtmzuhd29o5", "name": "GodHands666 [Guide]", "avatar": "https://cdn.discordapp.com/avatars/638414541725892618/0e5eabe71b81705734e6cab982aefec1.png?size=128", "cls": "B/D"}, {"id": "b7knb1lcl3ae6707bjmn8bw5", "name": "WTSxหมดตูดว่ะ", "avatar": "https://cdn.discordapp.com/embed/avatars/4.png", "cls": "Priest"}, {"id": "fu2x4zu1vb1y09uqg0xr0cj4", "name": "TinnTangCortes", "avatar": "https://cdn.discordapp.com/avatars/855383043858235424/9705a39bc32f0d3277b3350cb5f36406.png?size=128", "cls": "Sage"}, {"id": "o2m751cynjshfdf1ut5gtg2a", "name": "Swatch", "avatar": "https://cdn.discordapp.com/avatars/1489959455473926286/1628fc11e7961d85181295493426b775.png?size=128", "cls": "B/D"}, {"id": "p7d7qgsk35t12bxppgoxyz88", "name": "BillaZa", "avatar": "https://cdn.discordapp.com/avatars/240869167056551937/e999a1af0de864b49193048a479429ac.png?size=128", "cls": "Bio"}, {"id": "sheoeq8419553ycmqh9msgby", "name": "HanGCroSS", "avatar": "https://cdn.discordapp.com/avatars/708930057237954620/22f7423b7d8cbbb57163eb82c2d2e407.png?size=128", "cls": "Priest"}, {"id": "h5u1xztipnqsh3em02cst4mn", "name": "ZenO 👑👑👑👑👑", "avatar": "https://cdn.discordapp.com/avatars/205008481068122112/bdf8b4a4d0a39d1715d57f68a96ab057.png?size=128", "cls": "B/D"}, {"id": "mrgzps8vnnrj2dii5xw5tkwf", "name": "WTSxจิ้งจอก (ดาวเหนือ)", "avatar": "https://cdn.discordapp.com/avatars/761238211736633404/0c444f5abc2629bdc24095759ce6554d.png?size=128", "cls": "Priest"}, {"id": "ka4ro72qhidcefh4c22zzbbv", "name": "Qu3zz", "avatar": "https://cdn.discordapp.com/avatars/516968583356612628/9dc78a31b86a8c8a1b5e57fbd5d193ca.png?size=128", "cls": "Priest"}, {"id": "vog2q5c0hg4xiu3uzwmfam9y", "name": "✿*´`♥𝓕𝓤𝓡𝓑𝓨♥´`*✿🐈", "avatar": "https://cdn.discordapp.com/avatars/1324420329329791116/4bed2456a4d9fefbab00ad9058c074e5.png?size=128", "cls": "B/D"}, {"id": "ocpwy4l6lvgx91gh7jak647a", "name": "HunTer", "avatar": "https://cdn.discordapp.com/avatars/1550440594604822551/fbac660bccccdf390ff50734e180bb35.png?size=128", "cls": "Priest"}, {"id": "lbis5srsdqpzhf7wcyrb1s6o", "name": "Kuma", "avatar": "https://cdn.discordapp.com/avatars/480569622559719464/630e6775ffffe45764e5bd0334457a66.png?size=128", "cls": "Priest"}, {"id": "ubh19u45fhoye27lmyv16efe", "name": "MÖÖPING", "avatar": "https://cdn.discordapp.com/avatars/761607111359856652/fa8e60d06d0b5e1602b21ced8731f4f4.png?size=128", "cls": "DoramINT"}, {"id": "uuq9nvd5mr9wbjwy9tfcwzwq", "name": "ArGentO", "avatar": "https://cdn.discordapp.com/avatars/340877905305403412/c410c25bcc765949bfdb1304ecf60410.png?size=128", "cls": "Priest"}, {"id": "rz3onlmpor438lpu1q5901jd", "name": "24August (คุณวอ)", "avatar": "https://cdn.discordapp.com/avatars/530101575914356758/a43eb9bf6e3fd72cbc7bebf9d4a260aa.png?size=128", "cls": "B/D"}, {"id": "wrvodm67kwnnyskgcphs9aoa", "name": "ชาวบ้าน01", "avatar": "https://cdn.discordapp.com/avatars/762579024257351691/d2eaaac062a8ca613eb175a079bcc76f.png?size=128", "cls": "B/D"}, {"id": "or76rrnsr45jxhkxmbkossbe", "name": "l3abigon", "avatar": "https://cdn.discordapp.com/avatars/296648833142620160/d7a11a583302184bdc4b4659fac0d8c8.png?size=128", "cls": "Bio"}, {"id": "rqdd07v15ayi6uyhw7rv28mr", "name": "Leenaa (ลีน่า)", "avatar": "https://cdn.discordapp.com/avatars/478872288654262280/4910cc0c0b3bedeae4e919cef3bbfee4.png?size=128", "cls": "Priest"}, {"id": "dfi5yek6e2e6r6ezxb6w0s3o", "name": "ScapeGoat", "avatar": "https://cdn.discordapp.com/avatars/467989789069803520/2c0d41e21bcfde6f3cc54a0362638fbc.png?size=128", "cls": "Bio"}, {"id": "van5du36ye5jz8aaq006qhdo", "name": "หมีจะดรอป", "avatar": "https://cdn.discordapp.com/avatars/1481518712715739186/1ad354e4394053280524e846d1a4065e.png?size=128", "cls": "B/D"}, {"id": "zi925hgdkgi8fox2rbeagt8f", "name": "Jaskier", "avatar": "https://cdn.discordapp.com/avatars/364094784983269398/57c9d82ef526eb457d807154055d1bb8.png?size=128", "cls": "B/D"}, {"id": "hx6oh4c4yusx5hq1bidp4tfn", "name": "DarkKy(N)", "avatar": "https://cdn.discordapp.com/avatars/1261578870902226976/f6d4d440ef0aa18eb6bce7a4ba8db873.png?size=128", "cls": "Priest"}, {"id": "bn2whvyyvujr8mu2psjiyctp", "name": "Bacony", "avatar": "https://cdn.discordapp.com/avatars/237593646650621952/f968a0548f671cf1eca2bdc7d36b04a5.png?size=128", "cls": "Priest"}, {"id": "nwopjrs3ibrqf1pwy9miyknn", "name": "DAMNTEE", "avatar": "https://cdn.discordapp.com/avatars/703249819384152125/c61d16610089fbd056d2763f0fb2a671.png?size=128", "cls": "WizDPS"}, {"id": "t95cywim9nlp7odeklarn5b3", "name": "Glock", "avatar": "https://cdn.discordapp.com/avatars/1117474110872768523/9026df287bdd4deed650c2daf3c55769.png?size=128", "cls": "WizDPS"}, {"id": "tjgta4hkuhpef1gjt7m35w0m", "name": "NatNM", "avatar": "https://cdn.discordapp.com/avatars/203734244361633794/600279b7c7b79cefd59dbe192f949601.png?size=128", "cls": "Gunslinger"}, {"id": "lnargsfum02htqzir86464ez", "name": "tOpWHATEVER", "avatar": "https://cdn.discordapp.com/avatars/853564888940150795/ce3926c613831268f6fb82bf979c616b.png?size=128", "cls": "DoramSTR"}, {"id": "b2o3bzbys2uua7rg3we2hev4", "name": "บาส 🏀 น้องบังติ้ว", "avatar": "https://cdn.discordapp.com/avatars/351012559358394392/94c9898834f6da512b97feca943c2f4b.png?size=128", "cls": "DoramSTR"}, {"id": "fjkrit9bj6b4m2kfonolrllz", "name": "เกมหมา", "avatar": "https://cdn.discordapp.com/embed/avatars/0.png", "cls": "WizDPS"}, {"id": "eo86qyqxm4z73n6sz5abvypv", "name": "WTSxCatMellow", "avatar": "https://cdn.discordapp.com/avatars/511499415836557322/a75140741a5eacfe0785c12a79a04977.png?size=128", "cls": "B/D"}, {"id": "hzf720foser4gh45jd6t9zsy", "name": "xuzy", "avatar": "https://cdn.discordapp.com/avatars/315758537345204247/78ba71d8c46de761c83f21dda9fedc6b.png?size=128", "cls": "Bio"}, {"id": "usc7q7rxt619w1hrnbcxnm72", "name": "Bitkitตัวปลอม", "avatar": "https://cdn.discordapp.com/avatars/312454313698131970/ac045804f83a3b3f231553c624dd010b.png?size=128", "cls": "DoramSTR"}, {"id": "zb59gumh59sdedgut0bkwflj", "name": "Voltage", "avatar": "https://cdn.discordapp.com/avatars/1360941475504062556/f7f2e9361e8a54ce6e72580ac7b967af.png?size=128", "cls": "Bio"}, {"id": "mqgxsx2ro8a86j4tr9exkek7", "name": "PreedE", "avatar": "https://cdn.discordapp.com/avatars/341924526419869698/7b3bee3f4acb59d6c5944ad40443b976.png?size=128", "cls": "DoramSTR"}, {"id": "m4agzv4k9bqtfbwzzqg894sq", "name": "KenZAki", "avatar": "https://cdn.discordapp.com/avatars/265371828330037261/39c1fbe11ab2a903714af9515908f06e.png?size=128", "cls": "Bio"}, {"id": "lm97yge4wmmm0abeqpu2wjys", "name": "Iron2ong", "avatar": "https://cdn.discordapp.com/avatars/342348933584125955/316730e9adcda437bcd9737b7182a6c6.png?size=128", "cls": "Priest"}, {"id": "e3mfcb58jnasfngbyr4vlhhb", "name": "CRESCENTKk", "avatar": "https://cdn.discordapp.com/avatars/787230110176641034/8acecc222dcf90e7ed027bbdb87c5e5a.png?size=128", "cls": "B/D"}, {"id": "duvde3b1ugr0myka265pgql1", "name": "fearrrrrrrrrrrrrrrrrrrrr // วา #", "avatar": "https://cdn.discordapp.com/avatars/541530626881486848/2204755c2cb6be0ca5ea5de81d77436f.png?size=128", "cls": "Priest"}, {"id": "j1tdsao8a5y8t485nxgaextq", "name": "โมจิเยิ้ม (เอิน )", "avatar": "https://cdn.discordapp.com/avatars/1356382600553435148/1d2c4f0bdd062b3ec8857fbf487b2749.png?size=128", "cls": "Priest"}, {"id": "f5ficuwf3t2pjr7py0dzkn9u", "name": "lalaloyyyyyyy", "avatar": "https://cdn.discordapp.com/avatars/698462989933608970/2f99f320f6ceb4f224e98ed1ba09de46.png?size=128", "cls": "Sage"}, {"id": "e31ptosu8ltxvc9xru06wptb", "name": "locco", "avatar": "https://cdn.discordapp.com/avatars/408819535525969931/1992b9adb875abe883ebd761156ae5d1.png?size=128", "cls": "Rouge"}, {"id": "m3w5a6fkbjsdblhllent5i86", "name": "MrLucky", "avatar": "https://cdn.discordapp.com/avatars/903988156053995520/a_e6ce1885889a5e32b43f513b81a96f14.gif?size=128", "cls": "Bio"}, {"id": "mqqis97spj0zdiaflefx0ehg", "name": "น้องต๊าสตัวตึง", "avatar": "https://cdn.discordapp.com/avatars/1143658080253526041/32bad10b5442f360a3af46979b023709.png?size=128", "cls": "WizDPS"}, {"id": "hhxgfcspn5iczbenhtuxub04", "name": "Hall财神", "avatar": "https://cdn.discordapp.com/embed/avatars/3.png", "cls": "DoramSTR"}]};
+const COLORS = { orange:["#fdba74","rgba(249,115,22,.15)"], yellow:["#fde68a","rgba(234,179,8,.15)"], violet:["#c4b5fd","rgba(139,92,246,.18)"], purple:["#d8b4fe","rgba(168,85,247,.16)"], rose:["#fda4af","rgba(244,63,94,.15)"], emerald:["#6ee7b7","rgba(16,185,129,.15)"], sky:["#7dd3fc","rgba(14,165,233,.15)"], red:["#fca5a5","rgba(239,68,68,.15)"], stone:["#d6d3d1","rgba(120,113,108,.2)"] };
+const CLS = Object.fromEntries(DATA.classes.map(c=>[c.name,c]));
+const M = DATA.rows; const ROSTER = M.length;
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const clsBadge = n => { if(!n) return ""; const c=CLS[n]; const [fg,bg]=COLORS[c?.color_key]||COLORS.stone; return `<span class="cls" style="color:${fg};background:${bg}">${c?.emoji||""} ${esc(n)}</span>`; };
+const av = (m,title=true) => m.avatar ? `<img class="av" src="${esc(m.avatar)}" alt="" ${title?`title="${esc(m.name)}"`:""} onerror="this.outerHTML='<span class=&quot;av&quot;>${esc(m.name).slice(0,1)}</span>'">` : `<span class="av" ${title?`title="${esc(m.name)}"`:""}>${esc(m.name).slice(0,1)}</span>`;
+
+// ---- illustrative leave data (counts per round match the live September calendar) ----
+let seed=5; const rnd=()=>(seed=(seed*9301+49297)%233280)/233280;
+const pick=(n,exclude=[])=>{ const pool=M.filter(m=>!exclude.includes(m.name)); const out=[]; while(out.length<n){ const m=pool[Math.floor(rnd()*pool.length)]; if(!out.includes(m)) out.push(m);} return out; };
+const byName = n => M.find(m=>m.name===n);
+const TODAY="2026-09-24";
+const ROUNDS = [
+  ["2026-09-01","gl",5],["2026-09-03","gl",2],["2026-09-06","woe",1],["2026-09-08","gl",2],["2026-09-10","gl",3],
+  ["2026-09-13","woe",8],["2026-09-15","gl",4,"void"],["2026-09-17","gl",3,"void"],["2026-09-20","woe",10],["2026-09-22","gl",2],
+  ["2026-09-24","gl",2],["2026-09-27","woe",1],["2026-09-29","gl",0],
+].map(([date,ev,n,v])=>{ let who = date==="2026-09-24" ? [byName("fearrrrrrrrrrrrrrrrrr // วา #")||M[70], byName("NutCrisp")||M[20]] : pick(n);
+  if (date==="2026-09-27") who=[byName("NutCrisp")||M[20]];
+  return { date, ev, voided: v==="void", who: who.map(m=>({...m, src: rnd()<.2?"admin":"member", note: rnd()<.15?"ติดงาน":null})) }; });
+// a repeat offender so the quota flag shows up
+for (const d of ["2026-09-01","2026-09-10","2026-09-22"]) { const r=ROUNDS.find(x=>x.date===d); const t=M[5]; if(!r.who.some(w=>w.id===t.id)) r.who[0]={...t,src:"member",note:null}; }
+
+const EV = { gl:{label:"GL", full:"Tyr Cup (GL)", time:"19:55–20:20"}, woe:{label:"WOE", full:"War of Emperium", time:"19:55–20:40"} };
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const dateObj = d => new Date(d+"T12:00:00+07:00");
+const status = r => r.voided ? "void" : r.date < TODAY ? "done" : "up";
+let sel = "2026-09-24", q = "", view="month";
+
+// ---- summary cards ----
+function renderTop(){
+  const nx = ROUNDS.find(r=>r.date>=TODAY);
+  const start = new Date(nx.date+"T19:55:00+07:00"), diff = start - new Date("2026-09-24T03:10:00+07:00");
+  const h=Math.floor(diff/36e5), mm=Math.floor(diff%36e5/6e4);
+  document.getElementById("next").innerHTML = `<div class="l">Next round</div><div class="row"><span class="big">${EV[nx.ev].full}</span><span class="cd">in ${h}h ${mm}m</span></div>
+    <div class="meta">${WD[dateObj(nx.date).getUTCDay()]} ${dateObj(nx.date).getUTCDate()} Sep · ${EV[nx.ev].time} · <b style="color:#fbbf24">${nx.who.length} on leave</b> · ~${ROSTER-nx.who.length} expected</div>`;
+  const counted = ROUNDS.filter(r=>status(r)==="done").reduce((a,r)=>a+r.who.length,0), voided = ROUNDS.filter(r=>r.voided).reduce((a,r)=>a+r.who.length,0);
+  document.getElementById("month").innerHTML = `<div class="l">Leaves this month</div><div class="v">${counted}</div><div class="h">counted · ${voided} voided (พักการแข่ง 15–18) · ${ROUNDS.filter(r=>status(r)==="up").reduce((a,r)=>a+r.who.length,0)} upcoming</div>`;
+  const tally={}; for(const r of ROUNDS){ if(r.voided) continue; for(const w of r.who){ const k=w.id+"|"+r.ev; tally[k]=(tally[k]||0)+1; } }
+  const top=Object.entries(tally).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  document.getElementById("absent").innerHTML = top.map(([k,n])=>{ const [id,ev]=k.split("|"); const m=M.find(x=>x.id===id); return `<div>${av(m)}<span>${esc(m.name)}</span><span class="pill ${ev==="gl"?"p-gl":"p-woe"}" style="padding:0 6px">${EV[ev].label}</span><span class="q ${n>2?"over":""}">${n}/2${n>2?" ⚠":""}</span></div>`; }).join("");
+}
+
+function tone(n){ return n===0?"zero":n/ROSTER<.05?"lo":n/ROSTER<.1?"mid":"hi"; }
+function meterColor(n){ return n===0?"#34d399":n/ROSTER<.05?"#71717a":n/ROSTER<.1?"#fbbf24":"#fb7185"; }
+const hit = r => q && r.who.some(w=>w.name.toLowerCase().includes(q));
+
+function evChip(r){
+  const s=status(r), n=r.who.length;
+  if (s==="void") return `<div class="ev void ${r.date===sel?"sel":""} ${hit(r)?"hit":""}" data-d="${r.date}"><div class="t">${EV[r.ev].label}<span class="c" style="color:#71717a">—</span></div><div class="vv">พักการแข่ง · ${n} voided</div></div>`;
+  const shown=r.who.slice(0,4);
+  return `<div class="ev ${r.ev} ${r.date===sel?"sel":""} ${hit(r)?"hit":""}" data-d="${r.date}">
+    <div class="t">${EV[r.ev].label}<span class="c ${tone(n)}">${n===0?"✓ all in":n}</span></div>
+    <div class="meter"><i style="width:${Math.min(100,n/ROSTER*100*5)}%;background:${meterColor(n)}"></i></div>
+    ${n?`<div class="avs">${shown.map(w=>av(w)).join("")}${n>4?`<span class="more">+${n-4}</span>`:""}</div>`:""}
+    ${s==="up"?`<div class="up">upcoming · cancellable</div>`:""}</div>`;
+}
+function renderMonth(){
+  const first=dateObj("2026-09-01").getUTCDay(); let cells="";
+  for(let i=0;i<first;i++) cells+=`<div class="d blank"></div>`;
+  for(let d=1; d<=30; d++){ const date=`2026-09-${String(d).padStart(2,"0")}`; const r=ROUNDS.find(x=>x.date===date);
+    cells+=`<div class="d ${date<TODAY?"past":""} ${date===TODAY?"today":""} ${!r?"quiet":""}"><div class="n">${date===TODAY?`<b>${d}</b>`:d}</div>${r?evChip(r):""}</div>`; }
+  const rem=(7-((first+30)%7))%7; for(let i=0;i<rem;i++) cells+=`<div class="d blank"></div>`;
+  document.getElementById("view").innerHTML = `<div class="grid"><div class="wd">${["SUN","MON","TUE","WED","THU","FRI","SAT"].map((w,i)=>`<div class="${[0,2,4].includes(i)?"evd":""}">${w}</div>`).join("")}</div><div class="days">${cells}</div></div>`;
+}
+function renderRounds(){
+  document.getElementById("view").innerHTML = `<div class="list">${ROUNDS.map(r=>{ const s=status(r), n=r.who.length, dt=dateObj(r.date);
+    return `<div class="row ${r.date===sel?"sel":""}" data-d="${r.date}" style="${hit(r)?"box-shadow:inset 3px 0 0 #f472b6":""}"><div class="date"><b>${WD[dt.getUTCDay()]} ${dt.getUTCDate()} Sep</b><span>${EV[r.ev].time}</span></div>
+      <div><span class="pill ${r.ev==="gl"?"p-gl":"p-woe"}">${EV[r.ev].label}</span></div>
+      <div class="avs">${s==="void"?`<span class="pill p-void">พักการแข่ง · ${n} voided</span>`:n?r.who.slice(0,8).map(w=>av(w)).join("")+(n>8?`<span class="more">+${n-8}</span>`:""):`<span style="color:#34d399;font-size:12px">✓ everyone in</span>`}${s==="up"?`<span class="pill p-up" style="margin-left:14px">upcoming</span>`:""}</div>
+      <div class="cnt c ${s==="void"?"":tone(n)}">${s==="void"?"—":n}</div></div>`; }).join("")}</div>`;
+}
+function renderPanel(){
+  const r=ROUNDS.find(x=>x.date===sel), p=document.getElementById("panel");
+  if(!r){ p.innerHTML=`<div class="empty">No GL/WOE round on this day</div>`; return; }
+  const s=status(r), n=r.who.length, dt=dateObj(r.date);
+  const byCls={}; for(const w of r.who) (byCls[w.cls||"—"] ??= []).push(w);
+  const size={}; for(const m of M) size[m.cls||"—"]=(size[m.cls||"—"]||0)+1;
+  const impact=Object.entries(byCls).sort((a,b)=>b[1].length-a[1].length);
+  const monthCount = w => ROUNDS.filter(x=>!x.voided&&x.ev===r.ev&&x.who.some(y=>y.id===w.id)).length;
+  p.innerHTML = `<div><h3>${WD[dt.getUTCDay()]}, ${dt.getUTCDate()} September</h3><div class="when">${EV[r.ev].full} · ${EV[r.ev].time}</div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill ${r.ev==="gl"?"p-gl":"p-woe"}">${EV[r.ev].label}</span>${s==="up"?`<span class="pill p-up">Upcoming — cancellable until ${EV[r.ev].time.split("–")[1]}</span>`:s==="void"?`<span class="pill p-void">พักการแข่ง — not counted</span>`:`<span class="pill p-done">Round ended — counted</span>`}</div>
+    <div class="stat3"><div><b style="color:${meterColor(n)}">${n}</b><span>on leave</span></div><div><b>${ROSTER-n}</b><span>expected</span></div><div><b>${Math.round((ROSTER-n)/ROSTER*100)}%</b><span>turnout</span></div></div>
+    ${n?`<div><div class="sec">Class impact</div><div class="impact">${impact.map(([c,list])=>`<div class="r">${c==="—"?"No class":clsBadge(c)}<span class="bb"><i style="width:${list.length/size[c]*100}%"></i></span><span class="x">${list.length}/${size[c]}</span></div>`).join("")}</div></div>
+    <div><div class="sec">On leave (${n})</div><div class="who">${impact.flatMap(([,list])=>list).map(w=>{ const mc=monthCount(w); return `<div class="m">${av(w,false)}<div><div class="nm">${esc(w.name)}</div><div style="display:flex;gap:4px;align-items:center">${clsBadge(w.cls)}${w.note?`<span style="font-size:10px;color:#a1a1aa">“${esc(w.note)}”</span>`:""}</div></div><div style="margin-left:auto;text-align:right"><div class="src">${w.src==="admin"?"by admin":"self"}</div>${!r.voided?`<div class="q" style="color:${mc>2?"#fb7185":"#71717a"}">${mc}/2 this month${mc>2?" ⚠":""}</div>`:""}</div></div>`; }).join("")}</div></div>`:`<div class="empty">✓ Nobody on leave for this round</div>`}
+    ${s==="up"?`<div class="act"><button class="pri">Open party board</button><button>+ Log leave</button></div>`:""}`;
+}
+function render(){ renderTop(); view==="month"?renderMonth():renderRounds(); renderPanel(); }
+document.getElementById("view").onclick=e=>{ const d=e.target.closest("[data-d]"); if(d){ sel=d.dataset.d; render(); } };
+document.getElementById("seg").onclick=e=>{ const b=e.target.closest("button"); if(!b) return; view=b.dataset.v; [...e.currentTarget.children].forEach(x=>x.classList.toggle("on",x===b)); render(); };
+document.getElementById("q").oninput=e=>{ q=e.target.value.trim().toLowerCase(); render(); };
+render();
+</script>
+</body>
+</html>
