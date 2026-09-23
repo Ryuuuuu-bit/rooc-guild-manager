@@ -7,7 +7,6 @@ import { memberDisplayName } from "@/lib/ui";
 import { fmtInt, pvpEntryLastUpdated } from "@/lib/pvp-stat-fields";
 import { PvpStatForm } from "@/components/pvp-stat-form";
 import { PvpStatsTable } from "@/components/pvp-stats-table";
-import { AdminAddEntryButton } from "@/components/pvp-stat-admin-entry";
 import { StatCard } from "@/components/stat-card";
 
 export default async function PvpStatsPage() {
@@ -23,7 +22,6 @@ export default async function PvpStatsPage() {
   const activeFieldDefs = allFieldDefs.filter((f) => f.active);
 
   const submittedCount = rows.filter((r) => r.entry !== null).length;
-  const memberOptions = rows.map(({ member }) => ({ id: member.id, name: memberDisplayName(member) }));
 
   // At-a-glance numbers derived from the same `rows` the table gets — no extra queries.
   // "Stale" mirrors the table's red marker: no submission, or none touched in 14 days.
@@ -49,11 +47,6 @@ export default async function PvpStatsPage() {
             Self-reported, update weekly · {submittedCount}/{rows.length} submitted
           </p>
         </div>
-        {isAdmin && (
-          <div className="flex flex-wrap gap-2">
-            <AdminAddEntryButton members={memberOptions} customFieldDefs={activeFieldDefs} />
-          </div>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

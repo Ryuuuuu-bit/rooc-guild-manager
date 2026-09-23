@@ -5,7 +5,7 @@ import { PVP_STAT_FIELD_GROUPS, fmtInt, fmtPct, groupCustomFields, type PvpCusto
 interface PvpStatCardProps {
   header: ReactNode;
   entry: PvpStatEntry | null;
-  /** Admin action row (edit/delete) — omitted entirely when there's no entry. */
+  /** Admin action row — Edit for an existing entry, "+ Add" when there's none. */
   reviewAction?: ReactNode;
   /** Only pass active field defs — a retired field just won't render even if the entry still has a value stored under its key. */
   customFieldDefs?: PvpCustomFieldDef[];
@@ -23,7 +23,10 @@ export function PvpStatCard({ header, entry, reviewAction, customFieldDefs = [],
       {header}
 
       {!entry ? (
-        <p className="text-sm text-zinc-500">No stats submitted yet</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-zinc-500">No stats submitted yet</p>
+          {reviewAction}
+        </div>
       ) : (
         <>
           {reviewAction && <div className="flex flex-wrap items-center gap-2">{reviewAction}</div>}

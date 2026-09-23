@@ -102,7 +102,7 @@
   <div class="cmpbar" id="cmpbar"></div>
 
   <div>
-    <div class="box"><table class="t" id="t"><thead></thead><tbody></tbody></table></div>
+    <div class="box"><table class="t" id="t"><thead></thead></table></div>
     <div class="legend" id="legend"></div>
   </div>
 </div>
@@ -192,15 +192,21 @@ function renderTable(){
     const va=has(a)?a[sort.k]:null, vb=has(b)?b[sort.k]:null; if(va==null&&vb==null) return a.name.localeCompare(b.name,"th"); if(va==null) return 1; if(vb==null) return -1; return sort.dir*(va-vb); });
   const headH = document.querySelector("#t thead").offsetHeight || 33;
   let html="";
-  if (view==="flat") html=list.map(row).join("");
+  const colspan = COLS.length+5;
+  if (view==="flat") html=`<tbody>${list.map(row).join("")}</tbody>`;
   else {
-    const groups={}; for(const r of list) (groups[r.cls||""] ??= []).push(r);
+    // Filtered: members who match only through a SECONDARY class get their own section at the bottom.
+    const groups={}, alt=[]; for(const r of list){ if(filter&&r.cls!==filter){ alt.push(r); continue; } (groups[r.cls||""] ??= []).push(r); }
     const keys=Object.keys(groups).sort((a,b)=>!a?1:!b?-1:(stats[b]?.total||0)-(stats[a]?.total||0));
-    for (const c of keys){ const s=stats[c], open=!collapsed.has(c), top=`top:${headH}px`;
-      html+=`<tr class="grp"><td class="l stk" data-g="${esc(c)}" style="${top}"><span style="color:#71717a;margin-right:6px">${open?"▾":"▸"}</span>${c?clsBadge(c):"No class"} <span style="margin-left:6px">${groups[c].length} คน${s?.avg?` · avg CP <span style="color:#d4d4d8">${fmt(s.avg)}</span>`:""}</span></td><td style="${top}"></td><td style="${top}"></td>${COLS.map(col=>`<td style="${top}">${s?.med[col.k]!=null?`<span class="med">med</span>${fmt(s.med[col.k],col.p)}`:""}</td>`).join("")}<td style="${top}"></td><td style="${top}"></td></tr>`;
-      if(open) html+=groups[c].map(row).join(""); }
+    const sections = keys.map(c=>({key:c, cls:c, alt:false, rows:groups[c]})); if(alt.length) sections.push({key:"__alt", cls:null, alt:true, rows:alt});
+    for (const sec of sections){ const s=sec.cls?stats[sec.cls]:null, open=!collapsed.has(sec.key), top=`top:${headH}px`;
+      const label = sec.alt ? `<span style="color:#d4d4d8">เล่น ${esc(filter)} เป็นอาชีพรอง</span>` : sec.cls ? clsBadge(sec.cls) : "No class";
+      // one <tbody> per group: its sticky header only sticks within its own group
+      html+=`<tbody><tr class="grp"><td class="l stk" data-g="${esc(sec.key)}" style="${top}"><span style="color:#71717a;margin-right:6px">${open?"▾":"▸"}</span>${label} <span style="margin-left:6px">${sec.rows.length} คน${s?.avg?` · avg CP <span style="color:#d4d4d8">${fmt(s.avg)}</span>`:""}</span></td><td style="${top}"></td><td style="${top}"></td>${COLS.map(col=>`<td style="${top}">${s?.med[col.k]!=null?`<span class="med">med</span>${fmt(s.med[col.k],col.p)}`:""}</td>`).join("")}<td style="${top}"></td><td style="${top}"></td></tr>${open?sec.rows.map(row).join(""):""}</tbody>`; }
   }
-  document.querySelector("#t tbody").innerHTML = html || `<tr><td colspan="30" style="text-align:center;padding:40px;color:#71717a">No members match the filters</td></tr>`;
+  document.querySelector(".box").scrollTop = 0;
+  const t=document.getElementById("t"); t.querySelectorAll("tbody").forEach(b=>b.remove());
+  t.insertAdjacentHTML("beforeend", list.length ? html : `<tbody><tr><td colspan="30" style="text-align:center;padding:40px;color:#71717a">No members match the filters</td></tr></tbody>`);
   document.getElementById("legend").innerHTML = `Badges: <span style="color:#fcd34d">#1</span> / <span style="color:#e4e4e7">#2</span> / <span style="color:#fdba74">#3</span> per stat ${scope==="class"?"within the member's class":"guild-wide"} · <span style="color:#6ee7b7">green</span> = top 10%${heat?` · heatmap: <span style="color:#fda4af">red</span> below / <span style="color:#6ee7b7">green</span> above the class median`:""}${flags?" · ⚠ = more than 20% below the class median on its key stat":""} · click a class card to filter, a group header to collapse.`;
 }
 function renderCmpBar(){

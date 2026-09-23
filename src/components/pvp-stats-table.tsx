@@ -10,7 +10,7 @@ import { AltClassIcons, ClassBadge } from "@/components/badges";
 import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
-import { AdminEditEntryButton } from "@/components/pvp-stat-admin-entry";
+import { AdminAddEntryButton, AdminEditEntryButton } from "@/components/pvp-stat-admin-entry";
 
 type PvpStatMember = Pick<
   Member,
@@ -720,6 +720,8 @@ function Segmented<T extends string>({ value, options, onChange }: { value: T; o
   );
 }
 
+type Section = { key: string; className: string | null; alt: boolean; rows: PvpStatsRow[] };
+
 const VIEW_STORAGE_KEY = "pvp-stats-view";
 interface ViewPrefs {
   groupByClass: boolean;
@@ -896,20 +898,37 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
   const classStats = useMemo(() => computeClassStats(rows, columns), [rows, columns]);
   // Grouped view: one section per class, biggest class first, members with
   // no class last; rows inside keep the current sort.
-  const sections = useMemo(() => {
+  // With a class filter on, members who only match through a SECONDARY
+  // class get their own clearly-labelled section at the bottom instead of
+  // turning up under their main class's header (which read as "the filter
+  // let other classes through").
+  const sections = useMemo<Section[]>(() => {
     const byClass = new Map<string, PvpStatsRow[]>();
+    const altOnly: PvpStatsRow[] = [];
     for (const r of sortedRows) {
       const c = r.member.characterClass ?? "";
+      if (selectedClasses.size > 0 && !selectedClasses.has(c)) {
+        altOnly.push(r);
+        continue;
+      }
       byClass.set(c, [...(byClass.get(c) ?? []), r]);
     }
-    return [...byClass.entries()]
-      .map(([className, list]) => ({ className, rows: list }))
+    const main = [...byClass.entries()]
+      .map(([className, list]): Section => ({ key: `class:${className}`, className, alt: false, rows: list }))
       .sort((a, b) => {
         if (!a.className) return 1;
         if (!b.className) return -1;
         return (classStats.get(b.className)?.count ?? 0) - (classStats.get(a.className)?.count ?? 0) || classOrder.indexOf(a.className) - classOrder.indexOf(b.className);
       });
-  }, [sortedRows, classStats, classOrder]);
+    return altOnly.length ? [...main, { key: "alt", className: null, alt: true, rows: altOnly }] : main;
+  }, [sortedRows, classStats, classOrder, selectedClasses]);
+
+  // A new filter/search/view starts at the top of the table — otherwise the
+  // box keeps its old scroll offset and the first rows of the (shorter)
+  // result sit above the visible area, looking like members are missing.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [selectedClasses, query, view.groupByClass]);
   function outlierFlag(member: PvpStatsRow["member"], col: ColumnDef, value: number | null): string | null {
     if (!view.flags || value === null || !member.characterClass) return null;
     if (keyStatOf(member.characterClass) !== col.key) return null;
@@ -1072,24 +1091,36 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                   {isAdmin && <th className={`${cell} bg-zinc-900 font-medium`}>Edit</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/80">
-                {sortedRows.length === 0 && (
+              {sortedRows.length === 0 && (
+                <tbody>
                   <tr>
                     <td colSpan={40} className="px-4 py-10 text-center text-zinc-500">
                       {emptyMessage}
                     </td>
                   </tr>
-                )}
-                {(view.groupByClass ? sections : [{ className: null, rows: sortedRows }]).map((section) => {
+                </tbody>
+              )}
+              {/* One <tbody> per class section: a sticky group header only
+                  sticks within its own tbody, so it scrolls away with its
+                  group instead of piling up over the next group's first rows. */}
+              {(view.groupByClass ? sections : [{ key: "flat", className: null, alt: false, rows: sortedRows } as Section]).map((section) => {
+                  const grouped = view.groupByClass;
                   const stats = section.className ? classStats.get(section.className) : undefined;
-                  const isCollapsed = section.className !== null && collapsed.has(section.className);
-                  const header =
-                    section.className === null ? null : (
-                      <tr key={`group:${section.className}`} className="bg-[#1c1917]">
+                  const isCollapsed = grouped && collapsed.has(section.key);
+                  const header = !grouped ? null : (
+                      <tr key={`group:${section.key}`} className="bg-[#1c1917]">
                         <td className="sticky left-0 z-[12] border-r border-zinc-800 bg-[#1c1917] px-3 py-1.5" style={{ top: theadHeight }}>
-                          <button type="button" onClick={() => toggleCollapsed(section.className!)} className="flex w-full items-center gap-2 text-left">
+                          <button type="button" onClick={() => toggleCollapsed(section.key)} className="flex w-full items-center gap-2 text-left">
                             <span className="w-4 shrink-0 text-center text-[10px] text-zinc-500">{isCollapsed ? "▸" : "▾"}</span>
-                            {section.className ? <ClassBadge className={section.className} /> : <span className="text-xs text-zinc-500">No class</span>}
+                            {section.alt ? (
+                              <span className="text-xs font-medium text-zinc-300" title="Their main class is different — they list the filtered class as a secondary one">
+                                Plays it as a secondary class
+                              </span>
+                            ) : section.className ? (
+                              <ClassBadge className={section.className} />
+                            ) : (
+                              <span className="text-xs text-zinc-500">No class</span>
+                            )}
                             <span className="text-[11px] text-zinc-500">
                               {section.rows.length} คน{stats?.avgCp ? <> · avg CP <span className="text-zinc-300">{fmtInt(stats.avgCp)}</span></> : null}
                             </span>
@@ -1179,18 +1210,25 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                             return <td key={col.key} className={cell} />;
                         }
                       })}
-                      {isAdmin && <td className={cell}>{entry && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}</td>}
+                      {isAdmin && (
+                        <td className={cell}>
+                          {entry ? (
+                            <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+                          ) : (
+                            <AdminAddEntryButton member={{ id: member.id, name: memberDisplayName(member) }} customFieldDefs={activeFieldDefs} />
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                   });
                   return (
-                    <Fragment key={section.className ?? "__flat"}>
+                    <tbody key={section.key} className="divide-y divide-zinc-800/80">
                       {header}
                       {body}
-                    </Fragment>
+                    </tbody>
                   );
                 })}
-              </tbody>
             </table>
           </div>
           <div className={`pointer-events-none absolute inset-y-0 right-0 w-12 rounded-r-2xl bg-gradient-to-l from-zinc-900 to-transparent transition-opacity duration-200 ${showRightShadow ? "opacity-100" : "opacity-0"}`} />
@@ -1235,7 +1273,14 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                 <AltClassIcons altClasses={member.altClasses} />
               </div>
             }
-            reviewAction={entry && isAdmin && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}
+            reviewAction={
+              isAdmin &&
+              (entry ? (
+                <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
+              ) : (
+                <AdminAddEntryButton member={{ id: member.id, name: memberDisplayName(member) }} customFieldDefs={activeFieldDefs} />
+              ))
+            }
             footer={
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-xs text-zinc-500">
                 <span className={isStale(entry) ? "text-rose-400" : "text-zinc-500"}>

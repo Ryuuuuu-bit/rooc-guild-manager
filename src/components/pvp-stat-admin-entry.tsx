@@ -60,17 +60,18 @@ function buildInput(
   };
 }
 
-/** Admin fills in a submission for a member who hasn't done it themselves (e.g. reported numbers in Discord instead). */
+/** Admin fills in a first submission for ONE member who hasn't filed any
+ * (e.g. they reported numbers in Discord instead). Shown in that member's
+ * row; members who already have an entry use AdminEditEntryButton. */
 export function AdminAddEntryButton({
-  members,
+  member,
   customFieldDefs,
 }: {
-  members: { id: string; name: string }[];
+  member: { id: string; name: string };
   customFieldDefs: PvpCustomFieldDef[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [memberId, setMemberId] = useState(members[0]?.id ?? "");
   const [role, setRole] = useState("");
   const [bossCards, setBossCards] = useState("");
   const [values, setValues] = useState<Record<string, string>>(() => buildValuesState(null, customFieldDefs));
@@ -78,7 +79,6 @@ export function AdminAddEntryButton({
   const [error, setError] = useState<string | null>(null);
 
   function openModal() {
-    setMemberId(members[0]?.id ?? "");
     setRole("");
     setBossCards("");
     setValues(buildValuesState(null, customFieldDefs));
@@ -87,14 +87,10 @@ export function AdminAddEntryButton({
   }
 
   async function handleSave() {
-    if (!memberId) {
-      setError("Please select a member");
-      return;
-    }
     setSaving(true);
     setError(null);
     try {
-      const result = await adminCreatePvpStatFor(memberId, buildInput(role, bossCards, values, customFieldDefs));
+      const result = await adminCreatePvpStatFor(member.id, buildInput(role, bossCards, values, customFieldDefs));
       if (!result.ok) {
         setError(result.error ?? "Save failed, please try again");
         return;
@@ -114,9 +110,10 @@ export function AdminAddEntryButton({
       <button
         type="button"
         onClick={openModal}
-        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
+        title={`Enter stats for ${member.name}`}
+        className="rounded-md px-1.5 py-0.5 text-xs font-medium text-emerald-400 transition hover:bg-zinc-800 hover:text-emerald-300"
       >
-        Edit Member Stats
+        + Add
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4" onClick={() => setOpen(false)}>
@@ -125,26 +122,11 @@ export function AdminAddEntryButton({
             className="flex w-full max-w-2xl flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5"
           >
             <div className="flex items-center justify-between">
-              <h3 className="font-medium text-zinc-100">Add Stats for Member</h3>
+              <h3 className="font-medium text-zinc-100">Add Stats for {member.name}</h3>
               <button type="button" onClick={() => setOpen(false)} className="rounded px-1.5 py-0.5 text-zinc-500 transition hover:text-zinc-300">
                 ✕
               </button>
             </div>
-
-            <label className="flex flex-col gap-1 text-xs text-zinc-400">
-              Member
-              <select
-                value={memberId}
-                onChange={(e) => setMemberId(e.target.value)}
-                className="rounded-lg border border-zinc-800 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-              >
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </label>
 
             <PvpStatFieldsEditor
               role={role}
