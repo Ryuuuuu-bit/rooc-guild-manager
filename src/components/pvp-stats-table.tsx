@@ -10,8 +10,6 @@ import { AltClassIcons, ClassBadge } from "@/components/badges";
 import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
-import { PvpReviewBadge, PvpReviewButton } from "@/components/pvp-stat-review";
-import { isReviewStatus } from "@/lib/pvp-stat-review";
 import { AdminEditEntryButton } from "@/components/pvp-stat-admin-entry";
 
 type PvpStatMember = Pick<
@@ -46,7 +44,6 @@ interface ColumnDef {
 const FIXED_COLUMNS: ColumnDef[] = [
   { key: "class", label: "Class", group: "identity", numeric: false },
   { key: "role", label: "Role", group: "identity", numeric: false },
-  { key: "status", label: "Status", group: "identity", numeric: false },
   { key: "cp", label: "CP", group: "base", numeric: true },
   { key: "pDef", label: "P.DEF", group: "defense", numeric: true },
   { key: "mDef", label: "M.DEF", group: "defense", numeric: true },
@@ -176,8 +173,9 @@ function computeHighlights(rows: PvpStatsRow[], columns: ColumnDef[]): Map<strin
 function computeClassHighlights(rows: PvpStatsRow[], columns: ColumnDef[]): Map<string, Map<string, Highlight>> {
   const byClass = new Map<string, PvpStatsRow[]>();
   for (const r of rows) {
-    const c = r.member.characterClass ?? "";
-    byClass.set(c, [...(byClass.get(c) ?? []), r]);
+    // No class = no peer group to rank within (a "#1 among the classless" badge would be noise).
+    if (!r.member.characterClass) continue;
+    byClass.set(r.member.characterClass, [...(byClass.get(r.member.characterClass) ?? []), r]);
   }
   const out = new Map<string, Map<string, Highlight>>();
   for (const classRows of byClass.values()) {
@@ -202,7 +200,10 @@ function median(values: number[]): number | null {
  * numeric column (the yardstick for the heatmap and the outlier flag). */
 interface ClassStats {
   className: string;
+  /** Members of this class who have submitted (the ones the numbers below describe). */
   count: number;
+  /** Every active member of this class, submitted or not. */
+  total: number;
   avgCp: number | null;
   top: PvpStatsRow | null;
   cpBins: number[];
@@ -211,8 +212,11 @@ interface ClassStats {
 
 function computeClassStats(rows: PvpStatsRow[], columns: ColumnDef[]): Map<string, ClassStats> {
   const byClass = new Map<string, PvpStatsRow[]>();
+  const totals = new Map<string, number>();
   for (const r of rows) {
-    if (!r.member.characterClass || !r.entry) continue;
+    if (!r.member.characterClass) continue;
+    totals.set(r.member.characterClass, (totals.get(r.member.characterClass) ?? 0) + 1);
+    if (!r.entry) continue;
     byClass.set(r.member.characterClass, [...(byClass.get(r.member.characterClass) ?? []), r]);
   }
   const out = new Map<string, ClassStats>();
@@ -232,7 +236,7 @@ function computeClassStats(rows: PvpStatsRow[], columns: ColumnDef[]): Map<strin
       const m = median(classRows.map((r) => getStatValue(r.entry, col.key)).filter((v): v is number => v !== null && v > 0));
       if (m !== null) medians.set(col.key, m);
     }
-    out.set(className, { className, count: classRows.length, avgCp, top, cpBins: bins, medians });
+    out.set(className, { className, count: classRows.length, total: totals.get(className) ?? classRows.length, avgCp, top, cpBins: bins, medians });
   }
   return out;
 }
@@ -679,7 +683,9 @@ function ClassOverview({ stats, order, active, onPick }: { stats: Map<string, Cl
                 <ClassIcon job={c.className} size={11} />
                 {c.className}
               </span>
-              <span className="shrink-0 text-[10px] text-zinc-500">{c.count} คน</span>
+              <span className="shrink-0 text-[10px] text-zinc-500" title={`${c.count} submitted of ${c.total} in this class`}>
+                {c.count === c.total ? `${c.count} คน` : `${c.count}/${c.total} คน`}
+              </span>
             </div>
             <div className="mt-1 text-[15px] font-semibold tabular-nums text-zinc-100">{fmtInt(c.avgCp)}</div>
             <div className="truncate text-[10px] text-zinc-500">
@@ -743,7 +749,6 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
   const [theadHeight, setTheadHeight] = useState(0);
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "cp", dir: "desc" });
   const [query, setQuery] = useState("");
-  const [pendingOnly, setPendingOnly] = useState(false);
   const [selectedClasses, setSelectedClasses] = useState<Set<string>>(() => new Set());
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
@@ -849,17 +854,14 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
     setCompareIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= MAX_COMPARE ? cur : [...cur, id]));
   }
 
-  const pendingCount = useMemo(() => rows.filter((r) => r.entry && !isReviewStatus(r.entry.reviewStatus)).length, [rows]);
-
   const filteredRows = useMemo(() => {
     let result = rows;
-    if (pendingOnly) result = result.filter((r) => r.entry && !isReviewStatus(r.entry.reviewStatus));
     if (selectedClasses.size > 0)
       result = result.filter((r) => (r.member.characterClass && selectedClasses.has(r.member.characterClass)) || r.member.altClasses.some((a) => selectedClasses.has(a)));
     const q = query.trim().toLowerCase();
     if (!q) return result;
     return result.filter(({ member }) => memberDisplayName(member).toLowerCase().includes(q) || (member.inGameName ?? "").toLowerCase().includes(q));
-  }, [rows, query, pendingOnly, selectedClasses]);
+  }, [rows, query, selectedClasses]);
 
   const sortedRows = useMemo(() => {
     const classRank = (name: string | null) => {
@@ -917,7 +919,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
   }
   const compareRows = useMemo(() => compareIds.map((id) => rows.find((r) => r.member.id === id)).filter((r): r is PvpStatsRow => Boolean(r)), [compareIds, rows]);
 
-  const emptyMessage = rows.length === 0 ? "No members yet" : pendingOnly && selectedClasses.size === 0 && !query.trim() ? "Nothing pending review right now" : "No members match the filters";
+  const emptyMessage = rows.length === 0 ? "No members yet" : "No members match the filters";
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -967,12 +969,6 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
 
         <ClassFilterDropdown selected={selectedClasses} onToggle={toggleClass} onClear={() => setSelectedClasses(new Set())} />
         <ColumnMenu columns={columns} hidden={hidden} preset={preset} onPreset={applyPreset} onToggle={toggleColumn} />
-
-        {isAdmin && (
-          <button type="button" onClick={() => setPendingOnly((v) => !v)} className={pillClass(pendingOnly)}>
-            Pending Review · {pendingCount}
-          </button>
-        )}
 
         <Segmented
           value={view.groupByClass ? "group" : "flat"}
@@ -1166,17 +1162,6 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                                 {entry?.role ?? "—"}
                               </td>
                             );
-                          case "status":
-                            return (
-                              <td key={col.key} className={`${cell} whitespace-nowrap`}>
-                                {entry && (
-                                  <div className="flex items-center gap-1.5" title={entry.reviewNote ?? undefined}>
-                                    <PvpReviewBadge status={entry.reviewStatus} />
-                                    {isAdmin && <PvpReviewButton entryId={entry.id} currentStatus={entry.reviewStatus} currentNote={entry.reviewNote} />}
-                                  </div>
-                                )}
-                              </td>
-                            );
                           case "bossCards":
                             return (
                               <td key={col.key} className={`${cell} max-w-[220px] break-words text-xs text-zinc-400`}>
@@ -1250,19 +1235,7 @@ export function PvpStatsTable({ rows, activeFieldDefs, isAdmin }: { rows: PvpSta
                 <AltClassIcons altClasses={member.altClasses} />
               </div>
             }
-            reviewAction={
-              entry && (
-                <>
-                  <PvpReviewBadge status={entry.reviewStatus} />
-                  {isAdmin && (
-                    <>
-                      <PvpReviewButton entryId={entry.id} currentStatus={entry.reviewStatus} currentNote={entry.reviewNote} />
-                      <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />
-                    </>
-                  )}
-                </>
-              )
-            }
+            reviewAction={entry && isAdmin && <AdminEditEntryButton entry={entry} customFieldDefs={activeFieldDefs} />}
             footer={
               <div className="flex items-center justify-between border-t border-zinc-800 pt-2 text-xs text-zinc-500">
                 <span className={isStale(entry) ? "text-rose-400" : "text-zinc-500"}>

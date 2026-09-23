@@ -10,7 +10,6 @@ import { memberDisplayName } from "@/lib/ui";
 import { AltClassBadges, ClassBadge } from "@/components/badges";
 import { MemberAvatar } from "@/components/member-avatar";
 import { PvpStatCard } from "@/components/pvp-stat-card";
-import { PvpReviewBadge, PvpReviewButton } from "@/components/pvp-stat-review";
 import { AdminEditEntryButton, AdminDeleteEntryButton } from "@/components/pvp-stat-admin-entry";
 
 export default async function PvpStatHistoryPage({ params }: { params: Promise<{ memberId: string }> }) {
@@ -56,7 +55,6 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
             <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
               <th className="sticky left-0 z-20 bg-zinc-900 px-4 py-3 font-medium">Date</th>
               <th className="px-4 py-3 font-medium">Role</th>
-              <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 text-right font-medium">CP</th>
               <th className="px-4 py-3 text-right font-medium">P.DEF</th>
               <th className="px-4 py-3 text-right font-medium">M.DEF</th>
@@ -103,18 +101,6 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                   )}
                 </td>
                 <td className="px-4 py-3 text-zinc-300">{entry.role ?? "—"}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-1.5" title={entry.reviewNote ?? undefined}>
-                    <PvpReviewBadge status={entry.reviewStatus} />
-                    {isAdmin && (
-                      <PvpReviewButton
-                        entryId={entry.id}
-                        currentStatus={entry.reviewStatus}
-                        currentNote={entry.reviewNote}
-                      />
-                    )}
-                  </div>
-                </td>
                 <td className="px-4 py-3 text-right font-medium text-amber-300">{fmtInt(entry.cp)}</td>
                 <td className="px-4 py-3 text-right text-zinc-300">{fmtInt(entry.pDef)}</td>
                 <td className="px-4 py-3 text-right text-zinc-300">{fmtInt(entry.mDef)}</td>
@@ -164,18 +150,6 @@ export default async function PvpStatHistoryPage({ params }: { params: Promise<{
                   {entry.editedByUsername && <span className="ml-2 text-[10px] font-normal text-zinc-500">edited by {entry.editedByUsername}</span>}
                 </p>
               </div>
-            }
-            reviewAction={
-              <>
-                <PvpReviewBadge status={entry.reviewStatus} />
-                {isAdmin && (
-                  <PvpReviewButton
-                    entryId={entry.id}
-                    currentStatus={entry.reviewStatus}
-                    currentNote={entry.reviewNote}
-                  />
-                )}
-              </>
             }
             footer={
               isAdmin && (

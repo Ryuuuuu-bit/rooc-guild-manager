@@ -4,8 +4,7 @@ import { members } from "@/db/schema";
 import { requireUser } from "@/lib/authz";
 import { getLatestPvpStats, getMyLatestPvpStat, getPvpStatFieldDefs } from "@/lib/pvp-stats";
 import { memberDisplayName } from "@/lib/ui";
-import { fmtInt } from "@/lib/pvp-stat-fields";
-import { isReviewStatus } from "@/lib/pvp-stat-review";
+import { fmtInt, pvpEntryLastUpdated } from "@/lib/pvp-stat-fields";
 import { PvpStatForm } from "@/components/pvp-stat-form";
 import { PvpStatsTable } from "@/components/pvp-stats-table";
 import { AdminAddEntryButton } from "@/components/pvp-stat-admin-entry";
@@ -26,10 +25,11 @@ export default async function PvpStatsPage() {
   const submittedCount = rows.filter((r) => r.entry !== null).length;
   const memberOptions = rows.map(({ member }) => ({ id: member.id, name: memberDisplayName(member) }));
 
-  // Same "submitted"/review data the page already fetched, just also
-  // summarized as a few at-a-glance numbers above the table/cards — no new
-  // queries, just a different view of `rows`.
-  const pendingReviewCount = rows.filter((r) => r.entry !== null && !isReviewStatus(r.entry.reviewStatus)).length;
+  // At-a-glance numbers derived from the same `rows` the table gets — no extra queries.
+  // "Stale" mirrors the table's red marker: no submission, or none touched in 14 days.
+  const STALE_DAYS = 14;
+  const staleCutoff = new Date().getTime() - STALE_DAYS * 24 * 60 * 60 * 1000;
+  const staleCount = rows.filter((r) => !r.entry || pvpEntryLastUpdated(r.entry).getTime() < staleCutoff).length;
   const cpValues = rows
     .map((r) => r.entry?.cp)
     .filter((cp): cp is number => cp !== null && cp !== undefined);
@@ -56,37 +56,12 @@ export default async function PvpStatsPage() {
         )}
       </div>
 
-      {/* At-a-glance summary before the update form / full roster below — same numbers already
-          in the page copy and the table's own filter counts, just pulled up front so an admin
-          checking in on review progress doesn't have to scroll the whole list first. */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Submitted" value={`${submittedCount}/${rows.length}`} accent="positive" />
-        <StatCard label="Pending Review" value={pendingReviewCount} accent={pendingReviewCount > 0 ? "warning" : "positive"} />
+        <StatCard label="Stale / Missing" value={staleCount} hint={`not updated in ${STALE_DAYS}+ days`} accent={staleCount > 0 ? "warning" : "positive"} />
         <StatCard label="Average CP" value={fmtInt(avgCp)} />
         <StatCard label="Top CP" value={fmtInt(topRow?.entry?.cp ?? null)} hint={topRow ? memberDisplayName(topRow.member) : undefined} />
       </div>
-
-      {/* Surfaced right above the update button — a member who got reviewed shouldn't have to
-          find their own row in the full list below to learn an admin left them a note. */}
-      {/* Gated on reviewStatus, not just reviewNote — a FAIL left with no note
-          still needs to tell the member to fix and resubmit; requiring a
-          note here would silently hide that a review even happened. */}
-      {(myLatest?.reviewStatus === "FAIL" || myLatest?.reviewNote) && (
-        <div
-          className={`rounded-xl border px-4 py-3 text-sm ${
-            myLatest?.reviewStatus === "FAIL"
-              ? "border-rose-500/30 bg-rose-500/10 text-rose-200"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-200"
-          }`}
-        >
-          <p className="font-medium">
-            {myLatest?.reviewStatus === "FAIL"
-              ? "An admin reviewed your latest stats — please adjust and update again."
-              : "Admin note on your latest stats"}
-          </p>
-          {myLatest?.reviewNote && <p className="mt-1 opacity-90">{myLatest.reviewNote}</p>}
-        </div>
-      )}
 
       <PvpStatForm initial={myLatest} customFieldDefs={activeFieldDefs} />
 

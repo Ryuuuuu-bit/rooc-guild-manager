@@ -5,7 +5,7 @@ import { PVP_STAT_FIELD_GROUPS, fmtInt, fmtPct, groupCustomFields, type PvpCusto
 interface PvpStatCardProps {
   header: ReactNode;
   entry: PvpStatEntry | null;
-  /** Admin review badge + button row — omitted entirely when there's no entry to review. */
+  /** Admin action row (edit/delete) — omitted entirely when there's no entry. */
   reviewAction?: ReactNode;
   /** Only pass active field defs — a retired field just won't render even if the entry still has a value stored under its key. */
   customFieldDefs?: PvpCustomFieldDef[];
@@ -27,12 +27,6 @@ export function PvpStatCard({ header, entry, reviewAction, customFieldDefs = [],
       ) : (
         <>
           {reviewAction && <div className="flex flex-wrap items-center gap-2">{reviewAction}</div>}
-
-          {entry.reviewNote && (
-            <p className="rounded-lg bg-zinc-950 px-3 py-2 text-xs text-zinc-400 ring-1 ring-inset ring-zinc-800">
-              {entry.reviewNote}
-            </p>
-          )}
 
           {entry.role && (
             <p className="text-xs text-zinc-500">
