@@ -1,231 +1,158 @@
-# ROOC Guild Manager
+# ROOC Guild Manager — Divine
 
-เว็บแอปสำหรับจัดการสมาชิกกิลด์เกม ROOC (Ragnarok Origin Classic) แบบครบวงจร — ซิงค์สมาชิกกับ Discord server อัตโนมัติ, จัดปาร์ตี้, เช็คชื่อ/ลา, เก็บสถิติ PVP, จัดคิวประมูลไอเทม และเก็บประวัติกิจกรรมทุกอย่างไว้ในที่เดียว
+เว็บแอป + Discord bot สำหรับบริหารกิลด์ **Divine** ในเกม Ragnarok Origin Classic (ROOC) ครบวงจรในที่เดียว: ซิงค์สมาชิกกับ Discord อัตโนมัติ, จัดปาร์ตี้ GL/WOE, ระบบลา, เช็คชื่อจากห้องเสียง, สถิติ PVP, คิวประมูลไอเทม และบันทึกกิจกรรมทุกอย่าง
 
-## ฟีเจอร์หลัก
+> อัปเดตเอกสารล่าสุด: 24 ก.ย. 2569 (หลังรีดีไซน์ UX/UI ทั้งเว็บ)
 
-**สมาชิกและสิทธิ์**
-- ซิงค์สมาชิกอัตโนมัติกับ Discord (เข้า/ออก/เปลี่ยนยศแบบเรียลไทม์ผ่าน Gateway + full sync ทุก 30 นาทีเป็น safety net)
-- Login ด้วย Discord OAuth — ต้องมี role ที่กำหนดไว้ในเซิร์ฟเวอร์ (ค่าเริ่มต้น "Rooc") ถึงจะเข้าระบบได้ สิทธิ์แอดมินคำนวณจาก Discord role/user ID ตอน login
-- หน้ารายชื่อสมาชิก ค้นหา/กรองตามสถานะ, ยศ, เบนช์
-- หน้ารายละเอียดสมาชิก: แก้ไขข้อมูล, โน้ตภายใน (เฉพาะแอดมินเห็น), เตะออกจาก Discord จริง, พักการเป็นสมาชิก (bench), **แบนจากคิวประมูล** ตามจำนวนวันที่กำหนด (หมดอายุอัตโนมัติ)
-- Dashboard สรุปจำนวนสมาชิกทั้งหมด/active/เบนช์/ออกแล้ว/ถูกเตะ พร้อมกราฟเทรนด์การเข้าร่วมกิจกรรม
-- ประวัติกิจกรรม (Activity Log) บันทึกทุกอย่าง — เข้า/ออก/เตะ, แก้ข้อมูล, ลา/กลับ, แบน/ปลดแบนประมูล ฯลฯ
+## เอกสารทั้งหมด
 
-**ปาร์ตี้และการเข้าร่วมกิจกรรม**
-- จัดปาร์ตี้หลายบอร์ด (multi-board), ลาก-วาง หรือแตะเพื่อย้ายสมาชิก, บันทึก/โหลด template ผังปาร์ตี้
-- แต่ละบอร์ดผูกกับ check-in event (เช่น GL/WOE) ได้แบบชัดเจนผ่าน dropdown ในหน้าเว็บ (ไม่ได้จับคู่จากชื่อบอร์ดแบบเดา) เพื่อกำหนดว่าปุ่ม "ลา"/เวลานับผลของบอร์ดนั้นอิงจากอีเวนต์ไหน
-- ระบบเลือกอาชีพผ่าน GUI dropdown (ephemeral) ในดิสคอร์ด แจ้งลาแบบสด (reaction) ต่อบอร์ด, และแจ้งลาล่วงหน้าได้ผ่านคำสั่ง `/leave` (เลือกวันกิจกรรมที่จะถึงล่วงหน้าแบบ multi-select, ยกเลิกได้, ระบบ apply ให้อัตโนมัติเมื่อถึงวันจริง) — การนับ "ลา" ทุกช่องทางรอจนเวลากิจกรรมนั้นจบจริงก่อนล็อกผล กันกดพลาดแล้วแก้ไม่ทัน
-- ประกาศผังปาร์ตี้เป็นรูปภาพ (server-side canvas render) ลง Discord ได้ในคลิกเดียว จำช่องล่าสุดที่เคยประกาศไว้
-- Slash command `/party` — พิมพ์ในดิสคอร์ดแล้วดูผังปาร์ตี้ปัจจุบันแบบ ephemeral โดยไม่ต้องเปิดเว็บ
-- `/checkin` — เช็คว่าใครเข้าห้อง voice ตรงเวลากิจกรรมจริงไหม (ตั้งค่าห้อง/วันเวลาต่ออีเวนต์ได้ที่ `src/lib/checkin-events.ts`) พร้อมโยงกับสถานะ "ลา" ของบอร์ดที่เกี่ยวข้อง ไม่ให้ขึ้นเป็น "ขาดกิจกรรม" ทั้งที่ลาไว้แล้ว
-- `/attendance` — สรุปสถิติการเข้าร่วม/ลา ย้อนหลังแยกตามบอร์ด
-- `/calendar` — ปฏิทินรวมทุกรอบ GL/WOE ที่จะมาถึง กดวันไหนดูได้ว่าใครลาแล้วบ้าง (เฉพาะวันนี้เป็นต้นไป ไม่ย้อนหลัง)
+| ไฟล์ | เนื้อหา |
+|---|---|
+| [README.md](./README.md) | ภาพรวม, ติดตั้ง, deploy, environment variables (ไฟล์นี้) |
+| [docs/FEATURES.md](./docs/FEATURES.md) | คู่มือใช้งานทีละหน้า (แอดมิน + สมาชิก) และคำสั่ง Discord |
+| [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | โครงสร้างโค้ด, โมเดลข้อมูล, กฎการคำนวณ (ลา/เช็คชื่อ/โควต้า/คิว/ปาร์ตี้) |
+| [docs/DESIGN-SYSTEM.md](./docs/DESIGN-SYSTEM.md) | ระบบดีไซน์: app shell, ไอคอน, UI kit, dialog/toast, responsive |
+| [docs/OPERATIONS.md](./docs/OPERATIONS.md) | ขั้นตอน deploy, migration, การทดสอบ, แก้ปัญหา |
+| [docs/CHANGELOG.md](./docs/CHANGELOG.md) | ประวัติการเปลี่ยนแปลงสำคัญ |
+| [CLAUDE.md](./CLAUDE.md) / [AGENTS.md](./AGENTS.md) | ข้อตกลงสำหรับ AI coding agent ที่ทำงานกับ repo นี้ |
 
-**สถิติ PVP**
-- สมาชิกกรอก/อัปเดตสถิติของตัวเองได้เอง (CP, DEF, ATK, การ์ดบอส ฯลฯ) — ทุกครั้งที่กรอกคือประวัติใหม่ ไม่ทับของเก่า
-- แอดมิน review/แก้ไข/เพิ่ม/ลบ entry ของใครก็ได้ พร้อมระบบฟิลด์สถิติแบบกำหนดเองได้ (เพิ่มคอลัมน์สถิติใหม่ได้เองโดยไม่ต้องแก้โค้ด)
-- ตารางหลักเรียงตาม CP ทุกคนเห็นกันหมด, ดูประวัติเต็มของแต่ละคนได้ที่หน้าโปรไฟล์
+## ฟีเจอร์โดยสรุป
 
-**คิวประมูลไอเทม (Loot Queue)**
-- แต่ละหมวดไอเทม (การ์ด, ขนนก, กล่องไอเทม ฯลฯ) มีคิวหมุนเวียนของตัวเอง — แอดมินจัดลำดับคิวเอง กด "Run Round" แล้วระบบดึงคนหน้าคิวไปต่อท้ายให้อัตโนมัติ
-- ระบบแบนคิว: แบนได้ทั้งระบบ (ทุกหมวดพร้อมกัน) ตามจำนวนวันที่กำหนด ตำแหน่งในคิวไม่หาย แค่ถูกข้ามจนกว่าจะหมดโทษ
+| หน้า | ทำอะไรได้ |
+|---|---|
+| **Overview** `/` | แดชบอร์ด: รอบถัดไป + ความพร้อมกระดาน, รายการที่ต้องดูแล, KPI, กราฟการเข้าร่วม 12 รอบ, สัดส่วนอาชีพ, ฟีดกิจกรรม |
+| **Members** `/members` | รายชื่อทั้งหมด ค้นหา/กรอง (สถานะ, อาชีพ, ยศ, "ต้องดูแล"), แถบเข้า-ขาด 8 รอบ, ดูโปรไฟล์แบบ drawer, bench หลายคน, copy mention, CSV |
+| **Party** `/party` | จัดปาร์ตี้ลาก-วาง/แตะย้าย, ป้ายพร้อมรบ, recipe อาชีพ, "หาแทน" คนลา, Auto-balance CP, Undo, ไฮไลต์อาชีพ, ประกาศภาพลง Discord |
+| **Random Picker** `/random` | สุ่มสมาชิก กรองคนพัก/เฉพาะในห้องเสียง/ตามอาชีพ, ไม่ซ้ำคนเดิม, ประวัติ |
+| **Loot Queue** `/loot-queue` | คิวประมูลต่อหมวด, ตัวอย่างเส้นตัด + ข้อความ Discord ก่อนรัน, Undo, เลขต่อจากหมวดอื่น, ค้นหาคิวทุกหมวด, Copy 3 แบบ |
+| **Calendar** `/calendar` | ปฏิทินทุกรอบ GL/WOE, ใครลา, ผลกระทบต่ออาชีพ, รอบที่ประกาศพัก |
+| **Activity Log** `/activity` | ไทม์ไลน์กิจกรรมทุกอย่างของสมาชิก แยกหมวด/ค้นหา |
+| **Leave Stats** `/attendance` | สถิติการลา, จุดโควต้าเดือนนี้ต่อกระดาน, คนเกินโควต้า, ประกาศช่วงพัก |
+| **Check-in [Voice]** `/checkin` | เช็คชื่อจากห้องเสียงอัตโนมัติ, % ต่อรอบ, มาสาย/ออกก่อน, แถบเวลาในห้อง, โน้ต, CSV |
+| **PVP Stats** `/pvp-stats` | ตารางสถิติ PVP, มุมมองแยกอาชีพ + heatmap + ธง key stat, เปรียบเทียบ, ข้อมูลเก่ากว่า 14 วัน |
+| **Manage Classes** `/classes` | จัดการอาชีพ: อีโมจิ, สี, Key PVP stat, ลำดับ (แอดมิน) |
 
-**อื่น ๆ**
-- จัดการอาชีพในเกม (`/classes`) — เพิ่ม/แก้/ลบ/จัดลำดับเอง ไม่ต้องแก้โค้ด
-- Random Member (`/random`) — สุ่มชื่อจากรายชื่อ active member สำหรับจับฉลาก/เลือกหัวทีม เปิดให้สมาชิกทุกคนเล่นได้ ไม่ใช่แค่แอดมิน
+ทั้งเว็บใช้ **app shell เดียวกัน**: เมนูซ้ายพร้อม badge งานค้าง, กล่องรอบถัดไป, ค้นหา `Ctrl K`, แถบล่างบนมือถือ, หน้าต่างยืนยัน/แจ้งเตือนแบบเดียวกันทุกหน้า — ดู [docs/DESIGN-SYSTEM.md](./docs/DESIGN-SYSTEM.md)
+
+**Discord bot**: ซิงค์สมาชิกเรียลไทม์ + full sync ทุก 30 นาที, `/party`, `/leave`, แผงเลือกอาชีพ, แผง "ห้องลา", เก็บเวลาเข้า-ออกห้องเสียง, DM เตือนอัปเดต PVP stats (ทุก 21 วัน), ข้อความต้อนรับ, แจ้งเตือนแอดมินในช่องที่กำหนด
 
 ## สถาปัตยกรรม
 
-โปรเจกต์นี้มี 2 process ที่ทำงานแยกกันแต่ใช้ฐานข้อมูลเดียวกัน:
-
-1. **Web app** (Next.js) — หน้าเว็บ + login + server actions สำหรับแอดมิน/สมาชิกแก้ไขข้อมูล
-2. **Bot worker** (discord.js) — เชื่อมต่อ Discord Gateway ตลอดเวลา ฟังอีเวนต์เข้า/ออก, reaction, voice state, slash command
-
-ทั้งสองต้องรันแยกกันเพราะบอทต้องเป็น process ที่รันค้างตลอดเวลา (ไม่ใช่ serverless function) จึงแนะนำให้ deploy ทั้งคู่บน **Railway** เป็น 2 services จาก repo เดียวกัน ใช้ **PostgreSQL** (Railway plugin) เป็นฐานข้อมูลร่วม
+2 process แยกกัน ใช้ PostgreSQL ตัวเดียวกัน (deploy บน Railway 2 services จาก repo เดียว):
 
 ```
-┌─────────────────┐        ┌──────────────────┐
-│   Web (Next.js)  │◄──────►│                  │
-│   Railway service│        │   PostgreSQL     │
-└─────────────────┘        │  (Railway plugin) │
-┌─────────────────┐        │                  │
-│   Bot (discord.js)│◄─────►│                  │
-│   Railway service│        └──────────────────┘
-└─────────────────┘                 ▲
-        │                            │
-        └──────── Discord API ───────┘
+┌──────────────────┐        ┌──────────────────┐
+│  web (Next.js)   │◄──────►│                  │
+│  Railway service │        │   PostgreSQL     │
+└──────────────────┘        │  (Railway)       │
+┌──────────────────┐        │                  │
+│  bot (discord.js)│◄──────►│                  │
+│  Railway service │        └──────────────────┘
+└──────────────────┘
+        │  Discord Gateway + REST
+        ▼
+     Discord
 ```
 
-Stack: Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS v4 · Auth.js v5 (Discord OAuth) · Drizzle ORM · PostgreSQL (postgres.js) · discord.js v14 · @dnd-kit/core (จัดปาร์ตี้แบบลาก-วาง) · @napi-rs/canvas (เรนเดอร์ภาพผังปาร์ตี้ฝั่งเซิร์ฟเวอร์)
+**Stack:** Next.js 16 (App Router, Turbopack) · React 19 · TypeScript · Tailwind CSS v4 · Auth.js v5 (Discord OAuth) · Drizzle ORM + postgres.js · discord.js v14 · @dnd-kit/core · @napi-rs/canvas · date-fns
 
-## ก่อนเริ่ม
-
-- บัญชี [Railway](https://railway.app) (มี free trial / usage-based pricing)
-- สิทธิ์ "Manage Server" ใน Discord server ของกิลด์ (เพื่อเชิญบอทและตั้งค่า)
-- Node.js 20+ ถ้าต้องการรันในเครื่องตัวเองด้วย
+รายละเอียดโครงสร้างโค้ดและกฎการคำนวณ → [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)
 
 ---
 
-## ขั้นตอนที่ 1 — สร้าง Discord Application
+## ติดตั้งครั้งแรก
 
-1. ไปที่ [Discord Developer Portal](https://discord.com/developers/applications) → **New Application** → ตั้งชื่อ (เช่น "ROOC Guild Manager")
-2. ไปที่แท็บ **OAuth2 → General**:
-   - คัดลอก **Client ID** และ **Client Secret** เก็บไว้
-   - ที่ **Redirects** กด **Add Redirect** แล้วใส่:
-     - ตอน dev: `http://localhost:3000/api/auth/callback/discord`
-     - ตอน production: `https://<โดเมนแอปของคุณ>/api/auth/callback/discord` (ใส่หลังจากรู้โดเมนจาก Railway แล้วในขั้นตอนที่ 2)
-3. ไปที่แท็บ **Bot**:
-   - กด **Reset Token** เพื่อสร้าง bot token ใหม่ แล้วคัดลอกเก็บไว้ (จะเห็นครั้งเดียว)
-   - เปิด **Privileged Gateway Intents → Server Members Intent** (**จำเป็น** ไม่งั้นบอทจะไม่เห็นรายชื่อสมาชิก)
-4. ไปที่แท็บ **OAuth2 → URL Generator**:
-   - เลือก scope: `bot` และ `applications.commands` (สำหรับ slash command `/party`)
-   - เลือก permission:
-     - `View Channels` — ขั้นต่ำสุด บอทต้องอ่านรายชื่อสมาชิก/ห้อง voice ได้
-     - `Kick Members` — ให้ปุ่ม "เตะออก" ในเว็บเตะออกจาก Discord จริง (role ของบอทต้องอยู่สูงกว่า role ของคนที่จะเตะด้วย)
-     - `Send Messages` + `Add Reactions` — สำหรับโพสต์ข้อความเลือกอาชีพ/ลา และประกาศผังปาร์ตี้
-     - `Manage Messages` — (แนะนำ ไม่บังคับ) ให้บอทลบ reaction เก่าอัตโนมัติเวลาสมาชิกเปลี่ยนตัวเลือก ไม่มีก็ยังใช้งานได้ปกติ แค่ไม่มีการเคลียร์ reaction ซ้ำ
-   - เปิดลิงก์ที่ได้เพื่อเชิญบอทเข้า Discord server ของกิลด์
-5. หา **Guild ID** (Server ID): เปิด Discord → User Settings → Advanced → เปิด **Developer Mode** → คลิกขวาที่ไอคอน server → **Copy Server ID**
-6. (ถ้าต้องการ) หา **Role ID** ของยศที่อยากให้เป็นแอดมินในระบบ: คลิกขวาที่ role นั้นใน Server Settings → Roles → **Copy Role ID**
+### 1. สร้าง Discord Application
 
----
+1. [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**
+2. **OAuth2 → General**: คัดลอก Client ID / Client Secret และเพิ่ม Redirect
+   - dev: `http://localhost:3000/api/auth/callback/discord`
+   - production: `https://<โดเมน>/api/auth/callback/discord`
+3. **Bot**: Reset Token (คัดลอกเก็บไว้) และเปิด **Server Members Intent** (จำเป็น)
+4. **OAuth2 → URL Generator**: scope `bot` + `applications.commands`, permission `View Channels`, `Send Messages`, `Add Reactions`, `Attach Files`, `Kick Members` (+ `Manage Messages` แนะนำ) แล้วเปิดลิงก์เชิญบอท
+5. เปิด Developer Mode ใน Discord → คัดลอก **Server ID**, Role ID ของแอดมิน, Channel ID ของช่องแจ้งเตือนแอดมิน
 
-## ขั้นตอนที่ 2 — Deploy บน Railway
+### 2. Deploy บน Railway
 
-### 2.1 สร้างโปรเจกต์และฐานข้อมูล
+1. **New Project → Deploy from GitHub repo** → เลือก repo นี้ และ **New → Database → PostgreSQL**
+2. **service `web`** (สร้างจาก repo อัตโนมัติ)
+   - Start: `npm run start` · **Pre-Deploy: `npm run db:migrate`** (migration รันเองทุก deploy)
+   - Networking → Generate Domain แล้วนำโดเมนไปใส่ Redirect ใน Discord และตัวแปร `AUTH_URL`
+3. **service `bot`** (New → GitHub Repo → repo เดิม)
+   - Start: `npm run bot:start` · ปิด public networking
+4. ใส่ Variables ตามตารางด้านล่าง (`DATABASE_URL` ให้อ้างอิง `${{Postgres.DATABASE_URL}}`)
 
-1. Push โค้ดนี้ขึ้น GitHub repository ของคุณ
-2. ที่ [Railway](https://railway.app) → **New Project → Deploy from GitHub repo** → เลือก repo นี้
-3. ในโปรเจกต์เดียวกัน กด **New → Database → Add PostgreSQL**
+หลังตั้งค่าเสร็จ: push ขึ้น `main` → Railway build + deploy ทั้งสอง service อัตโนมัติ (ดู [docs/OPERATIONS.md](./docs/OPERATIONS.md))
 
-### 2.2 สร้าง service สำหรับเว็บแอป
+### 3. Environment variables
 
-Railway จะสร้าง service แรกจาก repo ให้อัตโนมัติ (ใช้ Nixpacks ตรวจจับว่าเป็น Next.js เอง):
-
-- **Settings → Deploy**:
-  - Start Command: `npm run start` (ค่าเริ่มต้นถูกต้องอยู่แล้วเพราะมี `build`/`start` script)
-  - Pre-Deploy Command: `npm run db:migrate` — ให้ migration รันอัตโนมัติทุกครั้งที่ deploy โดยไม่ต้องรันมือ
-- **Variables** (ดูรายการทั้งหมดในขั้นตอนที่ 3) — อย่างน้อยต้องมี `DATABASE_URL` (อ้างอิงจาก Postgres plugin ผ่าน `${{Postgres.DATABASE_URL}}`), `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `AUTH_SECRET`, `AUTH_URL`, `AUTH_TRUST_HOST`
-- **Settings → Networking** → กด **Generate Domain** เพื่อได้โดเมนสาธารณะ (เช่น `rooc-guild.up.railway.app`)
-- กลับไปที่ Discord Developer Portal → OAuth2 → Redirects → เพิ่ม `https://<โดเมนที่ได้>/api/auth/callback/discord`
-- ตั้ง `AUTH_URL` เป็นโดเมนเดียวกันนี้ (ดูเหตุผลในตารางตัวแปรด้านล่าง)
-
-### 2.3 สร้าง service สำหรับบอท (จาก repo เดียวกัน)
-
-1. ในโปรเจกต์ Railway เดียวกัน กด **New → GitHub Repo** แล้วเลือก repo เดิมอีกครั้ง (จะได้ service ที่สอง)
-2. ตั้งชื่อ service เช่น `bot`
-3. **Settings → Deploy**:
-   - Start Command: `npm run bot:start`
-   - **ปิด** public networking ของ service นี้ (บอทไม่ต้องรับ HTTP request จากภายนอก)
-4. **Variables**: ใส่ `DATABASE_URL`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID` (ไม่ต้องใส่ตัวแปรที่เกี่ยวกับ OAuth/AUTH_SECRET เพราะบอทไม่ได้ใช้)
-
-> **ถ้า push แล้วไม่ deploy อัตโนมัติ**: บางครั้ง Railway's GitHub App integration หลุดการเชื่อมต่อ (พบเจอจริงในโปรเจกต์นี้) — เช็คได้ที่ service → Settings → Source ว่ายัง connect อยู่ไหม ถ้าหลุดให้ reconnect repo ใหม่ที่หน้านั้น หรือกด redeploy มือไปพลางก่อนจนกว่าจะแก้การเชื่อมต่อ
-
-### 2.4 รัน migration ครั้งแรก
-
-ถ้าตั้ง Pre-Deploy Command ไว้แล้วตามข้อ 2.2 ไม่ต้องทำอะไรเพิ่ม — migration จะรันเองทุก deploy หลังจากนี้ ถ้ายังไม่ได้ตั้งหรืออยากรันมือครั้งแรกก่อน deploy จริง วิธีที่ง่ายที่สุดคือรันจากเครื่องตัวเอง โดยตั้ง `DATABASE_URL` ชั่วคราวให้ชี้ไปที่ Postgres บน Railway (คัดลอกจากแท็บ Connect ของ Postgres plugin แล้วใช้ "Public Network" connection string):
-
-```bash
-DATABASE_URL="<connection string จาก Railway Postgres>" npm run db:migrate
-```
-
-หรือถ้าใช้ [Railway CLI](https://docs.railway.com/guides/cli): `railway run npm run db:migrate` จากในโฟลเดอร์โปรเจกต์ (จะดึง environment variables ของ service ที่ผูกไว้ให้อัตโนมัติ)
-
----
-
-## ขั้นตอนที่ 3 — Environment Variables ทั้งหมด
-
-ดูคำอธิบายและวิธีหาแต่ละค่าใน [`.env.example`](./.env.example) ด้วย
+ดูคำอธิบายเต็มใน [`.env.example`](./.env.example)
 
 | ตัวแปร | ใช้ที่ | คำอธิบาย |
 |---|---|---|
 | `DATABASE_URL` | web + bot | Postgres connection string |
-| `DISCORD_CLIENT_ID` | web | จาก Discord App → OAuth2 |
-| `DISCORD_CLIENT_SECRET` | web | จาก Discord App → OAuth2 |
-| `DISCORD_BOT_TOKEN` | web + bot | จาก Discord App → Bot — ทั้งเว็บและบอทต้องใช้ตัวนี้ (เว็บเรียก Discord REST API ตรงสำหรับปุ่มเตะออก/โพสต์ข้อความ) |
+| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | web | จาก Discord App → OAuth2 |
+| `DISCORD_BOT_TOKEN` | web + bot | เว็บใช้เรียก REST (เตะ, โพสต์ข้อความ/ภาพ) บอทใช้ต่อ Gateway |
 | `DISCORD_GUILD_ID` | web + bot | Server ID ของกิลด์ |
-| `DISCORD_ADMIN_ROLE_IDS` | web | Role ID (คั่นด้วย comma) ที่ให้สิทธิ์แอดมิน ไม่บังคับ |
-| `DISCORD_ADMIN_USER_IDS` | web | User ID (คั่นด้วย comma) ที่ให้สิทธิ์แอดมินเสมอไม่ว่าถือ role อะไร ไม่บังคับ |
-| `DISCORD_TRACKED_ROLE_NAME` | web + bot | ชื่อ Discord role ที่ใช้กรองว่าใครคือ "สมาชิกกิลด์" ใน roster จับคู่แบบไม่สนตัวพิมพ์เล็ก-ใหญ่ ไม่บังคับ (ค่า default คือ `Rooc`) |
-| `DISCORD_MANAGEMENT_ROLE_NAMES` | web | Role name (คั่นด้วย comma) ที่จะโชว์เป็นตัวกรอง/badge ในเว็บ — server ที่เป็นชุมชนรวมหลายเกมจะมี role เยอะที่ไม่เกี่ยวกับกิลด์นี้ ตัวนี้ช่วยกรองให้เห็นเฉพาะที่เกี่ยว ไม่บังคับ (ค่า default `ADMIN,MOD,Rooc,Strategist`) |
-| `AUTH_SECRET` | web | สุ่มด้วย `openssl rand -base64 32` |
-| `AUTH_URL` | web | **ต้องใส่เสมอใน production** — Railway proxy ทำให้ Auth.js เดา URL ของตัวเองผิด (เช่น `https://your-app.up.railway.app`) ถ้าไม่ใส่จะเจอ error `Configuration` ตอน login |
-| `AUTH_TRUST_HOST` | web | **ต้องใส่เสมอใน production** — ตั้งเป็น `true` คู่กับ `AUTH_URL` ด้านบน |
+| `DISCORD_ADMIN_ROLE_IDS` | web | Role ID (คั่น comma) ที่ได้สิทธิ์แอดมิน |
+| `DISCORD_ADMIN_USER_IDS` | web | User ID (คั่น comma) ที่เป็นแอดมินเสมอ |
+| `DISCORD_TRACKED_ROLE_NAME` | web + bot | role ที่นับว่าเป็นสมาชิกกิลด์ (default `Rooc`) |
+| `DISCORD_MANAGEMENT_ROLE_NAMES` | web | role ที่โชว์เป็นตัวกรอง/badge (default `ADMIN,MOD,Rooc,Strategist`) |
+| `DISCORD_ADMIN_NOTIFY_CHANNEL_ID` | bot | ช่องที่บอทโพสต์แจ้งเตือนแอดมิน (เช่น มีคนลา, ลาเกินโควต้า) |
+| `AUTH_SECRET` | web | `openssl rand -base64 32` |
+| `AUTH_URL` | web | **ต้องใส่ใน production** เช่น `https://<โดเมน>` |
+| `AUTH_TRUST_HOST` | web | **ต้องใส่ใน production** = `true` |
+| `CLASS_SYNC_SHEET_ID` / `CLASS_SYNC_SHEET_GID` | web | เลิกใช้แล้ว (เครื่องมือ sync อาชีพจาก Google Sheet ถูกถอดออก) ไม่ต้องใส่ |
 
 ---
 
-## รันในเครื่องตัวเอง (local development)
+## รันในเครื่อง
 
 ```bash
 npm install
-cp .env.example .env   # แล้วกรอกค่าจริงในไฟล์ .env
-npm run db:migrate     # สร้างตารางในฐานข้อมูล (ต้องมี Postgres รันอยู่ก่อน เช่นผ่าน docker)
-npm run dev            # รันเว็บที่ http://localhost:3000
-npm run bot:dev        # รันบอท (อีก terminal หนึ่ง)
+cp .env.example .env        # กรอกค่าจริง
+npm run db:migrate          # ต้องมี Postgres ก่อน
+npm run dev                 # เว็บ http://localhost:3000
+npm run bot:dev             # บอท (อีก terminal)
 ```
 
-ถ้ายังไม่มี Postgres ในเครื่อง รันเร็ว ๆ ด้วย Docker:
+Postgres ด่วนด้วย Docker:
 
 ```bash
 docker run --name rooc-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rooc_guild -p 5432:5432 -d postgres:16
 ```
 
-### คำสั่งอื่น ๆ ที่มีให้
-
 | คำสั่ง | ใช้ทำอะไร |
 |---|---|
-| `npm run db:generate` | สร้างไฟล์ migration ใหม่หลังจากแก้ `src/db/schema.ts` (รันแบบ offline ได้ ไม่ต้องต่อฐานข้อมูลจริง) |
-| `npm run db:migrate` | รัน migration ที่ยังไม่ได้ apply กับฐานข้อมูล |
-| `npm run db:push` | ดัน schema ปัจจุบันเข้าฐานข้อมูลตรง ๆ โดยไม่ผ่านไฟล์ migration (ใช้เฉพาะตอน prototype เท่านั้น อย่าใช้กับฐานข้อมูล production) |
-| `npm run db:studio` | เปิด Drizzle Studio (GUI ดู/แก้ข้อมูลในฐานข้อมูล) |
-| `npm run lint` | ตรวจสอบโค้ดด้วย ESLint |
+| `npm run db:generate` | สร้างไฟล์ migration หลังแก้ `src/db/schema.ts` |
+| `npm run db:migrate` | apply migration ที่ค้าง |
+| `npm run db:studio` | Drizzle Studio (GUI ดูข้อมูล) |
+| `npm run lint` | ESLint |
+| `npx tsc --noEmit` | type-check |
+| `npm run build` | build เต็ม — **รันทุกครั้งก่อน push** (บางปัญหาผ่าน tsc แต่ build พัง) |
 
-> ก่อน ship ทุกครั้งควรรัน `npx tsc --noEmit` **และ** `npm run build` เต็ม ๆ ด้วย ไม่ใช่แค่ `tsc`/`lint` — Client Component บางตัวมีปัญหาที่ compile ผ่าน type-check แต่ทำให้ build จริงพังได้ (ดูรายละเอียดใน `CLAUDE.md`)
-
----
-
-## โครงสร้างโปรเจกต์
+## โครงสร้างโปรเจกต์ (ย่อ)
 
 ```
 src/
-  app/
-    (app)/            หน้าที่ต้อง login: dashboard, members, activity, party,
-                       attendance, checkin, calendar, classes, pvp-stats, loot-queue, random
-    login/             หน้า login ด้วย Discord
-    api/auth/          Auth.js route handler
-    actions/           Server actions: members, party, checkin, attendance,
-                       pvp-stats, loot-queue, job-classes, party-templates, ฯลฯ
-  components/          UI components ที่ใช้ร่วมกัน (party board, pvp stats, loot queue ฯลฯ)
-  db/                   Drizzle schema + db client
-  lib/                  Discord API helper, auth/authorization, data queries,
-                       checkin config, party image rendering (canvas)
-  auth.ts               ตั้งค่า Auth.js (Discord OAuth + สิทธิ์แอดมิน)
-bot/
-  index.ts              Entry point ของบอท
-  sync.ts                ตรรกะซิงค์สมาชิก (full sync + อีเวนต์เรียลไทม์)
-  reactions.ts           ระบบ reaction เลือกอาชีพ/แจ้งลาสด ต่อบอร์ด
-  leave-schedule.ts       แจ้งลาล่วงหน้า (`/leave`) + apply อัตโนมัติเมื่อถึงวันจริง
-  attendance-confirm.ts   คำนวณว่าลาแต่ละรายการนับผล/ล็อกแล้วหรือยัง (รอเวลากิจกรรมจบจริง) + แจ้งแอดมิน
-  voice-attendance.ts     ติดตามใครเข้าห้อง voice ตอนไหน (สำหรับ /checkin)
-  midnight-reset.ts       รีเซ็ตสถานะ "ลา" ทุกเที่ยงคืน
-  commands.ts / interactions.ts   Slash command /party
-  discord-client.ts      สร้าง Discord client พร้อม intents ที่ต้องใช้
-drizzle/                 ไฟล์ SQL migration ที่ generate จาก schema
-scripts/migrate.ts        สคริปต์รัน migration
+  app/(app)/        หน้าที่ต้อง login (overview, members, party, random, loot-queue,
+                    calendar, activity, attendance, checkin, pvp-stats, classes) + layout (app shell)
+  app/actions/      Server actions (ทุกตัวเช็ค requireUser/requireAdmin เอง)
+  components/       UI — shell/ (เมนู, ค้นหา), ui/kit.tsx (ชิ้นส่วนกลาง), feedback.tsx (dialog/toast),
+                    party/, checkin/, activity/, leave-stats/ ฯลฯ
+  db/schema.ts      Drizzle schema (มีคอมเมนต์อธิบายแต่ละตาราง)
+  lib/              data queries, กฎการลา/เช็คชื่อ, nav-config, checkin-events ฯลฯ
+bot/                Discord bot worker (รันด้วย tsx)
+drizzle/            SQL migrations
+scripts/            migrate.ts, migrate-leaves-v2.ts
+docs/               เอกสาร
 ```
 
-## การทำงานของระบบซิงค์สมาชิก
+## แก้ปัญหาเบื้องต้น
 
-- **ตอนบอทเริ่มทำงาน** และ **ทุก 30 นาที**: บอทจะดึงรายชื่อสมาชิกปัจจุบันทั้งหมดจาก Discord มาเทียบกับฐานข้อมูล — ใครที่อยู่ในกิลด์แต่ไม่มีในระบบจะถูกเพิ่มเป็นสมาชิกใหม่ ใครที่เคย active อยู่ในระบบแต่ไม่อยู่ใน Discord แล้วจะถูกเปลี่ยนสถานะเป็น "ออกจากกิลด์" อัตโนมัติ (ครอบคลุมกรณีบอทออฟไลน์ตอนมีคนเข้า-ออก)
-- **แบบเรียลไทม์**: บอทฟังอีเวนต์ `guildMemberAdd` / `guildMemberRemove` / `guildMemberUpdate` โดยตรงจาก Discord Gateway เพื่ออัปเดตทันทีที่มีการเปลี่ยนแปลง
-- **การเตะสมาชิก (kick)**: Discord ไม่ได้แยกอีเวนต์ "ถูกเตะ" กับ "ออกเอง" ให้ชัดเจนโดยไม่ใช้สิทธิ์ audit-log เพิ่มเติม ระบบนี้จึงบันทึกทั้งสองกรณีเป็น "ออกจากกิลด์" อัตโนมัติ ส่วนแอดมินสามารถกดทำเครื่องหมาย "ถูกเตะออก" เองในหน้ารายละเอียดสมาชิกได้ เพื่อแยกสถานะให้ชัดเจนในระบบ — หรือกดปุ่ม "เตะออก" ตรง ๆ จากเว็บให้เตะออกจาก Discord จริงพร้อมกันไปเลย
+- **Login แล้วขึ้น NotAGuildMember** — บัญชีต้องมี role ตาม `DISCORD_TRACKED_ROLE_NAME` ใน server ที่ตรงกับ `DISCORD_GUILD_ID`
+- **Callback error "Configuration"** — ลืม `AUTH_URL`/`AUTH_TRUST_HOST` หรือ Redirect URI ไม่ตรงโดเมนเป๊ะ
+- **บอท sync ได้ 0 คน** — ยังไม่เปิด Server Members Intent
+- **role ใหม่ยังไม่เป็นแอดมิน** — logout แล้ว login ใหม่ (สิทธิ์ถูกเช็คสดกับ Discord ทุกครั้งที่ทำ action แอดมิน)
 
-## Troubleshooting
-
-- **Login แล้วเด้งกลับพร้อม error "NotAGuildMember"** — บัญชี Discord ที่ใช้ login ต้องมี role ที่ตรงกับ `DISCORD_TRACKED_ROLE_NAME` (ค่า default `Rooc`) ใน server ที่ตรงกับ `DISCORD_GUILD_ID`
-- **Login แล้ว redirect ผิด / callback error "Configuration"** — ส่วนใหญ่เพราะลืมตั้ง `AUTH_URL`/`AUTH_TRUST_HOST` หรือ Redirect URI ใน Discord Developer Portal ไม่ตรงกับโดเมนจริงเป๊ะ (รวม `https://` และ path `/api/auth/callback/discord`)
-- **บอทไม่เห็นสมาชิกเลย / sync ได้ 0 คน** — เช็คว่าเปิด **Server Members Intent** ใน Discord Developer Portal แล้ว และบอทถูกเชิญเข้า server จริง
-- **role ใหม่ยังไม่ขึ้นเป็นแอดมินทันที** — สิทธิ์แอดมินคำนวณตอน login ใหม่ทุกครั้ง ให้ลอง logout แล้ว login ใหม่
-- **push ขึ้น GitHub แล้ว Railway ไม่ deploy ให้เอง** — เช็คว่า Railway's GitHub App ยังเชื่อมต่อ repo อยู่ไหม (service → Settings → Source) การเชื่อมต่อหลุดได้เองบางครั้ง แก้โดย reconnect repo เดิมที่หน้านั้นอีกครั้ง
-- **migration ใหม่ไม่ apply หลัง deploy** — เช็คว่าตั้ง Pre-Deploy Command เป็น `npm run db:migrate` ไว้ที่ web service แล้ว (ดูขั้นตอนที่ 2.2) ไม่งั้นต้องรันมือทุกครั้งตามขั้นตอนที่ 2.4
+เพิ่มเติม → [docs/OPERATIONS.md](./docs/OPERATIONS.md)

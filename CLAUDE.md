@@ -7,7 +7,7 @@
 - **Check this file and the existing schema/docs before re-exploring the codebase.** An Explore/review subagent sent to "understand the auth layer" or "understand the DB schema" re-derives things that are often already written down here or in `src/db/schema.ts`'s own comments.
 - **When pulling Railway logs**, prefer a narrow `startDate`/`endDate` or a `filter` expression over a full unbounded pull — large log dumps exceed the tool's output limit, get written to disk, and need a second read pass anyway (use `jq`/`grep` on the saved file instead of reading the whole thing back into context).
 - **Deliver code changes via the device-bridge file-write + the user's own `push.bat`**, not `git format-patch`/`git am` round-trips — the sandbox's git remote here is read-only, so direct pushes and patch files both fail; the device-bridge write is the working path.
-- **`device_commit_files` needs a `fileUuid`, not just a `stagedPath`** — passing `stagedPath` for a file that was written to `/mnt/user-data/outputs/` but never sent via `SendUserFile` fails with a 404 ("No such file under /mnt/user-data/outputs/ in this session"), even though the file is really there. Always call `SendUserFile` on the staged files first (one call, all files, `display: "attach"` to avoid spamming previews) to get each `file_uuid`, then pass those to `device_commit_files`.
+- **`device_commit_files` works with `stagedPath`** (an absolute path under `/mnt/user-data/outputs/`) plus `expectedMtimeMs` from `device_stage_files` — no `SendUserFile`/`fileUuid` round-trip needed. If a stagedPath write 404s, fall back to `SendUserFile` (`display: "attach"`) and pass the returned `fileUuid`.
 
 # Write the smallest correct solution (lean coding)
 
@@ -24,5 +24,22 @@ This is about the *solution*, not the *investigation* — read the relevant exis
 
 # Known ops quirks (save yourself re-discovering these)
 
-- **Railway's GitHub App auto-deploy is not installed on this repo.** A push does not trigger a build on its own — after pushing, call `connect-service-source` for both the `web` and `bot` Railway services to force an immediate build from the latest commit. This stays necessary until the user reinstalls the GitHub App (GitHub Settings → Applications → Installed GitHub Apps → Railway → grant `Ryuuuuu-bit/rooc-guild-manager` access → re-enable auto-deploy in Railway).
+- **Railway auto-deploy on push is ON** for both `web` and `bot`. After the user runs `push.bat`, just check `mcp__Railway__environment-status` once — don't sleep/poll in long loops. If a build doesn't start, `connect-service-source` for the service forces one.
+- The web service's pre-deploy runs `npm run db:migrate`. Never ask the user for `DATABASE_URL`; production data fixes go through a migration or a temporary Railway function/service (delete it afterwards).
+- The user pushes with `push.bat` and deletes files themselves (`del`) — the device bridge can't delete.
 - `mcp__Railway__get-service-config` and `mcp__Railway__get-status` currently error ("Structured content does not match the tool's output schema") — use `mcp__Railway__environment-status` or `mcp__Railway__railway-agent` instead.
+
+# UI conventions (Sept 2026 redesign)
+
+Full guide: `docs/DESIGN-SYSTEM.md`. Short version:
+
+- **Never use `window.confirm/alert/prompt`** — use `uiConfirm` / `uiPrompt` / `uiAlert` / `uiToast` from `src/components/feedback.tsx`.
+- Build pages from `src/components/ui/kit.tsx` (PageHeader, KpiGrid/Kpi, Segmented, Chip, Card, StatusTag, EmptyState) and icons from `src/components/shell/app-icon.tsx` (`<AppIcon name=… />`, thin-line SVG; no emoji in UI chrome).
+- Menu items live only in `src/lib/nav-config.ts`; nav badges come from `getNavStatus` in `src/app/actions/nav.ts`.
+- Grids use `minmax(0,1fr)`; boxes in one row share size; check 390px and 1440px.
+- Lint rules that bite here: no `Date.now()` in render (pass `now` from the server), no sync setState in effects, no reassigning in render `.map()`, destructure dnd-kit `useDraggable`. Don't `toLocaleString` dates in client components (hydration #418) — format by hand.
+- Mockups with real member names/avatars stay in `Claude outputs/` (git-ignored) or are delivered as files — never published.
+
+# Docs map
+
+`README.md` (setup/env), `docs/FEATURES.md` (page guide), `docs/ARCHITECTURE.md` (code map, data model, calculation rules), `docs/DESIGN-SYSTEM.md`, `docs/OPERATIONS.md` (deploy, migrations, troubleshooting), `docs/CHANGELOG.md`. Update the relevant doc + CHANGELOG when a feature changes.
