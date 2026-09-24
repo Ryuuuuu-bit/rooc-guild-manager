@@ -302,6 +302,25 @@ export async function setMemberBenched(memberId: string, benched: boolean): Prom
   return { ok: true };
 }
 
+/** Bench/unbench several members at once (the /members bulk bar) — the
+ * same per-member action as the profile button, skipping anyone already in
+ * the requested state so no duplicate log lines get written. */
+export async function setMembersBenched(memberIds: string[], benched: boolean): Promise<UpdateMemberResult & { changed?: number }> {
+  await requireAdmin();
+  const ids = [...new Set(memberIds)].slice(0, 200);
+  let changed = 0;
+  const failed: string[] = [];
+  for (const id of ids) {
+    const existing = await db.query.members.findFirst({ where: eq(members.id, id) });
+    if (!existing || existing.benched === benched) continue;
+    const res = await setMemberBenched(id, benched);
+    if (res.ok) changed++;
+    else failed.push(id);
+  }
+  if (failed.length) return { ok: changed > 0, changed, error: `${failed.length} member(s) could not be updated` };
+  return { ok: true, changed };
+}
+
 /**
  * Suspends a member from the loot auction queue guild-wide (every category
  * at once, not just one) for `days` days from now — e.g. for misbehavior

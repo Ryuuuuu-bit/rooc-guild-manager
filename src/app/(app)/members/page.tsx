@@ -1,11 +1,7 @@
-import Link from "next/link";
-import { listDiscordRoles, listMembers } from "@/lib/data";
-import { listJobClasses } from "@/lib/job-classes";
 import { requireUser } from "@/lib/authz";
-import { StatusBadge, ClassBadge, BenchedBadge, AltClassBadges } from "@/components/badges";
-import { RoleChips } from "@/components/role-chips";
-import { memberDisplayName } from "@/lib/ui";
-import { MemberAvatar } from "@/components/member-avatar";
+import { listDiscordRoles } from "@/lib/data";
+import { getMembersDirectory } from "@/lib/members-directory";
+import { MembersDirectoryView } from "@/components/members-directory";
 
 interface SearchParams {
   q?: string;
@@ -15,168 +11,31 @@ interface SearchParams {
   class?: string;
 }
 
-export default async function MembersPage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
-  await requireUser();
+// Old query-string filters (?status=LEFT, ?benched=benched, ?class=Priest …)
+// still work as the directory's starting filters, so existing links land
+// on the same view; everything after that filters client-side instantly.
+function initialStatus(params: SearchParams): "current" | "active" | "benched" | "left" | "all" | undefined {
+  if (params.benched === "benched") return "benched";
+  if (params.benched === "active") return "active";
+  if (params.status === "LEFT" || params.status === "KICKED") return "left";
+  if (params.status === "ALL") return "all";
+  return undefined;
+}
+
+export default async function MembersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const session = await requireUser();
   const params = await searchParams;
-  const status = (["ACTIVE", "LEFT", "KICKED", "ALL"] as const).find((s) => s === params.status) ?? "ACTIVE";
-  const benched = params.benched === "benched" || params.benched === "active" ? params.benched : undefined;
+  const isAdmin = session.user.isAdmin;
 
-  const [membersList, discordRoleList, jobClassList] = await Promise.all([
-    listMembers({
-      search: params.q,
-      status,
-      discordRoleId: params.role,
-      benched,
-      className: params.class || undefined,
-    }),
-    listDiscordRoles(),
-    listJobClasses(),
-  ]);
-
-  const rolesById = new Map(discordRoleList.map((r) => [r.id, r]));
+  const [directory, roles] = await Promise.all([getMembersDirectory({ includeAdminData: isAdmin }), listDiscordRoles()]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">Guild Members</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            {membersList.length} found
-          </p>
-        </div>
-
-        <form className="flex flex-wrap items-center gap-2" method="get">
-          <input
-            type="text"
-            name="q"
-            defaultValue={params.q}
-            placeholder="Search by Discord name or in-game name..."
-            className="w-56 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
-          />
-          <select
-            name="status"
-            defaultValue={status}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="ACTIVE">Current Members</option>
-            <option value="LEFT">Left Guild</option>
-            <option value="KICKED">Kicked</option>
-            <option value="ALL">Show All</option>
-          </select>
-          <select
-            name="role"
-            defaultValue={params.role ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="">All Discord Roles</option>
-            {discordRoleList.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="class"
-            defaultValue={params.class ?? ""}
-            title="Main or secondary class"
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="">All Classes</option>
-            {jobClassList.map((c) => (
-              <option key={c.name} value={c.name}>
-                {c.emoji} {c.name}
-              </option>
-            ))}
-          </select>
-          <select
-            name="benched"
-            defaultValue={benched ?? ""}
-            className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-amber-500 focus:outline-none"
-          >
-            <option value="">All Statuses</option>
-            <option value="active">Online</option>
-            <option value="benched">Offline (Benched)</option>
-          </select>
-          <button
-            type="submit"
-            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
-          >
-            Search
-          </button>
-        </form>
-      </div>
-
-      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="px-5 py-3 font-medium">Member</th>
-              <th className="px-5 py-3 font-medium">In-game Name</th>
-              <th className="px-5 py-3 font-medium">Class</th>
-              <th className="px-5 py-3 font-medium">Discord Role</th>
-              <th className="px-5 py-3 font-medium">Status</th>
-              <th className="px-5 py-3 font-medium">Joined</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800">
-            {membersList.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-zinc-500">
-                  No members match the filters
-                </td>
-              </tr>
-            )}
-            {membersList.map((member) => (
-              <tr key={member.id} className="transition hover:bg-zinc-800/40">
-                <td className="px-5 py-3">
-                  <Link href={`/members/${member.id}`} className="flex items-center gap-3">
-                    <MemberAvatar
-                      src={member.discordAvatar}
-                      alt={member.discordUsername}
-                      width={32}
-                      height={32}
-                      className="h-8 w-8 rounded-full ring-1 ring-zinc-700"
-                    />
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-zinc-100">
-                        {memberDisplayName(member)}
-                      </div>
-                      <div className="truncate text-xs text-zinc-500">
-                        @{member.discordUsername}
-                      </div>
-                    </div>
-                  </Link>
-                </td>
-                <td className="px-5 py-3 text-zinc-300">{member.inGameName ?? "—"}</td>
-                <td className="px-5 py-3 text-zinc-300">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <ClassBadge className={member.characterClass} />
-                    <AltClassBadges altClasses={member.altClasses} />
-                  </div>
-                </td>
-                <td className="px-5 py-3">
-                  <RoleChips roleIds={member.discordRoles} rolesById={rolesById} />
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex flex-wrap items-center gap-1">
-                    <StatusBadge status={member.status} />
-                    {member.benched && <BenchedBadge />}
-                  </div>
-                </td>
-                <td className="px-5 py-3 text-zinc-400">
-                  {member.joinedDiscordAt
-                    ? new Date(member.joinedDiscordAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok" })
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <MembersDirectoryView
+      directory={directory}
+      roles={roles}
+      isAdmin={isAdmin}
+      now={new Date().getTime()}
+      initial={{ status: initialStatus(params), className: params.class || undefined, roleId: params.role || undefined, q: params.q || undefined }}
+    />
   );
 }
