@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
           avatarUrl={session.user.avatarUrl}
           isAdmin={session.user.isAdmin}
         />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 has-[[data-wide-page]]:max-w-[1600px]">
           <JobClassesProvider classes={jobClasses}>{children}</JobClassesProvider>
         </main>
         <footer className="border-t border-zinc-900 px-4 py-4 text-center text-xs text-zinc-600 sm:px-6">

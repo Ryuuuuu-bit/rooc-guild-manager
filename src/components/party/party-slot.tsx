@@ -43,6 +43,12 @@ interface PartySlotProps {
   selectedMember?: PartyBoardMemberRef | null;
   onSelectMember?: (member: PartyBoardMemberRef) => void;
   onPlaceSelected?: () => void;
+  /** Class highlight (see ClassHighlightBar): "match" rings this slot, "dim" fades it. */
+  highlight?: "match" | "dim" | null;
+  /** Shown on an on-leave occupant: opens the "หาแทน" substitute finder anchored to the button. */
+  onFindSub?: (anchor: HTMLElement) => void;
+  /** Show the occupant's CP on the chip (off in screenshot mode). */
+  showCp?: boolean;
 }
 
 export function PartySlot({
@@ -64,6 +70,9 @@ export function PartySlot({
   selectedMember = null,
   onSelectMember,
   onPlaceSelected,
+  highlight = null,
+  onFindSub,
+  showCp = false,
 }: PartySlotProps) {
   const { isOver, setNodeRef } = useDroppable({ id });
   const { options: allClassOptions } = useJobClasses();
@@ -96,8 +105,12 @@ export function PartySlot({
       // shoves everything below it up or down with no scroll compensation
       // — reported as the page "jumping" when clicking ✕.
       className={`flex min-h-[77px] items-center gap-1 rounded-md border border-dashed px-1.5 py-1.5 transition ${
-        isOver || isTapTarget ? "border-amber-400 bg-amber-500/10" : "border-zinc-800"
-      }`}
+        isOver || isTapTarget
+          ? "border-amber-400 bg-amber-500/10"
+          : member && onLeave && !stacked
+            ? "border-solid border-rose-500/35 bg-rose-500/[0.06]"
+            : "border-zinc-800"
+      } ${highlight === "match" ? "ring-2 ring-inset ring-amber-400" : highlight === "dim" ? "opacity-35" : ""}`}
     >
       {member ? (
         <div className="flex w-full flex-col gap-1">
@@ -108,6 +121,7 @@ export function PartySlot({
             showClassBadge={!isAdmin}
             stacked={stacked}
             onLeave={onLeave}
+            cp={showCp ? member.cp : undefined}
             selected={selectedMember?.id === member.id}
             onSelect={
               isAdmin && onSelectMember
@@ -146,6 +160,16 @@ export function PartySlot({
                     </option>
                   ))}
                 </select>
+              )}
+              {onLeave && onFindSub && (
+                <button
+                  type="button"
+                  onClick={(e) => onFindSub(e.currentTarget)}
+                  title="Find a substitute for this seat (same class first, by CP)"
+                  className="shrink-0 rounded-md bg-rose-600 px-1.5 py-1 text-[10px] font-bold text-white transition hover:bg-rose-500"
+                >
+                  หาแทน
+                </button>
               )}
               {onLeave && onReturn ? (
                 <button

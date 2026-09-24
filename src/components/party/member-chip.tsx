@@ -5,6 +5,7 @@ import { useJobClasses } from "@/components/job-classes-provider";
 import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import type { PartyBoardMemberRef } from "@/lib/party-data";
+import { fmtCp } from "./party-board-logic";
 
 interface MemberChipProps {
   member: PartyBoardMemberRef;
@@ -33,6 +34,8 @@ interface MemberChipProps {
    * unique ids. Also carried in the drag data so the drop handler knows a
    * drag came out of the ลา zone (= cancel the leave). */
   dragContext?: "busy";
+  /** Shows their latest PVP CP ("412k") after the name — hidden when undefined. */
+  cp?: number | null;
 }
 
 /** A draggable chip representing one member, used in the pool, busy list, and party slots. */
@@ -46,6 +49,7 @@ export function MemberChip({
   onSelect,
   onLeave = false,
   dragContext,
+  cp,
 }: MemberChipProps) {
   const { colorClassOf } = useJobClasses();
   const className = member.className;
@@ -107,6 +111,11 @@ export function MemberChip({
           {member.displayName}
         </span>
       </div>
+      {cp !== undefined && !stacked && (
+        <span className="shrink-0 text-[10px] tabular-nums text-zinc-500" title={cp == null ? "No PVP stats on file" : `CP ${cp.toLocaleString("en-US")}`}>
+          {fmtCp(cp)}
+        </span>
+      )}
       {showClassBadge && className && (
         <span
           className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${colorClassOf(className)} ${

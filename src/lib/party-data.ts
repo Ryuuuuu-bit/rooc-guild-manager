@@ -1,6 +1,8 @@
 import { db } from "@/db";
-import { members, partyBoards, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { members, partyBoards, partyGroupParties, partyGroups, partySlots, pvpStatEntries } from "@/db/schema";
+import type { PartyRecipeEntry } from "@/db/schema";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { getCheckinEvent, windowFor } from "@/lib/checkin-events";
 import { memberDisplayName } from "@/lib/ui";
 import { activeLeaveMemberIds, addDays, currentOccurrenceDate, listActiveLeavesForBoard } from "@/lib/leaves";
 import type { Member } from "@/db/schema";
@@ -17,6 +19,9 @@ export interface PartyBoardMemberRef {
   className: string | null;
   /** Secondary classes they can also play — organizer hints only. */
   altClasses: string[];
+  /** CP from their latest PVP stats entry (null = never submitted) — the
+   * party page's party-power totals and substitute ordering use it. */
+  cp: number | null;
 }
 
 export interface PartySlotView {
@@ -78,16 +83,34 @@ export interface PartyBoardDetail {
   unassigned: PartyBoardMemberRef[];
   /** Leaves dated after `occurrenceDate`, sorted by date then Thai name. */
   upcomingLeaves: UpcomingBoardLeave[];
+  /** What every party should contain — see partyBoards.partyRecipe. */
+  recipe: PartyRecipeEntry[];
+  /** The linked event's round window for `occurrenceDate` (ISO), null for an unlinked board. */
+  round: { label: string; start: string; end: string } | null;
 }
 
-function toRef(member: Member): PartyBoardMemberRef {
+function toRef(member: Member, cp: number | null = null): PartyBoardMemberRef {
   return {
     id: member.id,
     displayName: memberDisplayName(member),
     discordAvatar: member.discordAvatar,
     className: member.characterClass,
     altClasses: member.altClasses,
+    cp,
   };
+}
+
+/** Latest PVP CP per member (newest entry wins; null CP entries still count as "latest"). */
+async function latestCpByMember(memberIds: string[]): Promise<Map<string, number | null>> {
+  const out = new Map<string, number | null>();
+  if (!memberIds.length) return out;
+  const rows = await db
+    .select({ memberId: pvpStatEntries.memberId, cp: pvpStatEntries.cp })
+    .from(pvpStatEntries)
+    .where(inArray(pvpStatEntries.memberId, memberIds))
+    .orderBy(desc(pvpStatEntries.createdAt));
+  for (const r of rows) if (!out.has(r.memberId)) out.set(r.memberId, r.cp);
+  return out;
 }
 
 /** All boards (e.g. "ปกติ", "GVG"), in display order. */
@@ -116,6 +139,8 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
   ]);
 
   const membersById = new Map(activeMembers.map((m) => [m.id, m]));
+  const cpById = await latestCpByMember(activeMembers.map((m) => m.id));
+  const ref = (m: Member) => toRef(m, cpById.get(m.id) ?? null);
   const placedMemberIds = new Set<string>();
 
   const groupIds = groups.map((g) => g.id);
@@ -161,7 +186,7 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
         // has since become their main is just "main". Renamed/deleted
         // classes are cascaded onto this column by job-classes.ts.
         const playingAs = member && row?.playingAs && row.playingAs !== member.characterClass ? row.playingAs : null;
-        slotViews.push({ slotIndex: i, member: member ? toRef(member) : null, playingAs, onLeave: member ? onLeaveIds.has(member.id) : false });
+        slotViews.push({ slotIndex: i, member: member ? ref(member) : null, playingAs, onLeave: member ? onLeaveIds.has(member.id) : false });
       }
       return { id: p.id, label: p.label, slots: slotViews };
     }),
@@ -169,14 +194,14 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
 
   const busy = activeMembers
     .filter((m) => onLeaveIds.has(m.id))
-    .map(toRef)
+    .map(ref)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
   // On-leave members are neither "unassigned" (they're in the ลา zone) nor
   // draggable candidates for this round.
   const unassigned = activeMembers
     .filter((m) => !placedMemberIds.has(m.id) && !onLeaveIds.has(m.id))
-    .map(toRef)
+    .map(ref)
     .sort((a, b) => a.displayName.localeCompare(b.displayName, "th"));
 
   // Silently drops a row whose member isn't in membersById (left the guild,
@@ -207,5 +232,12 @@ export async function getPartyBoardDetail(boardId: string): Promise<PartyBoardDe
     busy,
     unassigned,
     upcomingLeaves,
+    recipe: board.partyRecipe ?? [],
+    round: (() => {
+      const event = board.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
+      if (!event) return null;
+      const w = windowFor(event, occurrenceDate);
+      return { label: event.label, start: w.start.toISOString(), end: w.end.toISOString() };
+    })(),
   };
 }

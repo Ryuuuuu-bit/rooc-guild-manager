@@ -20,7 +20,9 @@ export default async function PartyPage({
   const board = selectedBoardId ? await getPartyBoardDetail(selectedBoardId) : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    // data-wide-page lets the app layout drop its max-w-6xl cap here — the
+    // party grid plus its side panel need the room (see (app)/layout.tsx).
+    <div data-wide-page className="flex flex-col gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Party / Event Setup</h1>
@@ -47,6 +49,7 @@ export default async function PartyPage({
         selectedBoardId={selectedBoardId ?? null}
         initialBoard={board}
         isAdmin={session.user.isAdmin}
+        now={new Date().getTime()}
       />
     </div>
   );

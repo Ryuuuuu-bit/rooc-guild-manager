@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { members, membershipEvents, partyBoards, partyGroupParties, partyGroups, partySlots } from "@/db/schema";
+import type { PartyRecipeEntry } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
-import { isValidJobClassName } from "@/lib/job-classes";
+import { isValidJobClassName, listJobClasses } from "@/lib/job-classes";
 import { normalizeAltClasses } from "@/lib/alt-classes";
 import { cancelBoardOpenLeaves, cancelLeave, currentOccurrenceDate, requestLeave } from "@/lib/leaves";
 import { getPartyBoardDetail } from "@/lib/party-data";
@@ -352,6 +353,107 @@ export async function setSlotPlayingAs(partyId: string, slotIndex: number, class
   if (playingAs && !(await isValidJobClassName(playingAs))) return { ok: false, error: "Invalid class" };
 
   await db.update(partySlots).set({ playingAs, updatedAt: new Date() }).where(eq(partySlots.id, slot.id));
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+/** One slot's desired contents — see applySlotLayout. */
+export interface SlotWrite {
+  partyId: string;
+  slotIndex: number;
+  memberId: string | null;
+  playingAs: string | null;
+}
+
+/**
+ * Writes a batch of slots on one board in a single transaction — the
+ * party page's "หาแทน" (sub in), Auto-balance and Undo all reduce to "these
+ * slots should now hold these members". Leaves are never touched: an
+ * on-leave member who loses their seat just stays in the ลา list.
+ *
+ * Each member ends up in at most one slot on the board: anyone placed here
+ * is first cleared from every other slot of the board. Members who are no
+ * longer ACTIVE, or are benched, are dropped (their slot is left empty)
+ * rather than failing the whole batch — an Undo shouldn't die because one
+ * person left the guild in the meantime.
+ */
+export async function applySlotLayout(boardId: string, writes: SlotWrite[]): Promise<ActionResult> {
+  await requireAdmin();
+  if (!writes.length) return { ok: true };
+  if (writes.length > 200) return { ok: false, error: "Too many slots in one change" };
+
+  const partyIds = new Set(await getPartyIdsForBoard(boardId));
+  const seen = new Set<string>();
+  for (const w of writes) {
+    if (!partyIds.has(w.partyId)) return { ok: false, error: "A party in this change no longer exists — refresh and try again" };
+    if (!Number.isInteger(w.slotIndex) || w.slotIndex < 0 || w.slotIndex > 4) return { ok: false, error: "Invalid slot" };
+    const key = `${w.partyId}:${w.slotIndex}`;
+    if (seen.has(key)) return { ok: false, error: "The same slot appears twice" };
+    seen.add(key);
+  }
+  const placedIds = writes.map((w) => w.memberId).filter((id): id is string => Boolean(id));
+  if (new Set(placedIds).size !== placedIds.length) return { ok: false, error: "A member can only hold one slot per board" };
+
+  const placeable = placedIds.length
+    ? await db
+        .select({ id: members.id, characterClass: members.characterClass })
+        .from(members)
+        .where(and(inArray(members.id, placedIds), eq(members.status, "ACTIVE"), eq(members.benched, false)))
+    : [];
+  const mainById = new Map(placeable.map((m) => [m.id, m.characterClass]));
+  const validClasses = new Set((await listJobClasses()).map((c) => c.name));
+
+  const rows = writes.map((w) => {
+    const memberId = w.memberId && mainById.has(w.memberId) ? w.memberId : null;
+    const main = memberId ? mainById.get(memberId) : null;
+    // Same normalisation as setSlotPlayingAs: their main (or nothing) = null.
+    const playingAs = memberId && w.playingAs && w.playingAs !== main && validClasses.has(w.playingAs) ? w.playingAs : null;
+    return { partyId: w.partyId, slotIndex: w.slotIndex, memberId, playingAs };
+  });
+  const placing = rows.map((r) => r.memberId).filter((id): id is string => Boolean(id));
+
+  await db.transaction(async (tx) => {
+    if (placing.length) {
+      await tx
+        .update(partySlots)
+        .set({ memberId: null, playingAs: null, updatedAt: new Date() })
+        .where(and(inArray(partySlots.memberId, placing), inArray(partySlots.partyId, [...partyIds])));
+    }
+    for (const r of rows) {
+      await tx
+        .insert(partySlots)
+        .values({ ...r })
+        .onConflictDoUpdate({
+          target: [partySlots.partyId, partySlots.slotIndex],
+          set: { memberId: r.memberId, playingAs: r.playingAs, updatedAt: new Date() },
+        });
+    }
+  });
+
+  revalidatePath("/party");
+  return { ok: true };
+}
+
+/** Sets what every party on a board should contain (see partyBoards.partyRecipe). */
+export async function setBoardRecipe(boardId: string, recipe: PartyRecipeEntry[]): Promise<ActionResult> {
+  await requireAdmin();
+  const validClasses = new Set((await listJobClasses()).map((c) => c.name));
+  const merged = new Map<string, number>();
+  for (const e of recipe) {
+    if (!e || typeof e.className !== "string" || !validClasses.has(e.className)) return { ok: false, error: "Invalid class in recipe" };
+    const count = Math.trunc(Number(e.count));
+    if (!(count >= 1 && count <= 5)) return { ok: false, error: "Each count must be 1–5" };
+    merged.set(e.className, (merged.get(e.className) ?? 0) + count);
+  }
+  const clean = [...merged].map(([className, count]) => ({ className, count: Math.min(count, 5) }));
+  if (clean.reduce((a, e) => a + e.count, 0) > 5) return { ok: false, error: "A party only has 5 slots" };
+
+  const updated = await db
+    .update(partyBoards)
+    .set({ partyRecipe: clean, updatedAt: new Date() })
+    .where(eq(partyBoards.id, boardId))
+    .returning({ id: partyBoards.id });
+  if (!updated.length) return { ok: false, error: "Board not found" };
   revalidatePath("/party");
   return { ok: true };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -19,6 +19,7 @@ import { getCheckinEvent } from "@/lib/checkin-events";
 import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { useJobClasses } from "@/components/job-classes-provider";
 import {
+  applySlotLayout,
   createGroup,
   createParty,
   deleteBoard,
@@ -27,11 +28,29 @@ import {
   moveMember,
   renameGroup,
   resetPartyBoard,
+  setBoardRecipe,
   setMemberClass,
   setSlotPlayingAs,
   type PartyDestination,
+  type SlotWrite,
 } from "@/app/actions/party";
+import type { PartyRecipeEntry } from "@/db/schema";
 import type { PartyBoardDetail, PartyBoardListItem, PartyBoardMemberRef, PartyGroupView } from "@/lib/party-data";
+import { applyWritesLocal, autoBalanceWrites, diffLayouts, groupAverageCp, seatedClass, subInWrites, type SubCandidate } from "./party-board-logic";
+import {
+  ChangesCard,
+  ClassHighlightBar,
+  NeedsSubCard,
+  PartyCardHeader,
+  PartyPowerCard,
+  ReadinessStrip,
+  RecipeEditor,
+  SideCard,
+  SubFinderPopover,
+  UndoToast,
+  type ChangeLogEntry,
+  type SubTarget,
+} from "./party-board-panels";
 
 /** "YYYY-MM-DD" -> "20 Sep" — noon UTC+7 anchor avoids the date shifting a
  * day when parsed in a browser on a different local timezone. */
@@ -160,6 +179,7 @@ function DroppableZone({
   maxHeightClass = "max-h-36",
   tapTarget = false,
   onBackgroundClick,
+  layout = "wrap",
 }: {
   id: string;
   children: React.ReactNode;
@@ -177,13 +197,15 @@ function DroppableZone({
    * which stops propagation on its own click) is tapped while a selection
    * is pending — completes a tap-to-move here. */
   onBackgroundClick?: () => void;
+  /** "list" stacks full-width chips (the side-panel pool); "wrap" flows them. */
+  layout?: "wrap" | "list";
 }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
     <div
       ref={setNodeRef}
       onClick={onBackgroundClick}
-      className={`flex ${maxHeightClass} min-h-[52px] flex-wrap content-start gap-1.5 overflow-y-auto rounded-xl border p-2 transition ${
+      className={`flex ${maxHeightClass} min-h-[52px] ${layout === "list" ? "flex-col" : "flex-wrap content-start"} gap-1.5 overflow-y-auto rounded-xl border p-2 transition ${
         isOver || tapTarget ? "border-amber-400 bg-amber-500/10" : "border-zinc-800 bg-zinc-900/40"
       }`}
       aria-label={label}
@@ -212,6 +234,12 @@ interface PartyCardProps {
   selectedMember?: PartyBoardMemberRef | null;
   onSelectMember?: (member: PartyBoardMemberRef) => void;
   onPlaceSelected?: (partyId: string, slotIndex: number) => void;
+  /** Working-view extras (all off in screenshot mode). */
+  recipe?: PartyRecipeEntry[];
+  groupAvg?: number;
+  highlightClass?: string | null;
+  onFindSub?: (partyId: string, slotIndex: number, anchor: HTMLElement) => void;
+  showExtras?: boolean;
 }
 
 /** One party as a self-contained card (header + 5 slot rows) so cards can wrap freely regardless of party count. */
@@ -230,6 +258,11 @@ function PartyCard({
   selectedMember = null,
   onSelectMember,
   onPlaceSelected,
+  recipe = [],
+  groupAvg = 0,
+  highlightClass = null,
+  onFindSub,
+  showExtras = false,
 }: PartyCardProps) {
   // Which empty slot's "pick a member" popover is open. Controlled here (rather
   // than left uncontrolled inside each PartySlot) so a successful pick can
@@ -245,8 +278,15 @@ function PartyCard({
     setOpenSlotIndex(next ?? null);
   }
 
+  const leaveSeated = party.slots.some((s) => s.member && s.onLeave);
+  const missingRole = showExtras && recipe.length > 0 && party.slots.some((s) => s.member) && recipe.some((r) => party.slots.filter((s) => s.member && !s.onLeave && seatedClass(s) === r.className).length < r.count);
+  const borderClass = !showExtras ? "border-zinc-800" : leaveSeated ? "border-rose-500/50" : missingRole ? "border-amber-400/45" : "border-zinc-800";
+
   return (
-    <div className="flex flex-col rounded-lg border border-zinc-800 bg-zinc-950">
+    <div className={`flex flex-col rounded-lg border bg-zinc-950 ${borderClass}`}>
+      {showExtras ? (
+        <PartyCardHeader party={party} recipe={recipe} groupAvg={groupAvg} isAdmin={isAdmin} onDelete={() => onDelete(party.id, party.label)} />
+      ) : (
       <div className="flex items-center justify-between gap-1 rounded-t-lg bg-sky-500/10 px-2.5 py-2 text-xs font-semibold text-sky-300">
         <span className="truncate">{party.label}</span>
         <span className="flex shrink-0 items-center gap-2">
@@ -263,10 +303,13 @@ function PartyCard({
           )}
         </span>
       </div>
+      )}
       <div className="flex flex-col gap-1.5 p-1.5">
         {[0, 1, 2, 3, 4].map((slotIndex) => {
           const slot = party.slots.find((s) => s.slotIndex === slotIndex) ?? { slotIndex, member: null, playingAs: null, onLeave: false };
           const memberId = slot.member?.id;
+          const cls = seatedClass(slot);
+          const highlight = showExtras && highlightClass ? (slot.member && !slot.onLeave && cls === highlightClass ? "match" : "dim") : null;
           return (
             <PartySlot
               key={slotIndex}
@@ -288,6 +331,9 @@ function PartyCard({
               selectedMember={selectedMember}
               onSelectMember={onSelectMember}
               onPlaceSelected={onPlaceSelected ? () => onPlaceSelected(party.id, slotIndex) : undefined}
+              highlight={highlight}
+              showCp={showExtras}
+              onFindSub={showExtras && isAdmin && onFindSub && slot.onLeave ? (anchor) => onFindSub(party.id, slotIndex, anchor) : undefined}
             />
           );
         })}
@@ -301,9 +347,20 @@ interface PartyBoardViewProps {
   selectedBoardId: string | null;
   initialBoard: PartyBoardDetail | null;
   isAdmin: boolean;
+  /** Server render time (ms) — seeds the round countdown without reading the clock during render. */
+  now: number;
 }
 
-export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin }: PartyBoardViewProps) {
+interface HistoryEntry {
+  label: string;
+  undo: SlotWrite[];
+}
+
+function clockNow(): string {
+  return new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+}
+
+export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin, now }: PartyBoardViewProps) {
   const router = useRouter();
   const { options: classOptions } = useJobClasses();
   const [board, setBoard] = useState<PartyBoardDetail | null>(initialBoard);
@@ -323,6 +380,141 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   const [screenshotMode, setScreenshotMode] = useState(false);
   const effectiveAdmin = isAdmin && !screenshotMode;
   const [, startTransition] = useTransition();
+  const [highlightClass, setHighlightClass] = useState<string | null>(null);
+  const [subTarget, setSubTarget] = useState<SubTarget | null>(null);
+  const closeSubFinder = useCallback(() => setSubTarget(null), []);
+  // Undo covers layout-only changes (who sits where, and as which class):
+  // drags between slots/the pool, หาแทน, Auto-balance, slot class. Leave
+  // changes (ลา / return) aren't undoable here — they're real leave records
+  // with their own audit trail; drag them back instead.
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [log, setLog] = useState<ChangeLogEntry[]>([]);
+  const logId = useRef(0);
+  const [toast, setToast] = useState<{ text: string; undoable: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [recipeOpen, setRecipeOpen] = useState(false);
+
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
+  function addLog(text: string) {
+    logId.current += 1;
+    const id = logId.current;
+    setLog((prev) => [{ id, text, at: clockNow() }, ...prev].slice(0, 30));
+  }
+
+  function showToast(text: string, undoable: boolean) {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToast({ text, undoable });
+    toastTimer.current = setTimeout(() => setToast(null), 4500);
+  }
+
+  function partyLabel(partyId: string): string {
+    for (const g of board?.groups ?? []) for (const p of g.parties) if (p.id === partyId) return board!.groups.length > 1 ? `${g.name} · ${p.label}` : p.label;
+    return "party";
+  }
+
+  function describeMove(member: PartyBoardMemberRef, destination: PartyDestination): string {
+    switch (destination.type) {
+      case "busy":
+        return `${member.displayName} ลา`;
+      case "return":
+        return `${member.displayName} กลับมา`;
+      case "unassigned":
+        return `${member.displayName} → waiting`;
+      case "slot":
+        return `${member.displayName}${destination.cancelLeave ? " กลับมา" : ""} → ${partyLabel(destination.partyId)}`;
+    }
+  }
+
+  /** Sends a batch of slot writes to the server; drops `entry` from the undo stack if it fails. */
+  function runLayout(writes: SlotWrite[], entry?: HistoryEntry) {
+    if (!selectedBoardId) return;
+    startTransition(async () => {
+      try {
+        const result = await applySlotLayout(selectedBoardId, writes);
+        if (!result.ok) {
+          alert(result.error ?? "Failed to save the change. Please try again.");
+          if (entry) setHistory((h) => h.filter((e) => e !== entry));
+          router.refresh();
+        }
+      } catch (err) {
+        console.error("Failed to apply slot layout", err);
+        alert("Failed to save the change. Please try again.");
+        if (entry) setHistory((h) => h.filter((e) => e !== entry));
+        router.refresh();
+      }
+    });
+  }
+
+  /** Applies a layout change (optimistically), records it for Undo, and saves it. */
+  function commitLayout(label: string, writes: SlotWrite[], toastText?: string) {
+    if (!board || !writes.length) return;
+    const next = applyWritesLocal(board, writes);
+    const { apply, undo } = diffLayouts(board, next);
+    if (!apply.length) return;
+    const entry: HistoryEntry = { label, undo };
+    setHistory((h) => [...h, entry].slice(-30));
+    addLog(label);
+    setBoard(next);
+    showToast(toastText ?? label, true);
+    runLayout(apply, entry);
+  }
+
+  function handleUndo() {
+    const entry = history[history.length - 1];
+    if (!entry || !board) return;
+    setHistory((h) => h.slice(0, -1));
+    setBoard(applyWritesLocal(board, entry.undo));
+    addLog(`↶ Undo: ${entry.label}`);
+    showToast(`Undone: ${entry.label}`, false);
+    runLayout(entry.undo);
+  }
+
+  function openFindSub(partyId: string, slotIndex: number, anchor: HTMLElement) {
+    const r = anchor.getBoundingClientRect();
+    setSelectedMember(null);
+    setSubTarget({ partyId, slotIndex, rect: { left: r.left, top: r.top, bottom: r.bottom } });
+  }
+
+  function handlePickSub(candidate: SubCandidate) {
+    if (!subTarget || !board) return;
+    let outName = "";
+    for (const g of board.groups)
+      for (const p of g.parties) if (p.id === subTarget.partyId) outName = p.slots.find((s) => s.slotIndex === subTarget.slotIndex)?.member?.displayName ?? "";
+    setSubTarget(null);
+    const label = `${candidate.member.displayName} ลงแทน ${outName}`;
+    commitLayout(label, subInWrites(subTarget.partyId, subTarget.slotIndex, candidate), candidate.from ? `${label} · ช่องเดิม (${candidate.from.label}) ว่างแล้ว` : label);
+  }
+
+  function handleAutoBalance() {
+    const group = board?.groups.find((g) => g.id === activeGroupId);
+    if (!group) return;
+    const { writes, swaps } = autoBalanceWrites(group);
+    if (!swaps) {
+      showToast("สมดุลดีอยู่แล้ว — no same-class swap between full parties narrows the gap", false);
+      return;
+    }
+    commitLayout(`Auto-balance ${group.name}: ${swaps} swap${swaps > 1 ? "s" : ""}`, writes, `Auto-balance: สลับ ${swaps} คู่ (อาชีพเดียวกันเท่านั้น) — ช่วง CP แคบลง`);
+  }
+
+  async function handleSaveRecipe(recipe: PartyRecipeEntry[]) {
+    if (!selectedBoardId) return;
+    try {
+      const result = await setBoardRecipe(selectedBoardId, recipe);
+      if (!result.ok) {
+        alert(result.error ?? "Failed to save the recipe.");
+        return;
+      }
+      setBoard((prev) => (prev ? { ...prev, recipe } : prev));
+      setRecipeOpen(false);
+      addLog("Recipe updated");
+    } catch (err) {
+      console.error("Failed to save recipe", err);
+      alert("Failed to save the recipe. Please try again.");
+    }
+  }
 
   // Structural edits (create/rename/delete board/group/party) go through
   // router.refresh() rather than local optimistic state, so re-sync local
@@ -352,7 +544,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
   }, [selectedMember]);
 
   function placeMember(member: PartyBoardMemberRef, destination: PartyDestination) {
-    if (!selectedBoardId) return;
+    if (!selectedBoardId || !board) return;
     // Tried animating this move with the View Transitions API (smooth glide
     // between old/new position) — reverted per user feedback: with several
     // chips potentially moving/reflowing across a busy board at once, the
@@ -360,12 +552,27 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     // to a plain instant update. The actual "page jumps" bug this was meant
     // to layer polish on top of is still fixed via the slot's min-h-[77px]
     // (party-slot.tsx) — that's what stops the real layout shift.
-    setBoard((prev) => (prev ? computeNext(prev, member, destination) : prev));
+    const next = computeNext(board, member, destination);
+    const text = describeMove(member, destination);
+    // Only pure seat moves go on the undo stack (see `history`).
+    const layoutOnly = destination.type === "unassigned" || (destination.type === "slot" && !destination.cancelLeave);
+    let entry: HistoryEntry | null = null;
+    if (layoutOnly) {
+      const { undo } = diffLayouts(board, next);
+      if (undo.length) {
+        const e: HistoryEntry = { label: text, undo };
+        entry = e;
+        setHistory((h) => [...h, e].slice(-30));
+      }
+    }
+    addLog(text);
+    setBoard(next);
     startTransition(async () => {
       try {
         const result = await moveMember(selectedBoardId, member.id, destination);
         if (!result.ok) {
           alert(result.error ?? "Failed to move member. Please try again.");
+          if (entry) setHistory((h) => h.filter((x) => x !== entry));
           router.refresh();
         }
       } catch (err) {
@@ -464,6 +671,15 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
 
   function handlePlayingAsChange(partyId: string, slotIndex: number, value: string | null) {
     if (!board) return;
+    for (const g of board.groups)
+      for (const p of g.parties) {
+        if (p.id !== partyId) continue;
+        const slot = p.slots.find((s) => s.slotIndex === slotIndex);
+        if (!slot?.member) continue;
+        const label = `${slot.member.displayName} เล่น ${value ?? slot.member.className ?? "main"}`;
+        setHistory((h) => [...h, { label, undo: [{ partyId, slotIndex, memberId: slot.member!.id, playingAs: slot.playingAs }] }].slice(-30));
+        addLog(label);
+      }
     setBoard((prev) =>
       prev
         ? {
@@ -558,7 +774,11 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     if (!confirm("Clear this entire board back to empty? This cannot be undone.")) return;
     try {
       const result = await resetPartyBoard(selectedBoardId);
-      if (result.ok) router.refresh();
+      if (result.ok) {
+        setHistory([]);
+        addLog("Board cleared");
+        router.refresh();
+      }
       else if (result.error) alert(result.error);
     } catch (err) {
       console.error("Failed to reset board", err);
@@ -660,63 +880,9 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
     });
   }, [board, poolQuery, poolClassFilter]);
 
-  // One row per member who's out (busy now, or with an upcoming leave on
-  // file), each with the open members sharing their class. A member both
-  // busy today and on file for a later date appears once, tagged with the
-  // later date. Members with no class set get no row — there's nothing to
-  // match on, and the plain pool list already covers "anyone free".
-  const substituteHints = useMemo(() => {
-    type Candidate = { member: PartyBoardMemberRef; asAlt: boolean };
-    type Hint = { memberId: string; name: string; className: string | null; when: string | null; candidates: Candidate[] };
-    const rows = new Map<string, Hint>();
-    if (!board) return [] as Hint[];
-    // Someone who's out themselves (busy now, or with a leave on file) is
-    // not a substitute for anyone — including for their own row, which an
-    // unassigned member with an upcoming leave would otherwise appear in.
-    // Only people out for THIS round are unavailable as substitutes — an
-    // upcoming leave (a later date) doesn't stop someone filling in tonight.
-    const outIds = new Set<string>(board.busy.map((m) => m.id));
-    // Main-class matches first, then people who list it as a secondary
-    // class (flagged "รอง" in the UI so the organizer knows it's not their
-    // usual role).
-    const openByClass = new Map<string, Candidate[]>();
-    for (const m of board.unassigned) {
-      if (outIds.has(m.id)) continue;
-      if (m.className) openByClass.set(m.className, [...(openByClass.get(m.className) ?? []), { member: m, asAlt: false }]);
-      for (const a of m.altClasses) openByClass.set(a, [...(openByClass.get(a) ?? []), { member: m, asAlt: true }]);
-    }
-    const candidatesFor = (className: string) => (openByClass.get(className) ?? []).slice().sort((a, b) => Number(a.asAlt) - Number(b.asAlt));
-    // The class the party actually loses is the one they were SEATED as —
-    // someone fielded as their alt Sage needs a Sage stand-in, not their
-    // main. Unseated members fall back to their main class.
-    const seatedClass = new Map<string, string>();
-    for (const g of board.groups) for (const p of g.parties) for (const s of p.slots) if (s.member && s.playingAs) seatedClass.set(s.member.id, s.playingAs);
-    for (const m of board.busy) {
-      const className = seatedClass.get(m.id) ?? m.className;
-      if (!className) continue;
-      rows.set(m.id, { memberId: m.id, name: m.displayName, className, when: null, candidates: candidatesFor(className) });
-    }
-    for (const l of board.upcomingLeaves) {
-      const className = seatedClass.get(l.memberId) ?? l.className;
-      if (!className) continue;
-      const existing = rows.get(l.memberId);
-      if (existing) {
-        if (!existing.when) existing.when = fmtLeaveDate(l.date);
-        continue;
-      }
-      rows.set(l.memberId, {
-        memberId: l.memberId,
-        name: l.name,
-        className,
-        when: fmtLeaveDate(l.date),
-        candidates: candidatesFor(className),
-      });
-    }
-    return [...rows.values()];
-  }, [board]);
-
   const activeGroup = board?.groups.find((g) => g.id === activeGroupId) ?? null;
   const linkedEvent = board?.checkinEventKey ? getCheckinEvent(board.checkinEventKey) : undefined;
+  const activeGroupAvg = activeGroup && board ? groupAverageCp(activeGroup, board.recipe) : 0;
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -770,7 +936,18 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                 </span>
               </span>
               {isAdmin && (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {effectiveAdmin && (
+                    <button
+                      type="button"
+                      onClick={handleUndo}
+                      disabled={!history.length}
+                      title={history.length ? `Undo: ${history[history.length - 1].label}` : "Nothing to undo"}
+                      className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800 disabled:cursor-default disabled:opacity-40"
+                    >
+                      ↶ Undo
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setScreenshotMode((v) => !v)}
@@ -810,6 +987,10 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               )}
             </div>
 
+            {!screenshotMode && (
+              <ReadinessStrip board={board} activeGroup={activeGroup} now={now} isAdmin={effectiveAdmin} onEditRecipe={() => setRecipeOpen(true)} />
+            )}
+
             {/* Warns an organizer, before they start dragging people into
                 slots, that someone already has a leave on file for this
                 board on a date AFTER the current round — the ลา zone only
@@ -832,110 +1013,10 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
               </div>
             )}
 
-            {/* Substitute suggestions — for everyone out (on the Busy/Leave
-                list right now, or with an upcoming leave on file), the
-                open members with the SAME class, so an organizer doesn't
-                have to scan the whole pool to find a like-for-like swap.
-                Purely a hint: placing them still goes through the normal
-                drag / tap-to-place flow below. Hidden in screenshot mode
-                for the same reason as the banner above. */}
-            {!screenshotMode && substituteHints.length > 0 && (
-              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5 text-xs text-zinc-300">
-                <span className="font-medium text-emerald-300">🔁 Substitutes with the same class</span>
-                <span className="text-zinc-500"> (รอง = lists it as a secondary class)</span>
-                <ul className="mt-1.5 flex flex-col gap-1">
-                  {substituteHints.map((h) => (
-                    <li key={h.memberId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="text-zinc-400">
-                        {h.name}
-                        {h.className ? <span className="text-zinc-500"> ({h.className})</span> : null}
-                        {h.when ? <span className="text-amber-300/80"> · {h.when}</span> : null}
-                        {" →"}
-                      </span>
-                      {h.candidates.length > 0 ? (
-                        <span className="flex flex-wrap gap-1">
-                          {h.candidates.map((c) => (
-                            <span
-                              key={c.member.id}
-                              title={c.asAlt ? `${c.member.displayName} — main: ${c.member.className ?? "—"}, can also play ${h.className}` : undefined}
-                              className={`rounded-full px-2 py-0.5 ring-1 ring-inset ${
-                                c.asAlt ? "bg-zinc-800/60 text-zinc-300 ring-zinc-600/40" : "bg-emerald-500/10 ring-emerald-500/30"
-                              }`}
-                            >
-                              {c.member.displayName}
-                              {c.asAlt ? <span className="text-zinc-500"> (รอง)</span> : null}
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500">no one open with this class</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {!screenshotMode && <ClassHighlightBar board={board} value={highlightClass} onChange={setHighlightClass} />}
 
-            {/* Unassigned pool — kept above the party grid (the "who's
-                waiting" list, at a glance) so it's easy to drag/pick from
-                while filling parties. Horizontal/compact with a generous
-                but bounded height (most rosters fit with no scroll at all;
-                a big one scrolls internally rather than shoving the party
-                grid down). Hidden entirely in screenshot mode. */}
-            {!screenshotMode && (
-              <section>
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-medium text-zinc-300">
-                    Waiting to Join ({filteredUnassigned.length}
-                    {filteredUnassigned.length !== board.unassigned.length ? ` / ${board.unassigned.length}` : ""})
-                  </h2>
-                  <input
-                    type="text"
-                    value={poolQuery}
-                    onChange={(e) => setPoolQuery(e.target.value)}
-                    placeholder="Search name..."
-                    className="w-32 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none sm:max-w-40"
-                  />
-                  <select
-                    value={poolClassFilter}
-                    onChange={(e) => setPoolClassFilter(e.target.value)}
-                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
-                  >
-                    <option value="">All Classes</option>
-                    {classOptions.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <DroppableZone
-                  id="unassigned"
-                  label="Waiting to join"
-                  maxHeightClass="max-h-[420px]"
-                  tapTarget={effectiveAdmin && !!selectedMember}
-                  onBackgroundClick={
-                    effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "unassigned" }) : undefined
-                  }
-                >
-                  {filteredUnassigned.length === 0 && (
-                    <span className="px-1 py-1 text-xs text-zinc-600">
-                      {board.unassigned.length === 0 ? "No one is waiting to join" : "No names match the filter"}
-                    </span>
-                  )}
-                  {filteredUnassigned.map((member) => (
-                    <MemberChip
-                      key={member.id}
-                      member={member}
-                      draggable={effectiveAdmin}
-                      selected={selectedMember?.id === member.id}
-                      onSelect={effectiveAdmin ? () => handleToggleSelect(member) : undefined}
-                    />
-                  ))}
-                </DroppableZone>
-              </section>
-            )}
-
+            <div className={screenshotMode ? "flex flex-col gap-4" : "grid gap-4 xl:grid-cols-[minmax(0,1fr)_290px] xl:items-start"}>
+            <div className="flex min-w-0 flex-col gap-4">
             {/* Group tabs */}
             <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800">
               {board.groups.map((g) => (
@@ -991,6 +1072,14 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                       </button>
                       <button
                         type="button"
+                        onClick={handleAutoBalance}
+                        title="Evens out CP between this group's full parties by swapping members who play the same class — compositions don't change, on-leave members never move. Undo-able."
+                        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+                      >
+                        ⚖ Auto-balance
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteGroup(activeGroup.id, activeGroup.name)}
                         className="rounded-lg border border-rose-900/60 px-2.5 py-1 text-xs text-rose-400 transition hover:bg-rose-950/40"
                       >
@@ -1015,7 +1104,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                           // layout), so force exactly 8 columns here regardless of viewport
                           // width, instead of the width-driven auto-fill used for editing.
                           "grid grid-cols-8 gap-2"
-                        : "grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3"
+                        : "grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3"
                     }
                   >
                     {activeGroup.parties.map((party) => (
@@ -1039,12 +1128,87 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
                             ? (partyId, slotIndex) => handlePlaceSelected({ type: "slot", partyId, slotIndex })
                             : undefined
                         }
+                        showExtras={!screenshotMode}
+                        recipe={board.recipe}
+                        groupAvg={activeGroupAvg}
+                        highlightClass={highlightClass}
+                        onFindSub={openFindSub}
                       />
                     ))}
                   </div>
                 )}
               </div>
             )}
+
+            </div>
+
+            {!screenshotMode && (
+              <aside className="order-first flex min-w-0 flex-col gap-3 xl:sticky xl:top-4 xl:order-none xl:max-h-[calc(100dvh-2rem)] xl:overflow-y-auto">
+                <NeedsSubCard board={board} isAdmin={effectiveAdmin} onFindSub={openFindSub} />
+                <SideCard
+                  title="🪑 Waiting to join"
+                  count={filteredUnassigned.length !== board.unassigned.length ? `${filteredUnassigned.length} / ${board.unassigned.length}` : board.unassigned.length}
+                >
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={poolQuery}
+                      onChange={(e) => setPoolQuery(e.target.value)}
+                      placeholder="Search name..."
+                      className="w-0 min-w-0 flex-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder:text-zinc-500 focus:border-amber-500 focus:outline-none"
+                    />
+                    <select
+                      value={poolClassFilter}
+                      onChange={(e) => setPoolClassFilter(e.target.value)}
+                      className="max-w-[45%] rounded-md border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+                    >
+                      <option value="">All Classes</option>
+                      {classOptions.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <DroppableZone
+                    id="unassigned"
+                    label="Waiting to join"
+                    maxHeightClass="max-h-[45vh]"
+                    layout="list"
+                    tapTarget={effectiveAdmin && !!selectedMember}
+                    onBackgroundClick={effectiveAdmin && selectedMember ? () => handlePlaceSelected({ type: "unassigned" }) : undefined}
+                  >
+                    {filteredUnassigned.length === 0 && (
+                      <span className="px-1 py-1 text-xs text-zinc-600">
+                        {board.unassigned.length === 0 ? "No one is waiting to join" : "No names match the filter"}
+                      </span>
+                    )}
+                    {filteredUnassigned.map((member) => (
+                      <MemberChip
+                        key={member.id}
+                        member={member}
+                        cp={member.cp}
+                        draggable={effectiveAdmin}
+                        selected={selectedMember?.id === member.id}
+                        onSelect={effectiveAdmin ? () => handleToggleSelect(member) : undefined}
+                      />
+                    ))}
+                  </DroppableZone>
+                  {effectiveAdmin && <p className="mt-1.5 text-[11px] text-zinc-600">ลากชื่อ หรือคลิกชื่อแล้วคลิกช่องในปาร์ตี้เพื่อวาง</p>}
+                </SideCard>
+                {activeGroup && (
+                  <div className="hidden xl:block">
+                    <PartyPowerCard group={activeGroup} recipe={board.recipe} />
+                  </div>
+                )}
+                {effectiveAdmin && (
+                  <div className="hidden xl:block">
+                    <ChangesCard log={log} />
+                  </div>
+                )}
+              </aside>
+            )}
+            </div>
 
             {/* Busy/leave list — kept at the very bottom, out of the way of
                 the party grid. In screenshot mode this switches to a plain
@@ -1140,6 +1304,27 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin 
           </>
         )}
       </div>
+
+      {board && subTarget && effectiveAdmin && (
+        <SubFinderPopover board={board} target={subTarget} onPick={handlePickSub} onClose={closeSubFinder} />
+      )}
+      {board && recipeOpen && effectiveAdmin && (
+        <RecipeEditor initial={board.recipe} onSave={handleSaveRecipe} onClose={() => setRecipeOpen(false)} />
+      )}
+      {toast && !screenshotMode && (
+        <UndoToast
+          text={toast.text}
+          lifted={effectiveAdmin && !!selectedMember}
+          onUndo={
+            toast.undoable && history.length
+              ? () => {
+                  setToast(null);
+                  handleUndo();
+                }
+              : undefined
+          }
+        />
+      )}
 
       <DragOverlay>
         {activeMember ? <MemberChip member={activeMember} draggable={false} showClassBadge={false} /> : null}

@@ -1,0 +1,1 @@
+ALTER TABLE "party_boards" ADD COLUMN "party_recipe" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -201,6 +201,12 @@ export const membershipEvents = pgTable(
 // (job) is NOT stored per-slot — it lives once on `members.characterClass`
 // and is shared everywhere that member appears, on every board.
 
+/** One line of a board's party recipe — see partyBoards.partyRecipe. */
+export interface PartyRecipeEntry {
+  className: string;
+  count: number;
+}
+
 export const partyBoards = pgTable(
   "party_boards",
   {
@@ -236,6 +242,10 @@ export const partyBoards = pgTable(
     // announcement. Just a remembered default: the dropdown still lets them
     // pick a different channel any time.
     lastImageAnnounceChannelId: text("last_image_announce_channel_id"),
+    // What every party on this board should contain, e.g.
+    // [{ className: "Priest", count: 1 }] — the party page flags a party
+    // that's short of it ("ขาด ✝️"). Organizer hint only; nothing enforces it.
+    partyRecipe: jsonb("party_recipe").$type<PartyRecipeEntry[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
