@@ -31,6 +31,7 @@ import {
   type RunRoundResult,
 } from "@/app/actions/loot-queue";
 import type { LootCategoryView, LootQueueMemberRef, LootRoundView } from "@/lib/loot-queue-data";
+import { uiAlert, uiConfirm } from "@/components/feedback";
 
 // --- helpers -----------------------------------------------------------------
 
@@ -164,9 +165,9 @@ function CategoryCards({ categories, selectedId, isAdmin }: { categories: LootCa
     });
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!selected) return;
-    if (!confirm(`Delete category "${selected.name}" along with its queue and history? This cannot be undone`)) return;
+    if (!(await uiConfirm({ title: `Delete "${selected.name}"?`, message: "Its queue and round history are deleted too. This cannot be undone.", confirmLabel: "Delete category", danger: true }))) return;
     deleteLootCategory(selected.id).then(() => {
       router.push("/loot-queue");
       router.refresh();
@@ -176,7 +177,7 @@ function CategoryCards({ categories, selectedId, isAdmin }: { categories: LootCa
   function handleMove(direction: "up" | "down") {
     if (!selected) return;
     moveLootCategory(selected.id, direction).then((res) => {
-      if (!res.ok) alert(res.error ?? "Failed to reorder");
+      if (!res.ok) uiAlert(res.error ?? "Failed to reorder");
       router.refresh();
     });
   }
@@ -486,7 +487,7 @@ function NumberingSelect({ category, categories }: { category: LootCategoryView;
         setSaving(true);
         setLootCategoryNumberingBase(category.id, e.target.value || null).then((res) => {
           setSaving(false);
-          if (!res.ok) alert(res.error ?? "Failed to save setting");
+          if (!res.ok) uiAlert(res.error ?? "Failed to save setting");
           router.refresh();
         });
       }}
@@ -574,7 +575,7 @@ function RunPanel({ category, categories, queue, rounds, count, setCount, label,
     startTransition(async () => {
       const res = await undoLootRound(roundId);
       if (!res.ok) {
-        alert(res.error ?? "Failed to undo");
+        uiAlert(res.error ?? "Failed to undo");
         return;
       }
       setResult(null);
@@ -782,19 +783,19 @@ function HistoryItem({ round, index, isAdmin, categoryName, onToast }: { round: 
   const [busy, setBusy] = useState(false);
   const n = round.memberIds.length;
 
-  function handleUndo() {
-    if (!confirm("Undo this round? People served in it go back to their previous queue positions")) return;
+  async function handleUndo() {
+    if (!(await uiConfirm({ title: "Undo this round?", message: "Everyone served in it goes back to their previous queue position.", confirmLabel: "Undo round" }))) return;
     setBusy(true);
     undoLootRound(round.id).then((res) => {
       setBusy(false);
-      if (!res.ok) alert(res.error ?? "Failed to undo");
+      if (!res.ok) uiAlert(res.error ?? "Failed to undo");
       else onToast({ text: `Undo ${round.label ?? "round"} แล้ว — คืนตำแหน่งเดิม` });
       router.refresh();
     });
   }
 
-  function handleDelete() {
-    if (!confirm("Delete this round's history? (Queue positions are not affected)")) return;
+  async function handleDelete() {
+    if (!(await uiConfirm({ title: "Delete this round from history?", message: "Queue positions are not affected.", confirmLabel: "Delete", danger: true }))) return;
     setBusy(true);
     deleteLootRoundHistory(round.id).then(() => {
       setBusy(false);
@@ -958,34 +959,34 @@ export function LootQueueManager({
     setQueue(next);
     moveLootQueueEntryToPosition(selected!.id, memberId, to + 1)
       .then((res) => {
-        if (!res.ok) alert(res.error ?? "Failed to move");
+        if (!res.ok) uiAlert(res.error ?? "Failed to move");
         router.refresh();
       })
       .catch(() => {
-        alert("Failed to move. Please try again.");
+        uiAlert("Failed to move. Please try again.");
         router.refresh();
       });
   }
 
-  function handleRemove(m: LootQueueMemberRef) {
-    if (!confirm(`Remove ${m.displayName} from this category's queue?`)) return;
+  async function handleRemove(m: LootQueueMemberRef) {
+    if (!(await uiConfirm({ title: `Remove ${m.displayName} from this queue?`, confirmLabel: "Remove", danger: true }))) return;
     setQueue((prev) => prev.filter((x) => x.id !== m.id));
     removeFromLootQueue(selected!.id, m.id).then(() => router.refresh());
   }
 
   function handleAdd(memberId: string) {
     addToLootQueue(selected!.id, memberId).then((res) => {
-      if (!res.ok) alert(res.error ?? "Failed to add");
+      if (!res.ok) uiAlert(res.error ?? "Failed to add");
       router.refresh();
     });
   }
 
-  function handleAddAllMissing() {
+  async function handleAddAllMissing() {
     const ids = pickable.map((m) => m.id);
     if (!ids.length) return;
-    if (!confirm(`Add all ${ids.length} member(s) to the back of "${selected!.name}"?`)) return;
+    if (!(await uiConfirm({ title: `Add ${ids.length} member(s) to "${selected!.name}"?`, message: "They're added to the back of the queue.", confirmLabel: "Add all" }))) return;
     addManyToLootQueue(selected!.id, ids).then((res) => {
-      if (!res.ok) alert(res.error ?? "Failed to add");
+      if (!res.ok) uiAlert(res.error ?? "Failed to add");
       else showToast({ text: `เพิ่ม ${res.added ?? 0} คนท้ายคิวแล้ว` });
       router.refresh();
     });

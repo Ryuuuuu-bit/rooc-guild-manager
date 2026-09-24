@@ -18,6 +18,7 @@ import { MemberPicker } from "./member-picker";
 import { getCheckinEvent } from "@/lib/checkin-events";
 import { AnnounceBoardImageButton } from "./announce-board-image-button";
 import { useJobClasses } from "@/components/job-classes-provider";
+import { uiAlert, uiConfirm, uiPrompt } from "@/components/feedback";
 import {
   applySlotLayout,
   createGroup,
@@ -435,13 +436,13 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       try {
         const result = await applySlotLayout(selectedBoardId, writes);
         if (!result.ok) {
-          alert(result.error ?? "Failed to save the change. Please try again.");
+          uiAlert(result.error ?? "Failed to save the change. Please try again.");
           if (entry) setHistory((h) => h.filter((e) => e !== entry));
           router.refresh();
         }
       } catch (err) {
         console.error("Failed to apply slot layout", err);
-        alert("Failed to save the change. Please try again.");
+        uiAlert("Failed to save the change. Please try again.");
         if (entry) setHistory((h) => h.filter((e) => e !== entry));
         router.refresh();
       }
@@ -504,7 +505,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
     try {
       const result = await setBoardRecipe(selectedBoardId, recipe);
       if (!result.ok) {
-        alert(result.error ?? "Failed to save the recipe.");
+        uiAlert(result.error ?? "Failed to save the recipe.");
         return;
       }
       setBoard((prev) => (prev ? { ...prev, recipe } : prev));
@@ -512,7 +513,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       addLog("Recipe updated");
     } catch (err) {
       console.error("Failed to save recipe", err);
-      alert("Failed to save the recipe. Please try again.");
+      uiAlert("Failed to save the recipe. Please try again.");
     }
   }
 
@@ -571,7 +572,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       try {
         const result = await moveMember(selectedBoardId, member.id, destination);
         if (!result.ok) {
-          alert(result.error ?? "Failed to move member. Please try again.");
+          uiAlert(result.error ?? "Failed to move member. Please try again.");
           if (entry) setHistory((h) => h.filter((x) => x !== entry));
           router.refresh();
         }
@@ -581,7 +582,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
         // if it had succeeded even though nothing was actually saved, and
         // only a manual refresh would reveal the mismatch.
         console.error("Failed to move member", err);
-        alert("Failed to move member. Please try again.");
+        uiAlert("Failed to move member. Please try again.");
         router.refresh();
       }
     });
@@ -658,12 +659,12 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       try {
         const result = await setMemberClass(memberId, className);
         if (!result.ok) {
-          alert(result.error ?? "Failed to change class. Please try again.");
+          uiAlert(result.error ?? "Failed to change class. Please try again.");
           router.refresh();
         }
       } catch (err) {
         console.error("Failed to change class", err);
-        alert("Failed to change class. Please try again.");
+        uiAlert("Failed to change class. Please try again.");
         router.refresh();
       }
     });
@@ -697,12 +698,12 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       try {
         const result = await setSlotPlayingAs(partyId, slotIndex, value);
         if (!result.ok) {
-          alert(result.error ?? "Failed to change class. Please try again.");
+          uiAlert(result.error ?? "Failed to change class. Please try again.");
           router.refresh();
         }
       } catch (err) {
         console.error("Failed to change slot class", err);
-        alert("Failed to change class. Please try again.");
+        uiAlert("Failed to change class. Please try again.");
         router.refresh();
       }
     });
@@ -771,7 +772,7 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
 
   async function handleReset() {
     if (!selectedBoardId) return;
-    if (!confirm("Clear this entire board back to empty? This cannot be undone.")) return;
+    if (!(await uiConfirm({ title: "Clear this entire board?", message: "Every slot is emptied and open leaves on it are cancelled. This cannot be undone.", confirmLabel: "Clear board", danger: true }))) return;
     try {
       const result = await resetPartyBoard(selectedBoardId);
       if (result.ok) {
@@ -779,16 +780,16 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
         addLog("Board cleared");
         router.refresh();
       }
-      else if (result.error) alert(result.error);
+      else if (result.error) uiAlert(result.error);
     } catch (err) {
       console.error("Failed to reset board", err);
-      alert("Failed to reset board. Please try again.");
+      uiAlert("Failed to reset board. Please try again.");
     }
   }
 
   async function handleDeleteBoard() {
     if (!board || !selectedBoardId) return;
-    if (!confirm(`Delete the entire "${board.name}" board? This cannot be undone.`)) return;
+    if (!(await uiConfirm({ title: `Delete the "${board.name}" board?`, message: "Its groups and parties are deleted. This cannot be undone.", confirmLabel: "Delete board", danger: true }))) return;
     try {
       const result = await deleteBoard(selectedBoardId);
       if (result.ok) {
@@ -798,45 +799,45 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
       }
     } catch (err) {
       console.error("Failed to delete board", err);
-      alert("Failed to delete board. Please try again.");
+      uiAlert("Failed to delete board. Please try again.");
     }
   }
 
   async function handleCreateGroup() {
     if (!selectedBoardId) return;
-    const name = window.prompt("New group name (e.g. Main Stage, Party A, team leader's name):");
+    const name = await uiPrompt({ title: "New group", message: "e.g. Main Stage, Party A, or the team leader's name", placeholder: "Group name", confirmLabel: "Create" });
     if (!name) return;
     try {
       const result = await createGroup(selectedBoardId, name);
       if (result.ok) router.refresh();
-      else if (result.error) alert(result.error);
+      else if (result.error) uiAlert(result.error);
     } catch (err) {
       console.error("Failed to create group", err);
-      alert("Failed to create group. Please try again.");
+      uiAlert("Failed to create group. Please try again.");
     }
   }
 
   async function handleRenameGroup(groupId: string, currentName: string) {
-    const name = window.prompt("Rename group:", currentName);
+    const name = await uiPrompt({ title: "Rename group", defaultValue: currentName, confirmLabel: "Rename" });
     if (!name) return;
     try {
       const result = await renameGroup(groupId, name);
       if (result.ok) router.refresh();
-      else if (result.error) alert(result.error);
+      else if (result.error) uiAlert(result.error);
     } catch (err) {
       console.error("Failed to rename group", err);
-      alert("Failed to rename group. Please try again.");
+      uiAlert("Failed to rename group. Please try again.");
     }
   }
 
   async function handleDeleteGroup(groupId: string, name: string) {
-    if (!confirm(`Delete the entire "${name}" group (including every party inside it)? This cannot be undone.`)) return;
+    if (!(await uiConfirm({ title: `Delete the "${name}" group?`, message: "Every party inside it is deleted too. This cannot be undone.", confirmLabel: "Delete group", danger: true }))) return;
     try {
       const result = await deleteGroup(groupId);
       if (result.ok) router.refresh();
     } catch (err) {
       console.error("Failed to delete group", err);
-      alert("Failed to delete group. Please try again.");
+      uiAlert("Failed to delete group. Please try again.");
     }
   }
 
@@ -844,21 +845,21 @@ export function PartyBoardView({ boards, selectedBoardId, initialBoard, isAdmin,
     try {
       const result = await createParty(groupId);
       if (result.ok) router.refresh();
-      else if (result.error) alert(result.error);
+      else if (result.error) uiAlert(result.error);
     } catch (err) {
       console.error("Failed to create party", err);
-      alert("Failed to create party. Please try again.");
+      uiAlert("Failed to create party. Please try again.");
     }
   }
 
   async function handleDeleteParty(partyId: string, label: string) {
-    if (!confirm(`Delete ${label}?`)) return;
+    if (!(await uiConfirm({ title: `Delete ${label}?`, confirmLabel: "Delete", danger: true }))) return;
     try {
       const result = await deleteParty(partyId);
       if (result.ok) router.refresh();
     } catch (err) {
       console.error("Failed to delete party", err);
-      alert("Failed to delete party. Please try again.");
+      uiAlert("Failed to delete party. Please try again.");
     }
   }
 

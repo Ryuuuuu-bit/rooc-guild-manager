@@ -6,6 +6,7 @@ import { createJobClass, deleteJobClass, moveJobClass, updateJobClass } from "@/
 import { COLOR_KEYS, SWATCH_CLASS, type ColorKey } from "@/lib/job-class-colors";
 import { PVP_KEY_STAT_OPTIONS } from "@/lib/pvp-stat-fields";
 import type { JobClassClient } from "@/components/job-classes-provider";
+import { uiConfirm } from "@/components/feedback";
 
 interface JobClassItem extends JobClassClient {
   id: string;
@@ -162,7 +163,7 @@ export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
   }
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`Delete class "${name}"? This cannot be undone.`)) return;
+    if (!(await uiConfirm({ title: `Delete class "${name}"?`, message: "Members with it as their main class become unclassed. This cannot be undone.", confirmLabel: "Delete class", danger: true }))) return;
     try {
       const res = await deleteJobClass(id);
       if (!res.ok) {

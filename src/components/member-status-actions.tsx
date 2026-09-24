@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import type { Member } from "@/db/schema";
 import {
   banMemberFromAuction,
@@ -10,6 +10,7 @@ import {
   unbanMemberFromAuction,
   type UpdateMemberResult,
 } from "@/app/actions/members";
+import { uiConfirm } from "@/components/feedback";
 
 const initialState: UpdateMemberResult = { ok: true };
 
@@ -22,6 +23,8 @@ const BAN_PRESETS = [
 
 export function MemberStatusActions({ member, isBanned }: { member: Member; isBanned: boolean }) {
   const boundKick = markMemberKicked.bind(null, member.id);
+  // Set right before re-submitting the kick form once the dialog confirms.
+  const kickConfirmed = useRef(false);
   const [kickState, kickAction, kickPending] = useActionState(
     async (_prev: UpdateMemberResult, formData: FormData) =>
       boundKick((formData.get("reason") as string) ?? ""),
@@ -70,9 +73,23 @@ export function MemberStatusActions({ member, isBanned }: { member: Member; isBa
         <form
           action={kickAction}
           onSubmit={(e) => {
-            if (!confirm(`Kick ${member.discordUsername} from the guild (and remove them from the Discord server too)? This cannot be undone — they'd need to be re-invited.`)) {
-              e.preventDefault();
+            // Second pass (after the dialog said yes): let the form submit.
+            if (kickConfirmed.current) {
+              kickConfirmed.current = false;
+              return;
             }
+            e.preventDefault();
+            const form = e.currentTarget;
+            uiConfirm({
+              title: `Kick ${member.discordUsername}?`,
+              message: "They're removed from the guild AND the Discord server. This cannot be undone — they'd need to be re-invited.",
+              confirmLabel: "Kick",
+              danger: true,
+            }).then((ok) => {
+              if (!ok) return;
+              kickConfirmed.current = true;
+              form.requestSubmit();
+            });
           }}
           className="flex flex-col gap-2"
         >

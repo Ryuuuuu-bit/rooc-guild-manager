@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { setCheckinNote } from "@/app/actions/checkin";
+import { uiAlert } from "@/components/feedback";
 
 /**
  * One member's note cell on the /checkin report table — e.g. a member DMs
@@ -41,12 +42,12 @@ export function CheckinNoteCell({
       try {
         const res = await setCheckinNote(eventKey, date, memberId, next);
         if (!res.ok) {
-          alert(res.error ?? "Failed to save note. Please try again.");
+          uiAlert(res.error ?? "Failed to save note. Please try again.");
           setSaved(note); // revert optimistic update
         }
       } catch (err) {
         console.error("Failed to save checkin note", err);
-        alert("Failed to save note. Please try again.");
+        uiAlert("Failed to save note. Please try again.");
         setSaved(note); // revert optimistic update
       }
     });

@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { MemberNote } from "@/db/schema";
 import { addMemberNote, deleteMemberNote } from "@/app/actions/members";
+import { uiConfirm } from "@/components/feedback";
 
 /**
  * Admin-only comment log on a member profile (e.g. "AFK ใน GVG 20/8") —
@@ -43,8 +44,8 @@ export function MemberNotes({ memberId, notes }: { memberId: string; notes: Memb
     });
   }
 
-  function handleDelete(noteId: string) {
-    if (!confirm("Delete this note?")) return;
+  async function handleDelete(noteId: string) {
+    if (!(await uiConfirm({ title: "Delete this note?", confirmLabel: "Delete", danger: true }))) return;
     const previous = items;
     setItems((prev) => prev.filter((n) => n.id !== noteId));
     setError(null);

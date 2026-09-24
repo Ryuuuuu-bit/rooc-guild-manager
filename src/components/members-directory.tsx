@@ -13,6 +13,7 @@ import { ClassIcon } from "@/components/class-icon";
 import { MemberAvatar } from "@/components/member-avatar";
 import { RoleChips } from "@/components/role-chips";
 import { eventLabels, eventTypeDotColors } from "@/lib/ui";
+import { uiAlert, uiConfirm, uiPrompt, uiToast } from "@/components/feedback";
 
 type StatusFilter = "current" | "active" | "benched" | "left" | "all";
 type View = "table" | "roster";
@@ -304,23 +305,31 @@ export function MembersDirectoryView({
     });
   }
 
-  function bulkBench(benched: boolean) {
+  async function bulkBench(benched: boolean) {
     const people = all.filter((m) => selected.has(m.id) && isCurrent(m) && m.benched !== benched);
     if (people.length === 0) return;
     const verb = benched ? "Bench" : "Unbench";
-    if (!confirm(`${verb} ${people.length} member(s)?\n\n${people.map((m) => m.name).join(", ")}${benched ? "\n\nBenching removes them from every party board and cancels their open leaves." : ""}`)) return;
+    if (
+      !(await uiConfirm({
+        title: `${verb} ${people.length} member(s)?`,
+        message: `${people.map((m) => m.name).join(", ")}${benched ? "\n\nBenching removes them from every party board and cancels their open leaves." : ""}`,
+        confirmLabel: verb,
+        danger: benched,
+      }))
+    )
+      return;
     startTransition(async () => {
       try {
         const res = await setMembersBenched(
           people.map((m) => m.id),
           benched
         );
-        if (!res.ok || res.error) alert(res.error ?? "Some members could not be updated");
+        if (!res.ok || res.error) uiAlert(res.error ?? "Some members could not be updated");
         setSelected(new Set());
         router.refresh();
       } catch (err) {
         console.error("Bulk bench failed", err);
-        alert("Failed. Please try again.");
+        uiAlert("Failed. Please try again.");
       }
     });
   }
@@ -331,9 +340,9 @@ export function MembersDirectoryView({
       .join(" ");
     try {
       await navigator.clipboard.writeText(text);
-      alert(`Copied ${selected.size} mention(s) — paste into Discord.`);
+      uiToast(`Copied ${selected.size} mention(s) — paste into Discord.`, { tone: "success" });
     } catch {
-      prompt("Copy these mentions:", text);
+      await uiPrompt({ title: "Copy these mentions", defaultValue: text, confirmLabel: "Done" });
     }
   }
   function exportCsv() {
@@ -732,18 +741,25 @@ function QuickProfileDrawer({
   const data = profile && profile.id === memberId ? profile.data : null;
   const att = member ? attendanceStats(member) : { pct: null, counted: 0 };
 
-  function toggleBench() {
+  async function toggleBench() {
     if (!member) return;
     const next = !member.benched;
-    if (!confirm(next ? `Bench ${member.name}? They'll be removed from every party board and their open leaves cancelled.` : `Unbench ${member.name}?`)) return;
+    if (
+      !(await uiConfirm(
+        next
+          ? { title: `Bench ${member.name}?`, message: "They'll be removed from every party board and their open leaves cancelled.", confirmLabel: "Bench", danger: true }
+          : { title: `Unbench ${member.name}?`, confirmLabel: "Unbench" }
+      ))
+    )
+      return;
     startTransition(async () => {
       try {
         const res = await setMemberBenched(member.id, next);
-        if (!res.ok) alert(res.error ?? "Failed");
+        if (!res.ok) uiAlert(res.error ?? "Failed");
         router.refresh();
       } catch (err) {
         console.error("Bench toggle failed", err);
-        alert("Failed. Please try again.");
+        uiAlert("Failed. Please try again.");
       }
     });
   }

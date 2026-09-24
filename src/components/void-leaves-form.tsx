@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { voidLeavesInRange } from "@/app/actions/attendance";
+import { uiConfirm } from "@/components/feedback";
 
 /**
  * Admin-only: void every leave dated in a period (one board or all) — for
@@ -18,13 +19,13 @@ export function VoidLeavesForm({ boards }: { boards: { id: string; name: string 
   const [pending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
-  function handleSubmit(formData: FormData) {
+  async function handleSubmit(formData: FormData) {
     setError(null);
     setDone(null);
     const from = String(formData.get("from") ?? "");
     const to = String(formData.get("to") ?? "");
     const boardName = boards.find((b) => b.id === formData.get("boardId"))?.name ?? "ALL boards";
-    if (!confirm(`Void every leave on ${boardName} dated ${from} → ${to}? They will stop counting in stats and the monthly quota. This can't be undone in bulk.`)) return;
+    if (!(await uiConfirm({ title: "Void leaves for this period?", message: `Every leave on ${boardName} dated ${from} → ${to} stops counting in stats and the monthly quota. This can't be undone in bulk.`, confirmLabel: "Void leaves", danger: true }))) return;
     startTransition(async () => {
       try {
         const res = await voidLeavesInRange(formData);

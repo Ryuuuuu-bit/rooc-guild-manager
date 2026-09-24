@@ -8,6 +8,7 @@ import type { Member, MembershipEvent } from "@/db/schema";
 import { eventLabels, eventTypeColors, eventTypeDotColors, memberDisplayName } from "@/lib/ui";
 import { deleteMembershipEvent } from "@/app/actions/activity";
 import { MemberAvatar } from "@/components/member-avatar";
+import { uiAlert, uiConfirm } from "@/components/feedback";
 
 /** One row in the activity feed (dashboard preview, /activity page, and
  * member profile history) — color-coded by event type (green join, red
@@ -30,14 +31,21 @@ export function ActivityListItem({
   const dotColor = eventTypeDotColors[event.type] ?? "bg-zinc-500";
   const labelColor = eventTypeColors[event.type] ?? "text-zinc-400";
 
-  function handleDelete() {
-    if (!confirm(`Delete this entry from the log? This cannot be undone.\n\n"${eventLabels[event.type] ?? event.type}${event.detail ? " — " + event.detail : ""}"`)) {
+  async function handleDelete() {
+    if (
+      !(await uiConfirm({
+        title: "Delete this log entry?",
+        message: `“${eventLabels[event.type] ?? event.type}${event.detail ? " — " + event.detail : ""}”\n\nThis cannot be undone.`,
+        confirmLabel: "Delete",
+        danger: true,
+      }))
+    ) {
       return;
     }
     startTransition(async () => {
       const res = await deleteMembershipEvent(event.id);
       if (!res.ok) {
-        alert(res.error ?? "Delete failed");
+        uiAlert(res.error ?? "Delete failed");
         return;
       }
       setDeleted(true);
