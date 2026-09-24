@@ -9,6 +9,7 @@ interface SearchParams {
   role?: string;
   benched?: string;
   class?: string;
+  attn?: string;
 }
 
 // Old query-string filters (?status=LEFT, ?benched=benched, ?class=Priest …)
@@ -35,7 +36,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
       roles={roles}
       isAdmin={isAdmin}
       now={new Date().getTime()}
-      initial={{ status: initialStatus(params), className: params.class || undefined, roleId: params.role || undefined, q: params.q || undefined }}
+      initial={{ status: initialStatus(params), className: params.class || undefined, roleId: params.role || undefined, q: params.q || undefined, attn: params.attn || undefined }}
     />
   );
 }

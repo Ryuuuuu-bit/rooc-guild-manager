@@ -56,8 +56,17 @@ export interface MembersDirectory {
 
 const ROUNDS_SHOWN = 8;
 
-/** The last `ROUNDS_SHOWN` ended rounds across every event, oldest first, with each member's mark. */
-async function recentAttendance(memberIds: string[]): Promise<{ rounds: DirectoryRound[]; marks: Map<string, RoundMark[]> }> {
+export interface LoadedRound {
+  round: DirectoryRound;
+  report: Awaited<ReturnType<typeof getCheckinReport>>;
+}
+
+/**
+ * The last `limit` ENDED rounds across every event, oldest first, each with
+ * its check-in report and whether it was a break. Shared by /members (the
+ * per-member strip) and the overview (the stacked trend chart).
+ */
+export async function loadRecentRounds(limit: number): Promise<LoadedRound[]> {
   const now = new Date();
   const perEvent = await Promise.all(
     CHECKIN_EVENTS.map(async (event) => (await listCheckinWindows(event.key)).filter((w) => w.end <= now).map((w) => ({ ...w, eventKey: event.key })))
@@ -65,9 +74,9 @@ async function recentAttendance(memberIds: string[]): Promise<{ rounds: Director
   const windows = perEvent
     .flat()
     .sort((a, b) => b.start.getTime() - a.start.getTime())
-    .slice(0, ROUNDS_SHOWN)
+    .slice(0, limit)
     .reverse();
-  if (windows.length === 0) return { rounds: [], marks: new Map() };
+  if (windows.length === 0) return [];
 
   // A round with any leave voided AFTER it ended was declared a break (the
   // only thing that can cancel a finished round's leave is the admin
@@ -85,13 +94,17 @@ async function recentAttendance(memberIds: string[]): Promise<{ rounds: Director
   }
 
   const reports = await Promise.all(windows.map((w) => getCheckinReport(w.eventKey, w.date)));
-  const rounds: DirectoryRound[] = windows.map((w) => ({
-    key: `${w.date}:${w.eventKey}`,
-    date: w.date,
-    eventKey: w.eventKey,
-    shortLabel: w.eventKey.toUpperCase(),
-    void: voidKeys.has(`${w.date}:${w.eventKey}`),
+  return windows.map((w, i) => ({
+    round: { key: `${w.date}:${w.eventKey}`, date: w.date, eventKey: w.eventKey, shortLabel: w.eventKey.toUpperCase(), void: voidKeys.has(`${w.date}:${w.eventKey}`) },
+    report: reports[i],
   }));
+}
+
+/** The last `ROUNDS_SHOWN` ended rounds, with each member's mark. */
+async function recentAttendance(memberIds: string[]): Promise<{ rounds: DirectoryRound[]; marks: Map<string, RoundMark[]> }> {
+  const loaded = await loadRecentRounds(ROUNDS_SHOWN);
+  const rounds = loaded.map((l) => l.round);
+  const reports = loaded.map((l) => l.report);
 
   const marks = new Map<string, RoundMark[]>();
   for (const id of memberIds) marks.set(id, []);

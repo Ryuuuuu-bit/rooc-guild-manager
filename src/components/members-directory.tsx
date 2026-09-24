@@ -17,7 +17,8 @@ import { eventLabels, eventTypeDotColors } from "@/lib/ui";
 type StatusFilter = "current" | "active" | "benched" | "left" | "all";
 type View = "table" | "roster";
 type SortKey = "name" | "class" | "attendance" | "leaves" | "cp" | "joined";
-type AttnKey = "noclass" | "noign" | "pvp" | "quota" | "lowatt" | "new";
+type AttnKey = "noclass" | "noign" | "pvp" | "quota" | "lowatt" | "absent3" | "new";
+const ATTN_KEYS: AttnKey[] = ["noclass", "noign", "pvp", "quota", "lowatt", "absent3", "new"];
 
 const DAY = 24 * 60 * 60 * 1000;
 const PVP_STALE_DAYS = 14;
@@ -144,7 +145,7 @@ export function MembersDirectoryView({
   isAdmin: boolean;
   /** Server "now" (ms) — keeps tenure/staleness identical on server and client renders. */
   now: number;
-  initial: { status?: StatusFilter; className?: string; roleId?: string; q?: string };
+  initial: { status?: StatusFilter; className?: string; roleId?: string; q?: string; attn?: string };
 }) {
   const router = useRouter();
   const { options: classOrder } = useJobClasses();
@@ -154,7 +155,7 @@ export function MembersDirectoryView({
   const [status, setStatus] = useState<StatusFilter>(initial.status ?? "current");
   const [cls, setCls] = useState<string | null>(initial.className ?? null);
   const [roleId, setRoleId] = useState<string | null>(initial.roleId ?? null);
-  const [attn, setAttn] = useState<AttnKey | null>(null);
+  const [attn, setAttn] = useState<AttnKey | null>(() => (ATTN_KEYS.includes(initial.attn as AttnKey) ? (initial.attn as AttnKey) : null));
   const [query, setQuery] = useState(initial.q ?? "");
   const [view, setView] = useState<View>("table");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
@@ -211,6 +212,16 @@ export function MembersDirectoryView({
       test: (m) => {
         const s = attendanceStats(m);
         return isCurrent(m) && !m.benched && s.counted >= 3 && s.pct !== null && s.pct < LOW_ATTENDANCE;
+      },
+    },
+    {
+      key: "absent3",
+      label: "Absent 3 in a row",
+      // Their last three COUNTED rounds (breaks / not-expected skipped) were all no-shows without leave.
+      test: (m) => {
+        if (!isCurrent(m) || m.benched) return false;
+        const counted = (m.attendance ?? []).filter((x) => x === "in" || x === "out" || x === "leave").slice(-3);
+        return counted.length === 3 && counted.every((x) => x === "out");
       },
     },
     { key: "new", label: "Joined < 30 days", test: (m) => isCurrent(m) && isNew(m) },
