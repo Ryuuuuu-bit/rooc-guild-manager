@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createJobClass, deleteJobClass, moveJobClass, updateJobClass } from "@/app/actions/job-classes";
-import { COLOR_KEYS, SWATCH_CLASS, type ColorKey } from "@/lib/job-class-colors";
+import { HEX_CLASS, COLOR_KEYS, SWATCH_CLASS, type ColorKey } from "@/lib/job-class-colors";
+import { AppIcon } from "@/components/shell/app-icon";
+import { Kpi } from "@/components/ui/kit";
 import { PVP_KEY_STAT_OPTIONS } from "@/lib/pvp-stat-fields";
 import type { JobClassClient } from "@/components/job-classes-provider";
 import { uiConfirm } from "@/components/feedback";
@@ -137,157 +139,163 @@ function ClassForm({
   );
 }
 
-export function JobClassManager({ classes }: { classes: JobClassItem[] }) {
+export interface ClassUsage {
+  main: number;
+  alt: number;
+}
+
+/** Saves one field change straight from the card (key stat / colour) — updateJobClass needs the full record. */
+function quickUpdate(c: JobClassItem, patch: Partial<{ colorKey: string; keyStat: string | null }>) {
+  const fd = new FormData();
+  fd.set("name", c.name);
+  fd.set("emoji", c.emoji);
+  fd.set("colorKey", patch.colorKey ?? c.colorKey);
+  fd.set("keyStat", (patch.keyStat !== undefined ? patch.keyStat : c.keyStat) ?? "");
+  return updateJobClass(c.id, fd);
+}
+
+export function JobClassManager({ classes, usage, roster }: { classes: JobClassItem[]; usage: Record<string, ClassUsage>; roster: number }) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [movingId, setMovingId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  function handleMove(id: string, direction: "up" | "down") {
-    setMovingId(id);
-    moveJobClass(id, direction)
-      .then((res) => {
-        if (!res.ok) {
-          setError(res.error ?? "Failed to reorder");
-          return;
-        }
-        setError(null);
-        router.refresh();
-      })
-      .catch((err) => {
-        console.error("Failed to reorder job class", err);
-        setError("Failed to reorder");
-      })
-      .finally(() => setMovingId(null));
-  }
-
-  async function handleDelete(id: string, name: string) {
-    if (!(await uiConfirm({ title: `Delete class "${name}"?`, message: "Members with it as their main class become unclassed. This cannot be undone.", confirmLabel: "Delete class", danger: true }))) return;
-    try {
-      const res = await deleteJobClass(id);
+  function run(id: string, p: Promise<{ ok: boolean; error?: string }>, fallback: string) {
+    setBusyId(id);
+    p.then((res) => {
       if (!res.ok) {
-        setError(res.error ?? "Delete failed");
+        setError(res.error ?? fallback);
         return;
       }
       setError(null);
       router.refresh();
-    } catch (err) {
-      console.error("Failed to delete job class", err);
-      setError("Delete failed");
-    }
+    })
+      .catch((err) => {
+        console.error(fallback, err);
+        setError(fallback);
+      })
+      .finally(() => setBusyId(null));
   }
 
+  async function handleDelete(c: JobClassItem) {
+    const u = usage[c.name] ?? { main: 0, alt: 0 };
+    if (
+      !(await uiConfirm({
+        title: `Delete class "${c.name}"?`,
+        message: `${u.main} member(s) have it as their main class and become unclassed; ${u.alt} lose it as a secondary class. This cannot be undone.`,
+        confirmLabel: "Delete class",
+        danger: true,
+      }))
+    )
+      return;
+    run(c.id, deleteJobClass(c.id), "Delete failed");
+  }
+
+  const withPlayers = classes.filter((c) => (usage[c.name]?.main ?? 0) > 0).length;
+  const noKeyStat = classes.filter((c) => !c.keyStat).length;
+  const unused = classes.filter((c) => !(usage[c.name]?.main ?? 0) && !(usage[c.name]?.alt ?? 0)).length;
+
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-zinc-400">
-        Classes in this list show up everywhere a class can be selected (member profiles, party
-        setup) and as the emoji in the &quot;select your class&quot; message on Discord — edit here
-        directly, no need to have Claude change the code.
-      </p>
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        <Kpi label="Classes" value={classes.length} hint="Shown everywhere a class can be picked, and in Discord" />
+        <Kpi label="With main players" value={withPlayers} hint={`Across ${roster} active members`} />
+        <Kpi label="No key PVP stat" value={noKeyStat} tone={noKeyStat ? "warn" : "ok"} hint="Needed for the ⚠ flags on PVP Stats" alert={noKeyStat > 0} />
+        <Kpi label="Unused" value={unused} tone="dim" hint="Nobody plays these (main or secondary)" />
+      </div>
 
       {error && <p className="rounded-lg border border-rose-900/60 bg-rose-950/30 p-2 text-xs text-rose-300">{error}</p>}
 
-      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full min-w-[420px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="w-10 px-3 py-3 font-medium">Order</th>
-              <th className="px-3 py-3 font-medium">Preview</th>
-              <th className="px-3 py-3 font-medium text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800">
-            {classes.length === 0 && (
-              <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-sm text-zinc-500">
-                  No classes yet — click &quot;+ Add class&quot; below
-                </td>
-              </tr>
-            )}
-            {classes.map((c, i) =>
-              editingId === c.id ? (
-                <tr key={c.id}>
-                  <td colSpan={3} className="p-2">
-                    <ClassForm
-                      initial={c}
-                      submitLabel="Save"
-                      onCancel={() => setEditingId(null)}
-                      onSuccess={() => setEditingId(null)}
-                      onSubmit={(fd) => updateJobClass(c.id, fd)}
-                    />
-                  </td>
-                </tr>
-              ) : (
-                <tr key={c.id} className="transition hover:bg-zinc-800/40">
-                  <td className="px-3 py-2.5">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <button
-                        type="button"
-                        disabled={i === 0 || movingId === c.id}
-                        onClick={() => handleMove(c.id, "up")}
-                        className="text-zinc-500 transition hover:text-zinc-200 disabled:opacity-20"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        type="button"
-                        disabled={i === classes.length - 1 || movingId === c.id}
-                        onClick={() => handleMove(c.id, "down")}
-                        className="text-zinc-500 transition hover:text-zinc-200 disabled:opacity-20"
-                      >
-                        ▼
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${c.colorClass}`}>
-                      <span className="text-sm">{c.emoji}</span>
-                      {c.name}
-                    </span>
-                    {c.keyStat && (
-                      <span className="ml-2 text-[11px] text-zinc-500" title="Key PVP stat">
-                        key: {PVP_KEY_STAT_OPTIONS.find((o) => o.key === c.keyStat)?.label ?? c.keyStat}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(c.id)}
-                      className="mr-3 text-xs text-amber-400 transition hover:text-amber-300"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(c.id, c.name)}
-                      className="text-xs text-rose-400 transition hover:text-rose-300"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              )
-            )}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(250px,100%),1fr))] items-stretch gap-2.5">
+        {classes.map((c, i) => {
+          const u = usage[c.name] ?? { main: 0, alt: 0 };
+          const hex = HEX_CLASS[c.colorKey as ColorKey] ?? "#a8a29e";
+          if (editingId === c.id) {
+            return (
+              <div key={c.id} className="col-span-full">
+                <ClassForm initial={c} submitLabel="Save" onCancel={() => setEditingId(null)} onSuccess={() => setEditingId(null)} onSubmit={(fd) => updateJobClass(c.id, fd)} />
+              </div>
+            );
+          }
+          return (
+            <div key={c.id} className={`flex h-full flex-col gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 transition hover:border-zinc-700 ${busyId === c.id ? "opacity-60" : ""}`}>
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-xl" style={{ background: `${hex}22`, boxShadow: `inset 0 0 0 1px ${hex}55` }}>
+                  {c.emoji}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-bold" style={{ color: hex }}>
+                    {c.name}
+                  </p>
+                  <p className="text-[11.5px] text-zinc-500">
+                    Main <b className="tabular-nums text-zinc-200">{u.main}</b> · Secondary <b className="tabular-nums text-zinc-200">{u.alt}</b>
+                  </p>
+                </div>
+                <span className="flex shrink-0 flex-col">
+                  <button type="button" disabled={i === 0 || busyId === c.id} onClick={() => run(c.id, moveJobClass(c.id, "up"), "Failed to reorder")} title="Move earlier" className="rounded p-0.5 text-zinc-500 hover:text-zinc-100 disabled:opacity-20">
+                    <AppIcon name="chevl" size={14} className="rotate-90" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === classes.length - 1 || busyId === c.id}
+                    onClick={() => run(c.id, moveJobClass(c.id, "down"), "Failed to reorder")}
+                    title="Move later"
+                    className="rounded p-0.5 text-zinc-500 hover:text-zinc-100 disabled:opacity-20"
+                  >
+                    <AppIcon name="chevr" size={14} className="rotate-90" />
+                  </button>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {COLOR_KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    title={k}
+                    disabled={busyId === c.id}
+                    onClick={() => k !== c.colorKey && run(c.id, quickUpdate(c, { colorKey: k }), "Failed to change colour")}
+                    className={`h-4 w-4 rounded-[5px] ${SWATCH_CLASS[k]} ${k === c.colorKey ? "ring-2 ring-zinc-100 ring-offset-1 ring-offset-zinc-900" : "opacity-70 hover:opacity-100"}`}
+                  />
+                ))}
+              </div>
+              <div className="mt-auto flex items-center gap-1.5 text-[11.5px] text-zinc-500">
+                Key PVP stat
+                <select
+                  value={c.keyStat ?? ""}
+                  disabled={busyId === c.id}
+                  onChange={(e) => run(c.id, quickUpdate(c, { keyStat: e.target.value || null }), "Failed to save key stat")}
+                  className={`min-w-0 flex-1 rounded-md border bg-zinc-950 px-1.5 py-1 text-[11.5px] focus:border-amber-500 focus:outline-none ${c.keyStat ? "border-zinc-800 text-zinc-200" : "border-amber-500/40 text-amber-200"}`}
+                >
+                  <option value="">— not set —</option>
+                  {PVP_KEY_STAT_OPTIONS.map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => setEditingId(c.id)} title="Edit name / emoji" className="rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-amber-300">
+                  <AppIcon name="pencil" size={14} />
+                </button>
+                <button type="button" onClick={() => handleDelete(c)} title="Delete class" className="rounded p-1 text-zinc-500 hover:bg-rose-950/40 hover:text-rose-400">
+                  <AppIcon name="trash" size={14} />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {classes.length === 0 && <p className="col-span-full rounded-xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">No classes yet</p>}
       </div>
 
       {showAdd ? (
-        <ClassForm
-          submitLabel="Add class"
-          onCancel={() => setShowAdd(false)}
-          onSuccess={() => setShowAdd(false)}
-          onSubmit={createJobClass}
-        />
+        <ClassForm submitLabel="Add class" onCancel={() => setShowAdd(false)} onSuccess={() => setShowAdd(false)} onSubmit={createJobClass} />
       ) : (
         <button
           type="button"
           onClick={() => setShowAdd(true)}
-          className="self-start rounded-lg border border-dashed border-zinc-700 px-3 py-2 text-sm text-zinc-400 transition hover:border-amber-500 hover:text-amber-300"
+          className="inline-flex items-center gap-1.5 self-start rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-500"
         >
-          + Add class
+          <AppIcon name="plus" size={16} /> Add class
         </button>
       )}
     </div>

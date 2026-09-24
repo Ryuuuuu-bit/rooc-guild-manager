@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { voidLeavesInRange } from "@/app/actions/attendance";
 import { uiConfirm } from "@/components/feedback";
+import { AppIcon } from "@/components/shell/app-icon";
 
 /**
  * Admin-only: void every leave dated in a period (one board or all) — for
@@ -48,9 +49,9 @@ export function VoidLeavesForm({ boards }: { boards: { id: string; name: string 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 transition hover:bg-zinc-800"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-50"
       >
-        Void leaves for a period…
+        <AppIcon name="pause" size={14} /> Declare a break (void leaves)…
       </button>
     );
   }

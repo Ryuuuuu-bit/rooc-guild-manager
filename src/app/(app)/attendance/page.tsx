@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { leaves } from "@/db/schema";
+import { thaiMonthRange } from "@/lib/leaves";
+import { Kpi, KpiGrid, PageHeader, Segmented } from "@/components/ui/kit";
+import { LeaveStatsList, type LeaveStatRow } from "@/components/leave-stats/leave-stats-list";
 import { getAttendanceBoardBreakdown, getAttendanceStats, getOverQuotaThisMonth } from "@/lib/data";
 import { MONTHLY_LEAVE_LIMIT } from "@/lib/leave-quota";
 import { listPartyBoards } from "@/lib/party-data";
 import { requireUser } from "@/lib/authz";
 import { memberDisplayName } from "@/lib/ui";
-import { MemberAvatar } from "@/components/member-avatar";
 import { VoidLeavesForm } from "@/components/void-leaves-form";
 
 const DAY_OPTIONS = [
@@ -73,262 +78,127 @@ export default async function AttendancePage({
   // silently reset the other.
   const rangeQuery = isCustomRange ? `from=${fromValid}&to=${toValid}` : `days=${daysParam}`;
 
-  const [{ stats, totalLeaveEvents }, breakdown, overQuota] = await Promise.all([
+  const [{ stats, totalLeaveEvents }, breakdown, overQuota, monthCounts] = await Promise.all([
     getAttendanceStats({ ...rangeFilter, boardId }),
     // Only needed for the "All Boards" view's summary pills — skip the extra
     // query when a specific board is already selected (its total is already
     // shown above the table).
     boardId ? Promise.resolve(null) : getAttendanceBoardBreakdown(rangeFilter),
     getOverQuotaThisMonth(),
+    // This calendar month per member per board — the same count the monthly
+    // quota rule uses (ACTIVE leaves dated this month, incl. upcoming ones).
+    (async () => {
+      const { from: mFrom, to: mTo } = thaiMonthRange();
+      return db
+        .select({ memberId: leaves.memberId, boardId: leaves.boardId, n: sql<number>`count(*)::int` })
+        .from(leaves)
+        .where(and(eq(leaves.status, "ACTIVE"), gte(leaves.occurrenceDate, mFrom), lte(leaves.occurrenceDate, mTo)))
+        .groupBy(leaves.memberId, leaves.boardId);
+    })(),
   ]);
-  const overQuotaById = new Map(overQuota.map((o) => [o.member.id, o]));
-  const maxLeaveCount = Math.max(1, ...stats.map((s) => s.leaveCount));
+  const overQuotaIds = new Set(overQuota.map((o) => o.member.id));
+  const boardNameById = new Map(boards.map((b) => [b.id, b.name]));
+  const monthByMember = new Map<string, { board: string; count: number }[]>();
+  for (const r of monthCounts) {
+    if (!r.boardId || !boardNameById.has(r.boardId)) continue;
+    const list = monthByMember.get(r.memberId) ?? [];
+    list.push({ board: boardNameById.get(r.boardId)!, count: r.n });
+    monthByMember.set(r.memberId, list);
+  }
+  const atLimit = new Set<string>();
+  for (const [memberId, list] of monthByMember) if (!overQuotaIds.has(memberId) && list.some((x) => x.count === MONTHLY_LEAVE_LIMIT)) atLimit.add(memberId);
   const selectedBoardName = boardId ? boards.find((b) => b.id === boardId)?.name : null;
+  const withLeave = stats.filter((s) => s.leaveCount > 0).length;
+  const periodLabel = isCustomRange ? `${fromValid} → ${toValid}` : daysParam === "all" ? "all time" : `last ${daysParam} days`;
+
+  const rows: LeaveStatRow[] = stats.map((s) => ({
+    id: s.member.id,
+    name: memberDisplayName(s.member),
+    avatar: s.member.discordAvatar,
+    className: s.member.characterClass,
+    count: s.leaveCount,
+    lastLeaveIso: s.lastLeaveAt ? s.lastLeaveAt.toISOString() : null,
+    month: monthByMember.get(s.member.id) ?? [],
+    over: overQuotaIds.has(s.member.id),
+  }));
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-50">Leave Stats</h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Number of times each member clicked &quot;Leave&quot;
-            {selectedBoardName ? ` on the "${selectedBoardName}" board` : ""}
-            {" "}in the selected period — {totalLeaveEvents} total{selectedBoardName ? "" : " across all boards"}, sorted
-            most to least frequent
-          </p>
-          {session.user.isAdmin && (
-            <>
-              <p className="mt-1 text-xs text-zinc-500">
-                A leave counts once its round has ended and it wasn&apos;t cancelled. To fix one: cancel it from the
-                party board (drag the member out of the ลา zone / &quot;Return&quot;) while the round is still open, or
-                add a backdated leave from &quot;Log Manual Leave&quot; on the member&apos;s profile. For a whole period
-                the game was on break, use &quot;Void leaves for a period&quot;.
-              </p>
-              <div className="mt-2">
-                <VoidLeavesForm boards={boards} />
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {boards.length > 0 && (
-            <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
-              <Link
-                href={`/attendance?${rangeQuery}&board=${ALL_BOARDS_VALUE}`}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  boardParam === ALL_BOARDS_VALUE
-                    ? "bg-amber-600 text-white"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                }`}
-              >
-                All Boards
-              </Link>
-              {boards.map((b) => (
-                <Link
-                  key={b.id}
-                  href={`/attendance?${rangeQuery}&board=${b.id}`}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                    boardParam === b.id
-                      ? "bg-amber-600 text-white"
-                      : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                  }`}
-                >
-                  {b.name}
-                </Link>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800 bg-zinc-900/50 p-1">
-            {DAY_OPTIONS.map((opt) => (
-              <Link
-                key={opt.value}
-                href={`/attendance?days=${opt.value}&board=${boardParam}`}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  !isCustomRange && daysParam === opt.value
-                    ? "bg-amber-600 text-white"
-                    : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                }`}
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Leave Stats"
+        description={
+          <>
+            Leaves per member{selectedBoardName ? ` on ${selectedBoardName}` : ""} — a leave counts once its round has ended and it
+            wasn&apos;t cancelled. Limit: {MONTHLY_LEAVE_LIMIT} per board per month.
+          </>
+        }
+      />
 
-      {/* Custom date range — a plain GET form, no JS needed. Picking a
-          preset above clears this (the preset links don't carry from/to);
-          filling this in and submitting overrides whichever preset was
-          active. */}
-      <form
-        action="/attendance"
-        method="get"
-        className={`flex flex-wrap items-end gap-2 rounded-xl border p-3 text-xs ${
-          isCustomRange ? "border-amber-600/60 bg-amber-950/10" : "border-zinc-800 bg-zinc-900/50"
-        }`}
-      >
-        <input type="hidden" name="board" value={boardParam} />
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">From</label>
-          <input
-            type="date"
-            name="from"
-            defaultValue={fromValid ?? ""}
-            className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
+      <div className="flex flex-wrap items-center gap-2">
+        {boards.length > 0 && (
+          <Segmented
+            value={boardParam}
+            items={[
+              { key: ALL_BOARDS_VALUE, label: "All boards", href: `/attendance?${rangeQuery}&board=${ALL_BOARDS_VALUE}` },
+              ...boards.map((b) => ({ key: b.id, label: b.name, href: `/attendance?${rangeQuery}&board=${b.id}` })),
+            ]}
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] text-zinc-500">To</label>
-          <input
-            type="date"
-            name="to"
-            defaultValue={toValid ?? ""}
-            className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
-        >
-          View Range
-        </button>
-        {isCustomRange && (
-          <Link
-            href={`/attendance?days=30&board=${boardParam}`}
-            className="rounded-lg px-3 py-1.5 text-xs text-zinc-500 underline decoration-dotted hover:text-zinc-300"
-          >
-            Clear custom range
-          </Link>
         )}
-      </form>
-
-      {/* Per-board split — only shown on the "All Boards" view, e.g. lets an
-          admin see "GL: 12 times · WOE: 8 times" at a glance without having
-          to click through each board's tab one at a time. */}
-      {breakdown && breakdown.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {breakdown.map((b) => (
-            <Link
-              key={b.boardId ?? "none"}
-              href={b.boardId ? `/attendance?${rangeQuery}&board=${b.boardId}` : "#"}
-              className={`whitespace-nowrap rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-xs text-zinc-300 transition ${
-                b.boardId ? "hover:border-amber-600/60 hover:text-amber-300" : "cursor-default"
-              }`}
-            >
-              <span className="font-medium text-zinc-100">{b.boardName}</span>
-              <span className="text-zinc-500"> — {b.leaveCount} times</span>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {/* Over the monthly rule THIS month — independent of the range/board
-          filter above (the rule is per calendar month, whatever period the
-          table is showing). Counts pending leaves too, matching what the
-          bot tells the member and the admin notification, so a 3rd leave
-          shows up here the moment it's marked. */}
-      {overQuota.length > 0 && (
-        <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm">
-          <p className="font-medium text-rose-200">
-            ⚠️ Over the monthly leave limit ({MONTHLY_LEAVE_LIMIT} per board) this month — {overQuota.length} member
-            {overQuota.length === 1 ? "" : "s"}
-          </p>
-          <p className="mt-0.5 text-[11px] text-rose-200/60">
-            Counts this calendar month only, including upcoming rounds already requested — so these numbers can be higher
-            than the counted-only Leave Count column below.
-          </p>
-          <ul className="mt-2 flex flex-col gap-1 text-xs text-rose-100/90">
-            {overQuota.map((o) => (
-              <li key={o.member.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                <Link href={`/members/${o.member.id}`} className="font-medium underline-offset-2 hover:underline">
-                  {memberDisplayName(o.member)}
-                </Link>
-                <span className="text-rose-200/70">
-                  {o.boards.map((b) => `${b.boardName}: ${b.leaveCount}/${MONTHLY_LEAVE_LIMIT}`).join(" · ")}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50">
-        <table className="w-full min-w-[560px] text-left text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500">
-              <th className="w-10 px-5 py-3 font-medium">#</th>
-              <th className="px-5 py-3 font-medium">Member</th>
-              <th className="px-5 py-3 font-medium">Leave Count</th>
-              <th className="px-5 py-3 font-medium">Last Leave</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-800">
-            {stats.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-10 text-center text-zinc-500">
-                  No member data
-                </td>
-              </tr>
+        <Segmented
+          value={isCustomRange ? "custom" : daysParam}
+          items={[
+            ...DAY_OPTIONS.map((o) => ({ key: o.value, label: o.label, href: `/attendance?days=${o.value}&board=${boardParam}` })),
+            ...(isCustomRange ? [{ key: "custom", label: `${fromValid} → ${toValid}` }] : []),
+          ]}
+        />
+        <details className="group relative">
+          <summary className="cursor-pointer list-none rounded-lg border border-zinc-800 bg-zinc-900/70 px-2.5 py-1 text-xs text-zinc-300 transition hover:border-zinc-700">
+            Custom range…
+          </summary>
+          <form action="/attendance" method="get" className="absolute left-0 z-20 mt-1 flex flex-wrap items-end gap-2 rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-xs shadow-xl sm:w-max">
+            <input type="hidden" name="board" value={boardParam} />
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-zinc-500">From</span>
+              <input type="date" name="from" defaultValue={fromValid ?? ""} className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] text-zinc-500">To</span>
+              <input type="date" name="to" defaultValue={toValid ?? ""} className="[color-scheme:dark] rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none" />
+            </label>
+            <button type="submit" className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white hover:bg-amber-500">
+              View
+            </button>
+            {isCustomRange && (
+              <Link href={`/attendance?days=30&board=${boardParam}`} className="px-1 py-1.5 text-zinc-500 underline decoration-dotted hover:text-zinc-300">
+                Clear
+              </Link>
             )}
-            {stats.map((row, i) => (
-              <tr key={row.member.id} className="hover:bg-zinc-800/40">
-                <td className="px-5 py-3 text-zinc-500">{i + 1}</td>
-                <td className="px-5 py-3">
-                  <Link href={`/members/${row.member.id}`} className="flex items-center gap-3">
-                    <MemberAvatar
-                      src={row.member.discordAvatar}
-                      alt={row.member.discordUsername}
-                      width={28}
-                      height={28}
-                      className="h-7 w-7 rounded-full ring-1 ring-zinc-700"
-                    />
-                    <span className="truncate font-medium text-zinc-100">{memberDisplayName(row.member)}</span>
-                    {overQuotaById.has(row.member.id) && (
-                      <span
-                        title={`Over the monthly limit this month: ${overQuotaById
-                          .get(row.member.id)!
-                          .boards.map((b) => `${b.boardName} ${b.leaveCount}/${MONTHLY_LEAVE_LIMIT}`)
-                          .join(", ")}`}
-                        className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-300 ring-1 ring-inset ring-rose-500/40"
-                      >
-                        over quota
-                      </span>
-                    )}
-                  </Link>
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 flex-1 max-w-40 overflow-hidden rounded-full bg-zinc-800">
-                      {row.leaveCount > 0 && (
-                        <div
-                          className="h-full rounded-full bg-amber-500"
-                          style={{ width: `${(row.leaveCount / maxLeaveCount) * 100}%` }}
-                        />
-                      )}
-                    </div>
-                    <span className="w-6 shrink-0 text-right text-zinc-300">{row.leaveCount}</span>
-                  </div>
-                </td>
-                <td className="px-5 py-3 text-xs text-zinc-400">
-                  {row.lastLeaveAt ? (
-                    <span
-                      title={row.lastLeaveAt.toLocaleString("th-TH", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                        timeZone: "Asia/Bangkok",
-                      })}
-                    >
-                      {row.lastLeaveAt.toLocaleDateString("th-TH", { dateStyle: "medium", timeZone: "Asia/Bangkok" })}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          </form>
+        </details>
+        {session.user.isAdmin && (
+          <div className="w-full sm:ml-auto sm:w-auto">
+            <VoidLeavesForm boards={boards} />
+          </div>
+        )}
       </div>
+
+      <KpiGrid>
+        <Kpi
+          label="Leaves in period"
+          value={totalLeaveEvents}
+          hint={breakdown && breakdown.length ? breakdown.map((b) => `${b.boardName} ${b.leaveCount}`).join(" · ") : periodLabel}
+        />
+        <Kpi label="Members who took leave" value={withLeave} suffix={`/${stats.length}`} hint={stats.length ? `${Math.round((withLeave / stats.length) * 100)}% of the roster` : ""} />
+        <Kpi
+          label="Over quota this month"
+          value={overQuota.length}
+          tone={overQuota.length ? "bad" : "ok"}
+          hint={overQuota.length ? overQuota.map((o) => memberDisplayName(o.member)).join(", ") : "Nobody over the limit ✓"}
+        />
+        <Kpi label="At the limit this month" value={atLimit.size} tone={atLimit.size ? "warn" : "ok"} hint={`Used ${MONTHLY_LEAVE_LIMIT}/${MONTHLY_LEAVE_LIMIT} on a board — one more goes over`} />
+      </KpiGrid>
+
+      <LeaveStatsList rows={rows} boards={boards.map((b) => b.name)} limit={MONTHLY_LEAVE_LIMIT} periodLabel={periodLabel} />
     </div>
   );
 }
