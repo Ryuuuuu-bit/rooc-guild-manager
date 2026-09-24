@@ -1,0 +1,1 @@
+ALTER TABLE "loot_rounds" ADD COLUMN "start_number" integer;

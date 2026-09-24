@@ -281,6 +281,13 @@
       "when": 1790290000000,
       "tag": "0039_add_board_party_recipe",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790300000000,
+      "tag": "0040_add_loot_round_start_number",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { lootCategories, lootQueueEntries, lootRounds, members } from "@/db/schema";
 import { requireAdmin } from "@/lib/authz";
@@ -188,6 +188,39 @@ export async function moveLootQueueEntry(
  * necessarily contiguous beforehand, e.g. after addToLootQueue appends —
  * this also normalizes them along the way).
  */
+/** Adds several members to the back of a category's queue in one go (the
+ * "not in this queue yet" banner's "add them all"). Members already queued
+ * are skipped rather than failing the batch. */
+export async function addManyToLootQueue(categoryId: string, memberIds: string[]): Promise<ActionResult & { added?: number }> {
+  await requireAdmin();
+  if (!memberIds.length) return { ok: true, added: 0 };
+  if (memberIds.length > 300) return { ok: false, error: "Too many members at once" };
+
+  return db.transaction(async (tx) => {
+    const [category] = await tx.select().from(lootCategories).where(eq(lootCategories.id, categoryId)).for("update");
+    if (!category) return { ok: false, error: "Category not found" };
+    const existing = await tx
+      .select({ memberId: lootQueueEntries.memberId })
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId));
+    const queued = new Set(existing.map((e) => e.memberId));
+    const valid = await tx
+      .select({ id: members.id })
+      .from(members)
+      .where(and(inArray(members.id, memberIds), eq(members.status, "ACTIVE")));
+    const validIds = new Set(valid.map((m) => m.id));
+    const toAdd = [...new Set(memberIds)].filter((id) => validIds.has(id) && !queued.has(id));
+    if (!toAdd.length) return { ok: true, added: 0 };
+    const [{ maxPos } = { maxPos: -1 }] = await tx
+      .select({ maxPos: sql<number>`coalesce(max(${lootQueueEntries.position}), -1)::int` })
+      .from(lootQueueEntries)
+      .where(eq(lootQueueEntries.categoryId, categoryId));
+    await tx.insert(lootQueueEntries).values(toAdd.map((memberId, i) => ({ categoryId, memberId, position: maxPos + 1 + i })));
+    revalidateEverywhere();
+    return { ok: true, added: toAdd.length };
+  });
+}
+
 export async function moveLootQueueEntryToPosition(
   categoryId: string,
   memberId: string,
@@ -242,6 +275,8 @@ export interface RunRoundResult extends ActionResult {
    * wondering why the round came up short, or why someone near the front
    * didn't get picked. Empty when no one currently banned was encountered. */
   skippedBanned?: LootQueueMemberRef[];
+  /** The history row this round created — lets the result card offer Undo. */
+  roundId?: string;
 }
 
 /**
@@ -318,13 +353,17 @@ export async function runLootRound(categoryId: string, count: number, label?: st
         .where(eq(lootQueueEntries.id, servedEntries[i].id));
     }
 
-    await tx.insert(lootRounds).values({
-      categoryId,
-      label: label?.trim() || null,
-      memberIds: servedEntries.map((e) => e.memberId),
-      previousPositions: servedEntries.map((e) => e.position),
-      actor: session.user.username,
-    });
+    const [insertedRound] = await tx
+      .insert(lootRounds)
+      .values({
+        categoryId,
+        label: label?.trim() || null,
+        memberIds: servedEntries.map((e) => e.memberId),
+        previousPositions: servedEntries.map((e) => e.position),
+        startNumber,
+        actor: session.user.username,
+      })
+      .returning({ id: lootRounds.id });
 
     const servedMembers = await tx.query.members.findMany({
       where: (m, { inArray }) =>
@@ -356,7 +395,7 @@ export async function runLootRound(categoryId: string, count: number, label?: st
     }
 
     revalidateEverywhere();
-    return { ok: true, served, short, startNumber, skippedBanned };
+    return { ok: true, served, short, startNumber, skippedBanned, roundId: insertedRound.id };
   });
 }
 

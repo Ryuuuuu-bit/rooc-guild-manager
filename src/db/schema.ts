@@ -613,6 +613,11 @@ export const lootRounds = pgTable(
     // for the single most-recent round of a category, see undoLootRound)
     // put them back exactly where they were instead of guessing.
     previousPositions: integer("previous_positions").array().notNull().default([]),
+    // The number this round's announcement list started at (1, or where a
+    // linked category's numbering continued from — see computeNumberingStart).
+    // Stored so History → Copy can reproduce the exact numbered text later;
+    // null for rounds run before this column existed.
+    startNumber: integer("start_number"),
     actor: text("actor"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

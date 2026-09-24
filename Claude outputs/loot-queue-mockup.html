@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loot queue mockup</title>
+<style>
+  :root { --bg:#09090b; --panel:#18181b; --panel2:#141417; --line:#27272a; --line2:#3f3f46; --muted:#a1a1aa; --dim:#71717a; --amber:#f59e0b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#e4e4e7; font:13px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif; }
+  .wrap { max-width:1320px; margin:0 auto; padding:20px 18px 80px; display:flex; flex-direction:column; gap:14px; }
+  .note { background:rgba(56,189,248,.08); border:1px dashed rgba(56,189,248,.35); color:#bae6fd; border-radius:12px; padding:10px 14px; font-size:12px; }
+  h1 { margin:0; font-size:22px; font-weight:650; } .sub { color:var(--muted); font-size:12.5px; margin-top:2px; }
+  button { font:inherit; }
+  .btn { background:var(--panel); border:1px solid var(--line); color:#d4d4d8; border-radius:10px; padding:6px 11px; font-size:12px; cursor:pointer; white-space:nowrap; } .btn:hover { border-color:var(--line2); }
+  .btn.pri { background:#d97706; border-color:#d97706; color:#fff; font-weight:600; } .btn.pri:hover { background:#f59e0b; } .btn:disabled { opacity:.4; cursor:default; }
+  .btn.ghost { background:none; } .btn.red { color:#fb7185; border-color:rgba(251,113,133,.35); background:none; }
+  /* category tabs */
+  .cats { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; scrollbar-width:thin; }
+  .cat { flex:none; min-width:170px; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:9px 12px; cursor:pointer; color:inherit; }
+  .cat:hover { border-color:var(--line2); } .cat.on { border-color:#d97706; background:linear-gradient(180deg,rgba(217,119,6,.18),rgba(217,119,6,.04)); }
+  .cat .n { font-weight:650; font-size:13px; display:flex; gap:6px; align-items:center; } .cat .n .c { margin-left:auto; font-size:11px; color:var(--dim); font-weight:500; }
+  .cat .m { font-size:11px; color:var(--dim); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .cat .m b { color:#fcd34d; font-weight:600; }
+  .cat.add { min-width:auto; border-style:dashed; color:var(--dim); display:flex; align-items:center; }
+  /* kpis */
+  .kpis { display:grid; grid-template-columns:1.4fr 1fr 1fr 1.2fr; gap:10px; }
+  .k { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 12px; min-width:0; }
+  .k .l { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); } .k .v { font-size:20px; font-weight:700; margin-top:2px; font-variant-numeric:tabular-nums; } .k .kh { font-size:11px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar { height:6px; background:#27272a; border-radius:4px; overflow:hidden; margin-top:6px; } .bar i { display:block; height:100%; background:linear-gradient(90deg,#d97706,#fbbf24); border-radius:4px; transition:width .3s; }
+  .k.warn { border-color:rgba(251,191,36,.35); } .k .v.warn { color:#fbbf24; } .k .v.ok { color:#34d399; }
+  .main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:14px; align-items:start; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  .card > .hd { display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line); flex-wrap:wrap; } .card > .hd h2 { margin:0; font-size:13.5px; } .card > .hd .s { font-size:11.5px; color:var(--dim); }
+  .search { background:#111113; border:1px solid var(--line); border-radius:9px; color:#e4e4e7; padding:6px 10px; font:inherit; font-size:12px; width:190px; } .search:focus { outline:none; border-color:#d97706; }
+  .seg { display:inline-flex; background:#111113; border:1px solid var(--line); border-radius:9px; padding:2px; } .seg button { background:none; border:0; color:var(--dim); padding:4px 9px; border-radius:7px; cursor:pointer; font-size:11.5px; } .seg button.on { background:#27272a; color:#fafafa; }
+  /* queue */
+  .q { padding:6px; display:grid; grid-template-columns:minmax(0,1fr); gap:2px; max-height:calc(100vh - 150px); overflow:auto; }
+  .q.two { grid-template-columns:minmax(0,1fr) minmax(0,1fr); column-gap:8px; }
+  .row { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:10px; border:1px solid transparent; background:var(--panel2); position:relative; min-height:38px; }
+  .row:hover { border-color:var(--line2); } .row:hover .x, .row:hover .grip { opacity:1; }
+  .row .rk { width:30px; text-align:right; font-variant-numeric:tabular-nums; color:var(--dim); font-size:12px; cursor:text; border-radius:6px; padding:1px 3px; } .row .rk:hover { background:#27272a; color:#fff; }
+  .row .grip { opacity:.25; cursor:grab; color:var(--dim); font-size:12px; letter-spacing:-2px; user-select:none; }
+  .av { width:24px; height:24px; border-radius:50%; object-fit:cover; background:#3f3f46; flex:none; display:inline-flex; align-items:center; justify-content:center; font-size:10px; position:relative; }
+  .avw { position:relative; flex:none; } .avw .dot { position:absolute; right:-1px; bottom:-1px; width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 2px var(--panel2); }
+  .row .nm { font-weight:600; font-size:12.5px; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .row .last { font-size:10.5px; color:var(--dim); flex:none; } .row .last.new { color:#7dd3fc; }
+  .row .x { opacity:0; background:none; border:0; color:var(--dim); cursor:pointer; padding:0 2px; } .row .x:hover { color:#fb7185; }
+  .row.cut { background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.25); } .row.cut .rk { color:#fcd34d; }
+  .row.cut .num { position:absolute; left:-2px; top:50%; transform:translate(-100%,-50%); }
+  .row.ban { background:repeating-linear-gradient(135deg,rgba(244,63,94,.07) 0 6px,transparent 6px 12px); } .row.ban .nm { color:var(--muted); }
+  .tag { font-size:10px; padding:1px 6px; border-radius:999px; flex:none; font-weight:600; } .tag.ban { background:rgba(244,63,94,.15); color:#fda4af; } .tag.me { background:rgba(56,189,248,.15); color:#7dd3fc; } .tag.next { background:rgba(245,158,11,.18); color:#fcd34d; }
+  .row.hit { box-shadow:0 0 0 2px #38bdf8 inset; } .row.dim { opacity:.35; }
+  .row.drag { opacity:.4; } .row.over { box-shadow:0 -2px 0 #f59e0b; }
+  .cutline { grid-column:1/-1; display:flex; align-items:center; gap:8px; color:#fbbf24; font-size:11px; font-weight:600; margin:4px 2px; } .cutline::before, .cutline::after { content:""; flex:1; border-top:1px dashed rgba(251,191,36,.6); }
+  .lapline { grid-column:1/-1; display:flex; align-items:center; gap:8px; color:#52525b; font-size:10.5px; margin:4px 2px; } .lapline::before, .lapline::after { content:""; flex:1; border-top:1px solid #27272a; }
+  .rkin { width:44px; background:#0a0a0b; border:1px solid #d97706; color:#fff; border-radius:6px; font:inherit; font-size:12px; padding:1px 4px; text-align:right; }
+  /* side */
+  .side { position:sticky; top:12px; display:flex; flex-direction:column; gap:12px; }
+  .pad { padding:12px; }
+  .lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:5px; }
+  .stepper { flex:none; display:flex; align-items:center; gap:0; border:1px solid var(--line); border-radius:11px; overflow:hidden; background:#111113; }
+  .stepper button { background:none; border:0; color:#d4d4d8; width:38px; height:40px; font-size:18px; cursor:pointer; } .stepper button:hover { background:#27272a; }
+  .stepper input { width:56px; text-align:center; background:none; border:0; color:#fff; font:inherit; font-size:20px; font-weight:700; -moz-appearance:textfield; } .stepper input:focus { outline:none; } .stepper input::-webkit-inner-spin-button { display:none; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; } .chip { background:#111113; border:1px solid var(--line); color:#d4d4d8; border-radius:999px; padding:3px 9px; font-size:11.5px; cursor:pointer; } .chip:hover { border-color:var(--line2); } .chip.on { border-color:#d97706; color:#fcd34d; background:rgba(217,119,6,.12); } .chip small { color:var(--dim); }
+  .txt { width:100%; background:#111113; border:1px solid var(--line); border-radius:9px; color:#e4e4e7; padding:7px 10px; font:inherit; } .txt:focus { outline:none; border-color:#d97706; }
+  .numinfo { font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap; } .numinfo b { color:#fcd34d; }
+  .numinfo select { background:#111113; border:1px solid var(--line); color:#d4d4d8; border-radius:7px; font:inherit; font-size:11.5px; padding:2px 4px; }
+  /* discord preview */
+  .dc { background:#313338; border-radius:10px; padding:10px 12px; display:flex; gap:10px; font-family:"gg sans","Noto Sans Thai",system-ui,sans-serif; }
+  .dc .bot { width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,#d97706,#7c3aed); flex:none; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .dc .who { font-weight:600; color:#f2f3f5; font-size:13px; } .dc .who span { background:#5865f2; color:#fff; font-size:9.5px; padding:0 4px; border-radius:3px; margin-left:4px; vertical-align:1px; } .dc .who em { font-style:normal; color:#949ba4; font-size:11px; font-weight:400; margin-left:6px; }
+  .dc .body { color:#dbdee1; font-size:12.5px; white-space:pre-wrap; margin-top:3px; max-height:230px; overflow:auto; }
+  .dc .body b { color:#f2f3f5; }
+  .skip { font-size:11px; color:#fda4af; margin-top:6px; }
+  .ok { color:#34d399; }
+  /* lookup */
+  .lk { display:flex; flex-direction:column; gap:4px; margin-top:8px; } .lk .r { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; font-size:12px; padding:5px 6px; border-radius:8px; background:var(--panel2); } .lk .r .p { font-weight:700; font-variant-numeric:tabular-nums; } .lk .r .e { font-size:11px; color:var(--dim); }
+  /* history */
+  .hist { display:flex; flex-direction:column; } .h { border-top:1px solid var(--line); padding:10px 12px; } .h:first-child { border-top:0; }
+  .h .t { display:flex; align-items:center; gap:6px; flex-wrap:wrap; } .h .pill { background:rgba(217,119,6,.15); color:#fcd34d; font-weight:650; font-size:11.5px; padding:1px 8px; border-radius:999px; } .h .cnt { font-weight:600; font-size:12px; } .h .rng { color:var(--dim); font-size:11px; }
+  .h .acts { margin-left:auto; display:flex; gap:4px; } .h .acts button { background:none; border:0; color:var(--muted); font-size:11px; cursor:pointer; padding:2px 5px; border-radius:6px; } .h .acts button:hover { background:#27272a; color:#fff; } .h .acts .u { color:#fbbf24; } .h .acts .d { color:#fb7185; }
+  .h .stack { display:flex; margin-top:7px; align-items:center; } .h .stack .av { width:22px; height:22px; margin-left:-6px; box-shadow:0 0 0 2px var(--panel); } .h .stack .av:first-child { margin-left:0; } .h .stack .more { font-size:11px; color:var(--dim); margin-left:6px; }
+  .h .names { display:none; font-size:11.5px; color:var(--muted); margin-top:6px; columns:2; column-gap:14px; } .h.open .names { display:block; } .h .names span { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .h .names span i { font-style:normal; color:#52525b; font-variant-numeric:tabular-nums; margin-right:4px; }
+  .h .meta { font-size:10.5px; color:#52525b; margin-top:5px; }
+  .banner { display:flex; align-items:center; gap:10px; background:rgba(56,189,248,.07); border:1px solid rgba(56,189,248,.25); border-radius:12px; padding:8px 12px; font-size:12px; color:#bae6fd; } .banner .avs { display:flex; } .banner .avs .av { width:20px; height:20px; margin-left:-5px; box-shadow:0 0 0 2px #0b1720; } .banner button { margin-left:auto; }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#27272a; border:1px solid var(--line2); border-radius:12px; padding:9px 14px; font-size:12.5px; display:none; z-index:60; box-shadow:0 10px 30px rgba(0,0,0,.5); gap:12px; align-items:center; } .toast.show { display:flex; } .toast button { background:none; border:0; color:#fbbf24; font-weight:600; cursor:pointer; }
+  .viewas { display:flex; align-items:center; gap:8px; margin-left:auto; font-size:11.5px; color:var(--dim); }
+  .mebox { background:linear-gradient(135deg,rgba(56,189,248,.14),rgba(56,189,248,.03)); border:1px solid rgba(56,189,248,.3); border-radius:14px; padding:12px; display:none; } .mebox.show { display:block; }
+  .mebox .big { font-size:28px; font-weight:800; color:#7dd3fc; font-variant-numeric:tabular-nums; }
+  @media (max-width:1050px){ .main { grid-template-columns:minmax(0,1fr); } .search { width:130px; } .side { position:static; } .kpis { grid-template-columns:1fr 1fr; } .q.two { grid-template-columns:minmax(0,1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note"><b>Mockup</b> — ชื่อ/รูปจริงจาก snapshot · ลำดับคิว ประวัติ และคนติดแบนเป็นข้อมูลสมมติ · ลอง: <b>พิมพ์/กด +− จำนวนคน</b> แล้วดูเส้นตัดในคิว + ตัวอย่างข้อความ Discord, กด <b>Run</b> แล้ว <b>Undo</b>, ลากชื่อ (⋮⋮) เพื่อจัดลำดับ, คลิกเลขลำดับเพื่อพิมพ์ตำแหน่ง, ค้นหาชื่อใน “ค้นหาคิวสมาชิก”, สลับ “มุมมองสมาชิก”</div>
+
+  <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+    <div><h1>Loot Queue</h1><div class="sub">แต่ละหมวดมีคิวของตัวเอง · กด Run → คนหัวคิว N คนได้ของ แล้วย้ายไปท้ายคิว</div></div>
+    <div class="viewas">มุมมอง <span class="seg" id="viewas"><button class="on" data-v="admin">Admin</button><button data-v="member">สมาชิก (Bacony)</button></span></div>
+  </div>
+
+  <div class="cats" id="cats"></div>
+  <div class="kpis" id="kpis"></div>
+  <div id="bannerSlot"></div>
+
+  <div class="main">
+    <section class="card">
+      <div class="hd"><h2 id="qtitle">Queue</h2><span class="s" id="qsub"></span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center"><input class="search" id="qsearch" placeholder="ค้นหาชื่อในคิวนี้…"><span class="seg" id="layout"><button class="on" data-l="1">1 คอลัมน์</button><button data-l="2">2 คอลัมน์</button></span></span></div>
+      <div class="q" id="queue"></div>
+    </section>
+
+    <aside class="side">
+      <div class="mebox" id="mebox"></div>
+      <div class="card" id="runCard">
+        <div class="hd"><h2>🎁 Run round</h2><span class="s" id="runsub"></span></div>
+        <div class="pad" style="display:flex;flex-direction:column;gap:12px">
+          <div>
+            <div class="lbl">จำนวนคนที่ได้รอบนี้</div>
+            <div style="display:flex;gap:10px;align-items:center">
+              <div class="stepper"><button id="minus">−</button><input id="count" type="number" min="0" value="0"><button id="plus">+</button></div>
+              <div class="chips" id="countChips"></div>
+            </div>
+          </div>
+          <div>
+            <div class="lbl">ชื่อรอบ</div>
+            <input class="txt" id="label" placeholder="เช่น gl 24/9">
+            <div class="chips" id="labelChips" style="margin-top:6px"></div>
+          </div>
+          <div class="numinfo" id="numinfo"></div>
+          <div>
+            <div class="lbl" style="display:flex;align-items:center">ตัวอย่างข้อความ Discord <span style="margin-left:auto;text-transform:none;letter-spacing:0" id="skipInfo"></span></div>
+            <div class="dc"><div class="bot">🐉</div><div style="min-width:0;flex:1"><div class="who">Divine<span>APP</span><em>วันนี้ เวลา 20:34</em></div><div class="body" id="dcBody"></div></div></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn pri" id="run" style="flex:1;padding:9px">Run round</button>
+            <button class="btn" id="copyPrev" title="คัดลอกข้อความตัวอย่าง">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card"><div class="hd"><h2>🔎 ค้นหาคิวสมาชิก</h2><span class="s">ทุกหมวดในครั้งเดียว</span></div>
+        <div class="pad"><input class="txt" id="lookup" placeholder="พิมพ์ชื่อ เช่น Bacony"><div class="lk" id="lk"><div class="hint" style="font-size:11.5px;color:var(--dim)">ตอบคำถาม “ผมคิวที่เท่าไหร่” ได้ทันที — เห็นทุกหมวด + คาดว่าจะได้ในอีกกี่รอบ</div></div></div></div>
+
+      <div class="card"><div class="hd"><h2>🕘 History</h2><span class="s" id="hsub"></span></div><div class="hist" id="hist"></div></div>
+    </aside>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+const DATA = {"rows": [{"id": "f75wtfctgrn7siau8ew85atu", "name": "Veldanava", "avatar": "https://cdn.discordapp.com/avatars/524941955960930330/bfd2a20520c3334b543163f1395ff83f.png?size=128"}, {"id": "wlwzlu7ldzca86ok1mafrh1p", "name": "Niceonly", "avatar": "https://cdn.discordapp.com/avatars/274178563186491392/0ee9b4c5cf0b5a099cc02d7b54e3e3f8.png?size=128"}, {"id": "zi82cmdolwa2kdaf38gdfb6p", "name": "โกฮังง", "avatar": "https://cdn.discordapp.com/avatars/560463614310350851/666cddd6905f52a6024842f3dbd217a7.png?size=128"}, {"id": "nawrxjfbgw7e1pcmsk80hthl", "name": "Innit", "avatar": "https://cdn.discordapp.com/avatars/872788637723525150/f08382bf09d6ab501d97a57652536648.png?size=128"}, {"id": "bs9cpwog65e0d6fkxj1jxgv1", "name": "tOpMoSt | ท๊อป", "avatar": "https://cdn.discordapp.com/avatars/718840573674389524/fd296cd5930268312b6d12236c455d4d.png?size=128"}, {"id": "lsc120zkbr8esvnerq2unoi1", "name": ".silverbacks", "avatar": "https://cdn.discordapp.com/avatars/1096671635014172693/33568d85adea12355f18c69809e3b92e.png?size=128"}, {"id": "kgnevoenfk5zokvv6fclvyhc", "name": "KOKI", "avatar": "https://cdn.discordapp.com/embed/avatars/4.png"}, {"id": "tzxbtrq9sku8g4g0t68t4zok", "name": "ชาวบ้าน2", "avatar": "https://cdn.discordapp.com/avatars/381810867416858625/c2abd0d1842565680cba8b86edab6ccc.png?size=128"}, {"id": "ujitkhmpcjdf2qyuocr7qjns", "name": "Corgii(CKHusK)", "avatar": "https://cdn.discordapp.com/avatars/902128071405076541/82edbce335b97abe62bac43f8bdca15e.png?size=128"}, {"id": "vgi56en1ggqi3kir2hd9bk05", "name": "Visionary", "avatar": "https://cdn.discordapp.com/avatars/599581955943694336/ce8f44c20af1e4f9f63a668a121cf39d.png?size=128"}, {"id": "fpa2navq7txe6ecby9x6eoam", "name": "ＳＣＯＲＰＩＯ", "avatar": "https://cdn.discordapp.com/avatars/802149653957050388/d711f44ec73aeecdbffe8744b3f283ef.png?size=128"}, {"id": "p8jt66wznksef6vs4jvylrk3", "name": "Ztabux", "avatar": "https://cdn.discordapp.com/embed/avatars/5.png"}, {"id": "wxg2a8tmg6oexgl039freyrs", "name": "อัศวินหอยทาก/ปาล์ม", "avatar": "https://cdn.discordapp.com/avatars/337850808806932480/740a7fbb79203ae9a25bbb3cdd9a2b0e.png?size=128"}, {"id": "fuefj564dgg5rqpo9f6kn5w9", "name": "WTSxSoPiak", "avatar": "https://cdn.discordapp.com/avatars/424107272529248267/05222fde1fc4dbc915794f3156d348ed.png?size=128"}, {"id": "sks1walbz6hanfk73b14nqqn", "name": "MyName", "avatar": "https://cdn.discordapp.com/avatars/376740780724715530/e5531d86f53df6b804c336534d3962ef.png?size=128"}, {"id": "dor4nqx5cn90ig6qi8gq7w5t", "name": "Yorkiie", "avatar": "https://cdn.discordapp.com/guilds/1452115666151673890/users/542728524470026241/avatars/6bd05f6e395c542fcfee3a0c06c488a0.png?size=128"}, {"id": "nfi5pxfwarob5s8pyd3h8826", "name": "WTSxอินทรี", "avatar": "https://cdn.discordapp.com/avatars/357447869260759040/dedc92d28df26af0c302612fa1ed092e.png?size=128"}, {"id": "rfw4cx5regivr0fd1yegofsg", "name": "REGEN || Priest || owen", "avatar": "https://cdn.discordapp.com/avatars/276011224842502146/a8b6e8ee4cac05df294bed161c605f06.png?size=128"}, {"id": "xyq2qts4y2nll3k1cv6y00ax", "name": "Cartier", "avatar": "https://cdn.discordapp.com/avatars/431427847635337216/f1cdf3757931e2f768f60f76e994af5f.png?size=128"}, {"id": "wsboqdaadogr7zn7dxlnnptp", "name": "Lง0ะงะ", "avatar": "https://cdn.discordapp.com/avatars/545620965942624274/ebf660c8c2f97064c5392a1cb11406c5.png?size=128"}, {"id": "qb0np2di9o9fwixvkqmo84g9", "name": "OXMz", "avatar": "https://cdn.discordapp.com/avatars/501708737787199488/16e8371eaef4dc4b8baca65bef5938a6.png?size=128"}, {"id": "wdedyj89jp6yqlb42r5jnalg", "name": "Violina (ญาดา)", "avatar": "https://cdn.discordapp.com/avatars/431436400496345090/11ce82c67fae33287bfe54c581a5392b.png?size=128"}, {"id": "ludv7m1qxehudq1x5y18vir6", "name": "เมโลดี้  🎶น้องเมย์", "avatar": "https://cdn.discordapp.com/avatars/717714063114764348/91d5773676d2b3c72af8956aa24bda2c.png?size=128"}, {"id": "p3nzccvjkvpjid6kr3qnv8wv", "name": "Plengrak", "avatar": "https://cdn.discordapp.com/avatars/365877486954741761/b08f762f35319780ad076fc828e057d8.png?size=128"}, {"id": "ogb29jkja94lt3tqcan5u83g", "name": "JaiLกLร456 | หมี", "avatar": "https://cdn.discordapp.com/avatars/972418298903953458/831e3ad67c3b9c43c78884092322ffec.png?size=128"}, {"id": "jez2450bjr8vn4q670l2tgav", "name": "รูห์เทอร์", "avatar": "https://cdn.discordapp.com/avatars/363734437827182603/f6d95999326eb4e346fc8bc26bd5be22.png?size=128"}, {"id": "xhs9v52dfm4gcdkkyqhxjjaq", "name": "GanDo", "avatar": "https://cdn.discordapp.com/avatars/411141990533693452/da0717cdbd92bb82fc95c48d08ece028.png?size=128"}, {"id": "gqn45xaovc11o26yd4k5hjs6", "name": "T0l2", "avatar": "https://cdn.discordapp.com/avatars/404942606678622211/1a7318db1227c59f4faf49fff429e5eb.png?size=128"}, {"id": "yrenrn8g3hig3gl261q7zbmj", "name": "Godusop", "avatar": "https://cdn.discordapp.com/avatars/375290162864717825/14eb24328bea9a614812119d6bf40b77.png?size=128"}, {"id": "yir56g87dbkrt01f99d8nb84", "name": "AryaEiEi", "avatar": "https://cdn.discordapp.com/guilds/1452115666151673890/users/1288523431121256579/avatars/a_1843cf73b999d8a2099f444ee1c412ed.gif?size=128"}, {"id": "uyej09cgaodh8rwq7kh75e60", "name": "NutCrisp", "avatar": "https://cdn.discordapp.com/avatars/431429256615034882/087ea1c532355664a8962f60c97fb030.png?size=128"}, {"id": "hw3iygt4dj3uq6f09ymnvsm1", "name": "ปะออน / ปอนด์", "avatar": "https://cdn.discordapp.com/avatars/342318490755006465/d94d00421994da373bdf75a73ee1c4bc.png?size=128"}, {"id": "i4lmf61x5e0s4wwjxm18iv9j", "name": "𖹭 อัมพล 𖹭  / พลอย", "avatar": "https://cdn.discordapp.com/avatars/328898807310057482/3e33dda4ed45fe47503b09bdc1c6baf0.png?size=128"}, {"id": "fjtye6a6wdrj373vd80bflzv", "name": "WTSxเฟอร์กี้93", "avatar": "https://cdn.discordapp.com/avatars/834441217366032474/44872947925f07a5561f0429e7c9edf2.png?size=128"}, {"id": "lf2be0xxepdaeymb3ld6cbyx", "name": "BABYMOON", "avatar": "https://cdn.discordapp.com/avatars/897599171220103238/4874de4822dfef06d35863c395e79f7f.png?size=128"}, {"id": "o4tofolvst9o1s88x4o2sfpx", "name": "PIMMA 👽[ดั้ม]", "avatar": "https://cdn.discordapp.com/avatars/706732771447537665/af9272c1a868fb24f3c06388cacd42ed.png?size=128"}, {"id": "h1hui02j0uvfxwtmzuhd29o5", "name": "GodHands666 [Guide]", "avatar": "https://cdn.discordapp.com/avatars/638414541725892618/0e5eabe71b81705734e6cab982aefec1.png?size=128"}, {"id": "b7knb1lcl3ae6707bjmn8bw5", "name": "WTSxหมดตูดว่ะ", "avatar": "https://cdn.discordapp.com/embed/avatars/4.png"}, {"id": "fu2x4zu1vb1y09uqg0xr0cj4", "name": "TinnTangCortes", "avatar": "https://cdn.discordapp.com/avatars/855383043858235424/9705a39bc32f0d3277b3350cb5f36406.png?size=128"}, {"id": "o2m751cynjshfdf1ut5gtg2a", "name": "Swatch", "avatar": "https://cdn.discordapp.com/avatars/1489959455473926286/1628fc11e7961d85181295493426b775.png?size=128"}, {"id": "p7d7qgsk35t12bxppgoxyz88", "name": "BillaZa", "avatar": "https://cdn.discordapp.com/avatars/240869167056551937/e999a1af0de864b49193048a479429ac.png?size=128"}, {"id": "sheoeq8419553ycmqh9msgby", "name": "HanGCroSS", "avatar": "https://cdn.discordapp.com/avatars/708930057237954620/22f7423b7d8cbbb57163eb82c2d2e407.png?size=128"}, {"id": "h5u1xztipnqsh3em02cst4mn", "name": "ZenO 👑👑👑👑👑", "avatar": "https://cdn.discordapp.com/avatars/205008481068122112/bdf8b4a4d0a39d1715d57f68a96ab057.png?size=128"}, {"id": "mrgzps8vnnrj2dii5xw5tkwf", "name": "WTSxจิ้งจอก (ดาวเหนือ)", "avatar": "https://cdn.discordapp.com/avatars/761238211736633404/0c444f5abc2629bdc24095759ce6554d.png?size=128"}, {"id": "ka4ro72qhidcefh4c22zzbbv", "name": "Qu3zz", "avatar": "https://cdn.discordapp.com/avatars/516968583356612628/9dc78a31b86a8c8a1b5e57fbd5d193ca.png?size=128"}, {"id": "vog2q5c0hg4xiu3uzwmfam9y", "name": "✿*´`♥𝓕𝓤𝓡𝓑𝓨♥´`*✿🐈", "avatar": "https://cdn.discordapp.com/avatars/1324420329329791116/4bed2456a4d9fefbab00ad9058c074e5.png?size=128"}, {"id": "ocpwy4l6lvgx91gh7jak647a", "name": "HunTer", "avatar": "https://cdn.discordapp.com/avatars/1550440594604822551/fbac660bccccdf390ff50734e180bb35.png?size=128"}, {"id": "lbis5srsdqpzhf7wcyrb1s6o", "name": "Kuma", "avatar": "https://cdn.discordapp.com/avatars/480569622559719464/630e6775ffffe45764e5bd0334457a66.png?size=128"}, {"id": "ubh19u45fhoye27lmyv16efe", "name": "MÖÖPING", "avatar": "https://cdn.discordapp.com/avatars/761607111359856652/fa8e60d06d0b5e1602b21ced8731f4f4.png?size=128"}, {"id": "uuq9nvd5mr9wbjwy9tfcwzwq", "name": "ArGentO", "avatar": "https://cdn.discordapp.com/avatars/340877905305403412/c410c25bcc765949bfdb1304ecf60410.png?size=128"}, {"id": "rz3onlmpor438lpu1q5901jd", "name": "24August (คุณวอ)", "avatar": "https://cdn.discordapp.com/avatars/530101575914356758/a43eb9bf6e3fd72cbc7bebf9d4a260aa.png?size=128"}, {"id": "wrvodm67kwnnyskgcphs9aoa", "name": "ชาวบ้าน01", "avatar": "https://cdn.discordapp.com/avatars/762579024257351691/d2eaaac062a8ca613eb175a079bcc76f.png?size=128"}, {"id": "or76rrnsr45jxhkxmbkossbe", "name": "l3abigon", "avatar": "https://cdn.discordapp.com/avatars/296648833142620160/d7a11a583302184bdc4b4659fac0d8c8.png?size=128"}, {"id": "rqdd07v15ayi6uyhw7rv28mr", "name": "Leenaa (ลีน่า)", "avatar": "https://cdn.discordapp.com/avatars/478872288654262280/4910cc0c0b3bedeae4e919cef3bbfee4.png?size=128"}, {"id": "dfi5yek6e2e6r6ezxb6w0s3o", "name": "ScapeGoat", "avatar": "https://cdn.discordapp.com/avatars/467989789069803520/2c0d41e21bcfde6f3cc54a0362638fbc.png?size=128"}, {"id": "van5du36ye5jz8aaq006qhdo", "name": "หมีจะดรอป", "avatar": "https://cdn.discordapp.com/avatars/1481518712715739186/1ad354e4394053280524e846d1a4065e.png?size=128"}, {"id": "zi925hgdkgi8fox2rbeagt8f", "name": "Jaskier", "avatar": "https://cdn.discordapp.com/avatars/364094784983269398/57c9d82ef526eb457d807154055d1bb8.png?size=128"}, {"id": "hx6oh4c4yusx5hq1bidp4tfn", "name": "DarkKy(N)", "avatar": "https://cdn.discordapp.com/avatars/1261578870902226976/f6d4d440ef0aa18eb6bce7a4ba8db873.png?size=128"}, {"id": "bn2whvyyvujr8mu2psjiyctp", "name": "Bacony", "avatar": "https://cdn.discordapp.com/avatars/237593646650621952/f968a0548f671cf1eca2bdc7d36b04a5.png?size=128"}, {"id": "nwopjrs3ibrqf1pwy9miyknn", "name": "DAMNTEE", "avatar": "https://cdn.discordapp.com/avatars/703249819384152125/c61d16610089fbd056d2763f0fb2a671.png?size=128"}, {"id": "t95cywim9nlp7odeklarn5b3", "name": "Glock", "avatar": "https://cdn.discordapp.com/avatars/1117474110872768523/9026df287bdd4deed650c2daf3c55769.png?size=128"}, {"id": "tjgta4hkuhpef1gjt7m35w0m", "name": "NatNM", "avatar": "https://cdn.discordapp.com/avatars/203734244361633794/600279b7c7b79cefd59dbe192f949601.png?size=128"}, {"id": "lnargsfum02htqzir86464ez", "name": "tOpWHATEVER", "avatar": "https://cdn.discordapp.com/avatars/853564888940150795/ce3926c613831268f6fb82bf979c616b.png?size=128"}, {"id": "b2o3bzbys2uua7rg3we2hev4", "name": "บาส 🏀 น้องบังติ้ว", "avatar": "https://cdn.discordapp.com/avatars/351012559358394392/94c9898834f6da512b97feca943c2f4b.png?size=128"}, {"id": "fjkrit9bj6b4m2kfonolrllz", "name": "เกมหมา", "avatar": "https://cdn.discordapp.com/embed/avatars/0.png"}, {"id": "eo86qyqxm4z73n6sz5abvypv", "name": "WTSxCatMellow", "avatar": "https://cdn.discordapp.com/avatars/511499415836557322/a75140741a5eacfe0785c12a79a04977.png?size=128"}, {"id": "hzf720foser4gh45jd6t9zsy", "name": "xuzy", "avatar": "https://cdn.discordapp.com/avatars/315758537345204247/78ba71d8c46de761c83f21dda9fedc6b.png?size=128"}, {"id": "usc7q7rxt619w1hrnbcxnm72", "name": "Bitkitตัวปลอม", "avatar": "https://cdn.discordapp.com/avatars/312454313698131970/ac045804f83a3b3f231553c624dd010b.png?size=128"}, {"id": "zb59gumh59sdedgut0bkwflj", "name": "Voltage", "avatar": "https://cdn.discordapp.com/avatars/1360941475504062556/f7f2e9361e8a54ce6e72580ac7b967af.png?size=128"}, {"id": "mqgxsx2ro8a86j4tr9exkek7", "name": "PreedE", "avatar": "https://cdn.discordapp.com/avatars/341924526419869698/7b3bee3f4acb59d6c5944ad40443b976.png?size=128"}, {"id": "m4agzv4k9bqtfbwzzqg894sq", "name": "KenZAki", "avatar": "https://cdn.discordapp.com/avatars/265371828330037261/39c1fbe11ab2a903714af9515908f06e.png?size=128"}, {"id": "lm97yge4wmmm0abeqpu2wjys", "name": "Iron2ong", "avatar": "https://cdn.discordapp.com/avatars/342348933584125955/316730e9adcda437bcd9737b7182a6c6.png?size=128"}, {"id": "e3mfcb58jnasfngbyr4vlhhb", "name": "CRESCENTKk", "avatar": "https://cdn.discordapp.com/avatars/787230110176641034/8acecc222dcf90e7ed027bbdb87c5e5a.png?size=128"}, {"id": "duvde3b1ugr0myka265pgql1", "name": "fearrrrrrrrrrrrrrrrrrrrr // วา #", "avatar": "https://cdn.discordapp.com/avatars/541530626881486848/2204755c2cb6be0ca5ea5de81d77436f.png?size=128"}, {"id": "j1tdsao8a5y8t485nxgaextq", "name": "โมจิเยิ้ม (เอิน )", "avatar": "https://cdn.discordapp.com/avatars/1356382600553435148/1d2c4f0bdd062b3ec8857fbf487b2749.png?size=128"}, {"id": "f5ficuwf3t2pjr7py0dzkn9u", "name": "lalaloyyyyyyy", "avatar": "https://cdn.discordapp.com/avatars/698462989933608970/2f99f320f6ceb4f224e98ed1ba09de46.png?size=128"}, {"id": "e31ptosu8ltxvc9xru06wptb", "name": "locco", "avatar": "https://cdn.discordapp.com/avatars/408819535525969931/1992b9adb875abe883ebd761156ae5d1.png?size=128"}, {"id": "m3w5a6fkbjsdblhllent5i86", "name": "MrLucky", "avatar": "https://cdn.discordapp.com/avatars/903988156053995520/a_e6ce1885889a5e32b43f513b81a96f14.gif?size=128"}, {"id": "mqqis97spj0zdiaflefx0ehg", "name": "น้องต๊าสตัวตึง", "avatar": "https://cdn.discordapp.com/avatars/1143658080253526041/32bad10b5442f360a3af46979b023709.png?size=128"}, {"id": "hhxgfcspn5iczbenhtuxub04", "name": "Hall财神", "avatar": "https://cdn.discordapp.com/embed/avatars/3.png"}]};
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const M = DATA.rows.map(r=>({id:r.id,name:r.name,avatar:r.avatar}));
+const byId = Object.fromEntries(M.map(m=>[m.id,m]));
+const av = (m,dot) => `<span class="avw">${m.avatar?`<img class="av" src="${esc(m.avatar)}" alt="" onerror="this.outerHTML='<span class=&quot;av&quot;>${esc(m.name).slice(0,1)}</span>'">`:`<span class="av">${esc(m.name).slice(0,1)}</span>`}${dot?'<i class="dot"></i>':''}</span>`;
+// seeded shuffle
+let seed=7; const rnd=()=>{ seed=(seed*16807)%2147483647; return (seed-1)/2147483646; };
+const shuffle = a => { a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; };
+const ONLINE = new Set(shuffle(M.map(m=>m.id)).slice(0,22));
+const ME = M.find(m=>m.name==="Bacony")?.id || M[20].id;
+const NOW = new Date("2026-09-24T20:34:00+07:00").getTime();
+const ago = t => { const m=Math.round((NOW-t)/60000); if(m<1) return "เมื่อสักครู่"; if(m<60) return `${m} นาทีก่อน`; const h=Math.round(m/60); if(h<24) return `${h} ชม.ก่อน`; return `${Math.round(h/24)} วันก่อน`; };
+const dshort = t => { const d=new Date(t+7*3600e3); return `${d.getUTCDate()}/${d.getUTCMonth()+1}`; };
+const DAY=86400e3;
+// categories
+const CATS = [
+  { id:"c1", name:"เศษการ์ดม่วง", rounds:[["gl 24/9",27,13*60e3],["เศษการ์ด 22/9",36,2*DAY],["woe 20/9",12,4*DAY],["17/9/2026",26,7*DAY]] },
+  { id:"c2", name:"ขนนกขาว", rounds:[["gl 24/9",10,15*60e3],["woe 20/9",10,4*DAY],["gl 17/9",10,7*DAY]] },
+  { id:"c3", name:"ขนนกหลากสี", base:"c2", rounds:[["gl 24/9",5,14*60e3],["woe 20/9",5,4*DAY]] },
+  { id:"c4", name:"กล่องเศษบอสปลอม (เศษทอง)", missing:4, rounds:[["woe 20/9",8,4*DAY],["woe 13/9",8,11*DAY]] },
+  { id:"c5", name:"ประมูลกิลด์ล็อคชื่อ 5 คน", rounds:[["woe 20/9",5,4*DAY],["woe 13/9",5,11*DAY],["woe 6/9",5,18*DAY]] },
+];
+for (const c of CATS){
+  let order = shuffle(M.map(m=>m.id)); if(c.missing) { c.notIn = order.slice(-c.missing); order = order.slice(0,-c.missing); } else c.notIn=[];
+  c.queue = order; c.ban = new Set(c.id==="c1"?[order[4]]:[]);
+  // history: most recent round = last N of queue, previous = the N before that, …
+  let end=order.length; c.hist=[];
+  for (const [label,n,agoMs] of c.rounds){ let ids; if(end-n>=0){ ids=order.slice(end-n,end); end-=n; } else { ids=order.slice(0,end).concat(order.slice(order.length-(n-end))); end=order.length-(n-end); } c.hist.push({id:Math.random().toString(36).slice(2),label,ids,at:NOW-agoMs,actor:"tog",prev:null}); }
+}
+let cur = CATS[0], count=0, labelTxt="", view="admin", layout=1, qsearch="", undoStack=[];
+function lastServed(c){ const map={}; for(const h of c.hist.slice().reverse()) for(const id of h.ids) map[id]=h.at; return map; }
+function startNumber(c){ if(!c.base) return 1; const b=CATS.find(x=>x.id===c.base); const lb=b.hist[0]; let n=lb?lb.ids.length:0; for(const h of c.hist) if(!lb||h.at>lb.at) n+=h.ids.length; return n+1; }
+function served(c,n){ const out=[], skipped=[]; for(const id of c.queue){ if(out.length>=n) break; if(c.ban.has(id)){ skipped.push(id); continue; } out.push(id); } return {out,skipped}; }
+// "Lap" = everyone served since the queue last wrapped: walk history newest → oldest until someone repeats.
+function lap(c){ const seen=new Set(), inQ=new Set(c.queue); for(const h of c.hist){ if(h.ids.some(id=>seen.has(id))) break; h.ids.forEach(id=>seen.add(id)); } return [...seen].filter(id=>inQ.has(id)).length; }
+function avgPer(c){ const h=c.hist.slice(0,4); return h.length? h.reduce((a,x)=>a+x.ids.length,0)/h.length : 0; }
+const textFor = (c,label,ids,start) => `<b>**${esc([label.trim(),c.name].filter(Boolean).join(" "))}**</b>\n\n`+ids.map((id,i)=>`${start+i}.${esc(byId[id].name)}`).join("\n");
+
+function renderCats(){
+  document.getElementById("cats").innerHTML = CATS.map(c=>{ const next=served(c,1).out[0]; const lh=c.hist[0];
+    return `<button class="cat ${c===cur?"on":""}" data-c="${c.id}"><div class="n">${esc(c.name)}<span class="c">${c.queue.length}</span></div><div class="m">ถัดไป <b>${esc(byId[next]?.name||"—")}</b> · ${lh?`${esc(lh.label)} ${ago(lh.at)}`:"ยังไม่เคยรัน"}</div></button>`; }).join("") + `<button class="cat add">+ หมวดใหม่</button>`;
+}
+function renderKpis(){
+  const c=cur, L=lap(c), lh=c.hist[0], a=avgPer(c);
+  const meRank = c.queue.indexOf(ME)+1;
+  document.getElementById("kpis").innerHTML = `
+    <div class="k"><div class="l">รอบนี้ของคิว (lap)</div><div class="v">${L}<span style="font-size:13px;color:var(--dim)">/${c.queue.length}</span></div><div class="bar"><i style="width:${L/c.queue.length*100}%"></i></div><div class="kh" style="margin-top:4px">อีก ${c.queue.length-L} คนจะครบทุกคน 1 รอบ</div></div>
+    <div class="k"><div class="l">รันล่าสุด</div><div class="v" style="font-size:16px">${lh?esc(lh.label):"—"}</div><div class="kh">${lh?`${lh.ids.length} คน · ${ago(lh.at)} · โดย ${lh.actor}`:""}</div></div>
+    <div class="k"><div class="l">เฉลี่ยต่อรอบ</div><div class="v">${a?a.toFixed(0):"—"}<span style="font-size:13px;color:var(--dim)"> คน</span></div><div class="kh">≈ ${a?Math.ceil(c.queue.length/a):"—"} รอบถึงจะวนครบคิว</div></div>
+    <div class="k ${c.notIn.length?"warn":""}"><div class="l">สมาชิกที่ยังไม่อยู่ในคิว</div><div class="v ${c.notIn.length?"warn":"ok"}">${c.notIn.length||"ครบ ✓"}</div><div class="kh">${c.notIn.length?"สมาชิก active ที่ไม่มีในหมวดนี้":"ทุกคนที่ active อยู่ในคิวแล้ว"}</div></div>`;
+  document.getElementById("bannerSlot").innerHTML = c.notIn.length && view==="admin" ? `<div class="banner"><span class="avs">${c.notIn.map(id=>av(byId[id])).join("")}</span><span><b>${c.notIn.length} คน</b>ยังไม่อยู่ในคิว “${esc(c.name)}”: ${c.notIn.map(id=>esc(byId[id].name)).join(", ")}</span><button class="btn" id="addMissing">เพิ่มท้ายคิวทั้งหมด</button></div>` : "";
+}
+function renderQueue(){
+  const c=cur, ls=lastServed(c), {out,skipped}=served(c,count), cutSet=new Set(out), start=startNumber(c);
+  const q=document.getElementById("queue"); q.className = "q"+(layout===2?" two":"");
+  document.getElementById("qtitle").textContent = `Queue — ${c.name}`;
+  document.getElementById("qsub").textContent = `${c.queue.length} คน · ● ออนไลน์ในห้องเสียง ${c.queue.filter(id=>ONLINE.has(id)).length}`;
+  const lastIdx = out.length? c.queue.indexOf(out[out.length-1]) : -1;
+  const L = lap(c), lapIdx = c.queue.length - L; // everyone from lapIdx on was served this lap
+  const s=qsearch.trim().toLowerCase();
+  let html="";
+  c.queue.forEach((id,i)=>{
+    const m=byId[id], ban=c.ban.has(id), inCut=cutSet.has(id), hit=s&&m.name.toLowerCase().includes(s);
+    if(i===lapIdx && L>0 && lapIdx>0) html+=`<div class="lapline">↓ ได้ไปแล้วรอบนี้ (${L} คน) — จะวนกลับมาใหม่</div>`;
+    const tags = (ban?`<span class="tag ban" title="ติดแบนประมูลถึง 30/9 — คงตำแหน่งไว้ แต่ถูกข้าม">แบน · ข้าม</span>`:"") + (id===ME&&view==="member"?`<span class="tag me">คุณ</span>`:"") + (id===served(c,1).out[0]&&!count?`<span class="tag next">ถัดไป</span>`:"");
+    const last = ls[id]? `<span class="last">ได้ ${dshort(ls[id])}</span>` : `<span class="last new">ยังไม่เคยได้</span>`;
+    html+=`<div class="row ${inCut?"cut":""} ${ban?"ban":""} ${hit?"hit":""} ${s&&!hit?"dim":""}" data-id="${id}" ${view==="admin"?'draggable="true"':''}>
+      ${view==="admin"?'<span class="grip" title="ลากเพื่อย้าย">⋮⋮</span>':''}<span class="rk" data-rk="${id}" title="คลิกเพื่อพิมพ์ตำแหน่ง">${inCut?`<b style="color:#fcd34d">${start+out.indexOf(id)}.</b>`:i+1}</span>${av(m,ONLINE.has(id))}<span class="nm">${esc(m.name)}</span>${tags}${last}${view==="admin"?`<button class="x" data-x="${id}" title="เอาออกจากคิว">✕</button>`:""}</div>`;
+    if(i===lastIdx) html+=`<div class="cutline">✂ ตัดที่ ${out.length} คน${skipped.length?` · ข้าม ${skipped.length} คนที่ติดแบน`:""} — ทั้งหมดนี้จะย้ายไปท้ายคิว</div>`;
+  });
+  q.innerHTML=html;
+}
+function renderRun(){
+  const c=cur, {out,skipped}=served(c,count), start=startNumber(c);
+  document.getElementById("runsub").textContent = c.name;
+  const counts=[...new Set(c.hist.map(h=>h.ids.length))].slice(0,4);
+  document.getElementById("countChips").innerHTML = counts.map(n=>`<span class="chip ${n===count?"on":""}" data-n="${n}">${n} <small>ล่าสุด</small></span>`).join("") + `<span class="chip" data-n="${c.queue.length}">ทั้งคิว</span>`;
+  const labels=["gl 24/9","woe 27/9",...new Set(c.hist.map(h=>h.label))].filter((v,i,a)=>a.indexOf(v)===i).slice(0,4);
+  document.getElementById("labelChips").innerHTML = labels.map((l,i)=>`<span class="chip ${l===labelTxt?"on":""}" data-l="${esc(l)}">${esc(l)}${i===0?" <small>วันนี้</small>":i===1?" <small>ถัดไป</small>":""}</span>`).join("");
+  const others=CATS.filter(x=>x!==c);
+  document.getElementById("numinfo").innerHTML = `เลขเริ่มที่ <b>${start}</b> · <select id="base"><option value="">เริ่ม 1 ทุกครั้ง</option>${others.map(o=>`<option value="${o.id}" ${c.base===o.id?"selected":""}>ต่อจาก ${esc(o.name)}</option>`).join("")}</select>${c.base?`<span style="color:var(--dim)">(ต่อจากรอบล่าสุดของ ${esc(CATS.find(x=>x.id===c.base).name)})</span>`:""}`;
+  document.getElementById("dcBody").innerHTML = out.length? textFor(c,labelTxt,out,start) : `<span style="color:#949ba4">ใส่จำนวนคนเพื่อดูตัวอย่าง…</span>`;
+  document.getElementById("skipInfo").innerHTML = skipped.length? `<span style="color:#fda4af">ข้าม ${skipped.map(id=>esc(byId[id].name)).join(", ")} (แบน)</span>` : count>c.queue.length?`<span style="color:#fbbf24">คิวมีแค่ ${c.queue.length}</span>`:"";
+  document.getElementById("count").value = count||"";
+  document.getElementById("run").disabled = !out.length;
+  document.getElementById("run").textContent = out.length? `Run — ${out.length} คนได้ของ (${start}–${start+out.length-1})` : "Run round";
+  document.getElementById("runCard").style.display = view==="admin"?"":"none";
+}
+function renderMe(){
+  const box=document.getElementById("mebox"); if(view!=="member"){ box.classList.remove("show"); return; }
+  const c=cur, r=c.queue.indexOf(ME)+1, a=avgPer(c), rounds=a?Math.max(1,Math.ceil(r/a)):"?";
+  box.classList.add("show");
+  box.innerHTML = `<div style="font-size:11px;color:#7dd3fc;text-transform:uppercase;letter-spacing:.06em">คิวของคุณ · ${esc(c.name)}</div><div style="display:flex;align-items:baseline;gap:10px"><div class="big">#${r}</div><div style="color:var(--muted);font-size:12px">จาก ${c.queue.length} คน</div></div><div style="font-size:12px;color:#d4d4d8">คาดว่าจะได้ใน <b>~${rounds} รอบ</b> (เฉลี่ย ${a.toFixed(0)} คน/รอบ)</div><div style="font-size:11px;color:var(--dim);margin-top:4px">หมวดอื่น: ${CATS.filter(x=>x!==c).map(x=>`${esc(x.name)} #${x.queue.indexOf(ME)+1||"—"}`).join(" · ")}</div>`;
+}
+function renderHist(){
+  const c=cur; document.getElementById("hsub").textContent = `${c.hist.length} รอบล่าสุด`;
+  let n=startNumber(c);
+  document.getElementById("hist").innerHTML = c.hist.map((h,hi)=>{ const ids=h.ids;
+    return `<div class="h" data-h="${h.id}"><div class="t"><span class="pill">${esc(h.label)}</span><span class="cnt">${ids.length} คน</span><span class="rng">${dshort(h.at)} · ${ago(h.at)}</span><span class="acts"><button data-cp="${h.id}">Copy</button>${hi===0&&view==="admin"?`<button class="u" data-undo="${h.id}">Undo</button>`:""}${view==="admin"?`<button class="d" data-del="${h.id}">ลบ</button>`:""}</span></div>
+      <div class="stack" data-open="${h.id}" style="cursor:pointer" title="คลิกเพื่อดูรายชื่อ">${ids.slice(0,14).map(id=>av(byId[id])).join("")}<span class="more">${ids.length>14?`+${ids.length-14} · `:""}ดูรายชื่อ ▾</span></div>
+      <div class="names">${ids.map((id,i)=>`<span><i>${i+1}.</i>${esc(byId[id].name)}</span>`).join("")}</div>
+      <div class="meta">โดย ${esc(h.actor)}</div></div>`; }).join("") || `<div class="pad hint" style="color:var(--dim)">ยังไม่มีประวัติ</div>`;
+}
+function renderLookup(){
+  const s=document.getElementById("lookup").value.trim().toLowerCase(), box=document.getElementById("lk");
+  if(!s){ box.innerHTML=`<div style="font-size:11.5px;color:var(--dim)">ตอบคำถาม “ผมคิวที่เท่าไหร่” ได้ทันที — เห็นทุกหมวด + คาดว่าจะได้ในอีกกี่รอบ</div>`; return; }
+  const hits=M.filter(m=>m.name.toLowerCase().includes(s)).slice(0,3);
+  box.innerHTML = hits.length? hits.map(m=>`<div style="display:flex;align-items:center;gap:8px;margin-top:6px">${av(m,ONLINE.has(m.id))}<b>${esc(m.name)}</b></div>`+CATS.map(c=>{ const r=c.queue.indexOf(m.id)+1, a=avgPer(c);
+      return `<div class="r"><span>${esc(c.name)}</span><span class="p">${r?"#"+r:"—"}</span><span class="e">${r?(c.ban.has(m.id)?"ติดแบน":`~${Math.max(1,Math.ceil(r/(a||1)))} รอบ`):"ไม่อยู่ในคิว"}</span></div>`; }).join("")).join("") : `<div style="font-size:11.5px;color:var(--dim)">ไม่พบชื่อ</div>`;
+}
+function render(){ renderCats(); renderKpis(); renderQueue(); renderRun(); renderMe(); renderHist(); renderLookup(); }
+function toast(msg, undoFn){ const t=document.getElementById("toast"); t.innerHTML=`<span>${msg}</span>${undoFn?`<button id="tu">Undo</button>`:""}`; t.classList.add("show"); window._undo=undoFn; clearTimeout(window._tt); window._tt=setTimeout(()=>t.classList.remove("show"),4000); }
+
+// ---- actions ----
+function runRound(){
+  const c=cur, {out}=served(c,count); if(!out.length) return; const start=startNumber(c);
+  const prev=c.queue.slice(); const set=new Set(out);
+  c.queue = c.queue.filter(id=>!set.has(id)).concat(out);
+  const h={id:Math.random().toString(36).slice(2),label:labelTxt||"(ไม่มีชื่อ)",ids:out,at:NOW,actor:"Ryuu",prev}; c.hist.unshift(h);
+  const n=out.length; count=0; labelTxt=""; document.getElementById("label").value="";
+  render(); toast(`รัน ${esc(h.label)} — ${n} คน (${start}–${start+n-1}) ย้ายไปท้ายคิวแล้ว · คัดลอกข้อความแล้ว ✓`, ()=>undoRound(h.id));
+}
+function undoRound(hid){ const c=cur, h=c.hist[0]; if(!h||h.id!==hid) return; if(h.prev) c.queue=h.prev; else { const set=new Set(h.ids); c.queue=h.ids.concat(c.queue.filter(id=>!set.has(id))); } c.hist.shift(); render(); toast(`Undo ${esc(h.label)} — คืนตำแหน่งเดิมแล้ว`); }
+function moveTo(id, rank){ const c=cur; const q=c.queue.filter(x=>x!==id); rank=Math.max(1,Math.min(q.length+1,rank)); q.splice(rank-1,0,id); c.queue=q; render(); }
+
+document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t.id==="tu"){ document.getElementById("toast").classList.remove("show"); window._undo&&window._undo(); return; }
+  const cat=t.closest(".cat[data-c]"); if(cat){ cur=CATS.find(c=>c.id===cat.dataset.c); count=0; render(); return; }
+  const ch=t.closest("[data-n]"); if(ch){ count=+ch.dataset.n; renderQueue(); renderRun(); return; }
+  const lc=t.closest("[data-l]"); if(lc&&lc.classList.contains("chip")){ labelTxt=lc.dataset.l; document.getElementById("label").value=labelTxt; renderRun(); return; }
+  const x=t.closest("[data-x]"); if(x){ const c=cur, id=x.dataset.x, i=c.queue.indexOf(id); c.queue.splice(i,1); c.notIn.push(id); render(); toast(`เอา ${esc(byId[id].name)} ออกจากคิว`, ()=>{ c.notIn=c.notIn.filter(v=>v!==id); c.queue.splice(i,0,id); render(); }); return; }
+  const rk=t.closest("[data-rk]"); if(rk&&view==="admin"&&!rk.querySelector("input")){ const id=rk.dataset.rk, cur0=cur.queue.indexOf(id)+1; rk.innerHTML=`<input class="rkin" value="${cur0}">`; const inp=rk.querySelector("input"); inp.focus(); inp.select(); const done=ok=>{ if(ok){ const v=parseInt(inp.value,10); if(v&&v!==cur0){ moveTo(id,v); toast(`ย้าย ${esc(byId[id].name)} ไปลำดับ ${v}`); return; } } renderQueue(); }; inp.onkeydown=ev=>{ if(ev.key==="Enter") done(true); if(ev.key==="Escape") done(false); }; inp.onblur=()=>done(true); return; }
+  const op=t.closest("[data-open]"); if(op){ op.parentElement.classList.toggle("open"); return; }
+  const cp=t.closest("[data-cp]"); if(cp){ toast("คัดลอกข้อความรอบนี้แล้ว ✓"); return; }
+  const un=t.closest("[data-undo]"); if(un){ undoRound(un.dataset.undo); return; }
+  const dl=t.closest("[data-del]"); if(dl){ cur.hist=cur.hist.filter(h=>h.id!==dl.dataset.del); renderHist(); renderKpis(); toast("ลบประวัติแล้ว (ไม่กระทบลำดับคิว)"); return; }
+  if(t.id==="addMissing"){ const c=cur, ids=c.notIn.slice(); c.queue=c.queue.concat(ids); c.notIn=[]; render(); toast(`เพิ่ม ${ids.length} คนท้ายคิว`, ()=>{ c.queue=c.queue.slice(0,-ids.length); c.notIn=ids; render(); }); return; }
+  const vs=t.closest("#viewas button"); if(vs){ view=vs.dataset.v; document.querySelectorAll("#viewas button").forEach(b=>b.classList.toggle("on",b===vs)); count=0; render(); return; }
+  const ly=t.closest("#layout button"); if(ly){ layout=+ly.dataset.l; document.querySelectorAll("#layout button").forEach(b=>b.classList.toggle("on",b===ly)); renderQueue(); return; }
+});
+document.getElementById("minus").onclick=()=>{ count=Math.max(0,count-1); renderQueue(); renderRun(); };
+document.getElementById("plus").onclick=()=>{ count=Math.min(cur.queue.length,count+1); renderQueue(); renderRun(); };
+document.getElementById("count").oninput=e=>{ count=Math.max(0,parseInt(e.target.value||"0",10)||0); renderQueue(); renderRun(); document.getElementById("count").focus(); };
+document.getElementById("label").oninput=e=>{ labelTxt=e.target.value; renderRun(); document.getElementById("label").focus(); };
+document.getElementById("run").onclick=runRound;
+document.getElementById("copyPrev").onclick=()=>toast("คัดลอกข้อความตัวอย่างแล้ว ✓");
+document.getElementById("qsearch").oninput=e=>{ qsearch=e.target.value; renderQueue(); const h=document.querySelector(".row.hit"); h&&h.scrollIntoView({block:"center",behavior:"smooth"}); };
+document.getElementById("lookup").oninput=renderLookup;
+document.addEventListener("change",e=>{ if(e.target.id==="base"){ cur.base=e.target.value||undefined; renderRun(); renderHist(); } });
+// drag reorder
+let dragId=null;
+document.addEventListener("dragstart",e=>{ const r=e.target.closest(".row"); if(!r) return; dragId=r.dataset.id; r.classList.add("drag"); e.dataTransfer.effectAllowed="move"; });
+document.addEventListener("dragend",e=>{ document.querySelectorAll(".row.drag,.row.over").forEach(r=>r.classList.remove("drag","over")); });
+document.addEventListener("dragover",e=>{ const r=e.target.closest(".row"); if(!r||!dragId) return; e.preventDefault(); document.querySelectorAll(".row.over").forEach(x=>x!==r&&x.classList.remove("over")); r.classList.add("over"); });
+document.addEventListener("drop",e=>{ const r=e.target.closest(".row"); if(!r||!dragId) return; e.preventDefault(); const to=cur.queue.indexOf(r.dataset.id)+1; const from=cur.queue.indexOf(dragId)+1; const id=dragId; dragId=null; moveTo(id, from<to?to-1:to); toast(`ย้าย ${esc(byId[id].name)} ไปลำดับ ${cur.queue.indexOf(id)+1}`); });
+render();
+</script>
+</body>
+</html>

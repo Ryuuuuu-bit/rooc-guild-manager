@@ -2,10 +2,16 @@ import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { lootCategories, lootQueueEntries, lootRounds, members } from "@/db/schema";
 import { memberDisplayName, isCurrentlyAuctionBanned } from "@/lib/ui";
+import { CHECKIN_EVENTS, lastOccurrenceEnd, nextOccurrenceDate, windowFor } from "@/lib/checkin-events";
 import type { Member } from "@/db/schema";
 
 export interface LootQueueMemberRef {
   id: string;
+  /** For the "tag everyone" copy format (<@discordId>). */
+  discordId: string;
+  /** Benched members keep their place but are passed over in a round,
+   * exactly like an auction ban (see runLootRound). */
+  benched: boolean;
   displayName: string;
   discordAvatar: string | null;
   /** Kept for display (exact expiry in tooltips) — a PAST timestamp here
@@ -30,11 +36,17 @@ export interface LootCategoryView {
    * wherever the linked category's most recent round left off, instead of
    * starting fresh at 1 — see computeNumberingStart below. */
   numberingBaseCategoryId: string | null;
+  /** The most recent round run for this category, if any. */
+  lastRound: { label: string | null; createdAt: Date; count: number } | null;
+  /** What the NEXT round's numbered list would start at (see computeNumberingStart). */
+  nextStartNumber: number;
 }
 
 export function toRef(m: Member): LootQueueMemberRef {
   return {
     id: m.id,
+    discordId: m.discordId,
+    benched: m.benched,
     displayName: memberDisplayName(m),
     discordAvatar: m.discordAvatar,
     auctionBanUntil: m.auctionBanUntil,
@@ -68,13 +80,26 @@ export async function listLootCategories(): Promise<LootCategoryView[]> {
     queueByCategory.set(entry.categoryId, list);
   }
 
-  return categories.map((c) => ({
-    id: c.id,
-    name: c.name,
-    sortOrder: c.sortOrder,
-    queue: queueByCategory.get(c.id) ?? [],
-    numberingBaseCategoryId: c.numberingBaseCategoryId,
-  }));
+  // Latest round per category (one small query; DISTINCT ON keeps just the newest row each).
+  const latest = await db
+    .selectDistinctOn([lootRounds.categoryId], { categoryId: lootRounds.categoryId, label: lootRounds.label, createdAt: lootRounds.createdAt, memberIds: lootRounds.memberIds })
+    .from(lootRounds)
+    .orderBy(lootRounds.categoryId, desc(lootRounds.createdAt));
+  const latestByCategory = new Map(latest.map((r) => [r.categoryId, r]));
+  const starts = await Promise.all(categories.map((c) => computeNumberingStart(db, c.id)));
+
+  return categories.map((c, i) => {
+    const lr = latestByCategory.get(c.id);
+    return {
+      id: c.id,
+      name: c.name,
+      sortOrder: c.sortOrder,
+      queue: queueByCategory.get(c.id) ?? [],
+      numberingBaseCategoryId: c.numberingBaseCategoryId,
+      lastRound: lr ? { label: lr.label, createdAt: lr.createdAt, count: lr.memberIds.length } : null,
+      nextStartNumber: starts[i] + 1,
+    };
+  });
 }
 
 /** Either the module-level `db`, or the `tx` handed to a `db.transaction`
@@ -125,6 +150,12 @@ export interface LootRoundView {
   label: string | null;
   actor: string | null;
   createdAt: Date;
+  /** Where this round's numbered list started — null for rounds run before it was recorded. */
+  startNumber: number | null;
+  /** Every served member id, in served order (including anyone who has since left). */
+  memberIds: string[];
+  /** Display names in served order, "(left the guild)" for ids no longer on file — keeps numbering intact when copying. */
+  names: string[];
   /** Served members, in served order — a best-effort join against the
    * CURRENT members table; a member removed from the guild since then just
    * doesn't get a name here (their id stays in the historical record). */
@@ -152,6 +183,49 @@ export async function listLootRounds(categoryId: string, limit = 20): Promise<Lo
     label: r.label,
     actor: r.actor,
     createdAt: r.createdAt,
+    startNumber: r.startNumber,
+    memberIds: r.memberIds,
+    names: r.memberIds.map((id) => memberById.get(id)?.displayName ?? "(left the guild)"),
     members: r.memberIds.map((id) => memberById.get(id)).filter((m): m is LootQueueMemberRef => Boolean(m)),
   }));
+}
+
+/** When each member in a category last got served ("YYYY-MM-DDTHH..." ISO), from its recent round history. */
+export async function lastServedByMember(categoryId: string, rounds = 120): Promise<Record<string, string>> {
+  const rows = await db
+    .select({ memberIds: lootRounds.memberIds, createdAt: lootRounds.createdAt })
+    .from(lootRounds)
+    .where(eq(lootRounds.categoryId, categoryId))
+    .orderBy(desc(lootRounds.createdAt))
+    .limit(rounds);
+  const out: Record<string, string> = {};
+  for (const r of rows) for (const id of r.memberIds) if (!(id in out)) out[id] = r.createdAt.toISOString();
+  return out;
+}
+
+/** Bangkok "YYYY-MM-DD" for an instant. */
+function thaiDate(d: Date): string {
+  return new Date(d.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Round-label suggestions from the check-in schedule, e.g. "gl 24/9" for
+ * the round that just ended today and "woe 27/9" for the next one. */
+export function roundLabelSuggestions(now: Date): { label: string; hint: "today" | "latest" | "next" }[] {
+  const today = thaiDate(now);
+  const fmt = (key: string, date: string) => `${key} ${Number(date.slice(8, 10))}/${Number(date.slice(5, 7))}`;
+  const out: { label: string; hint: "today" | "latest" | "next"; sort: number }[] = [];
+  for (const ev of CHECKIN_EVENTS) {
+    const lastEnd = lastOccurrenceEnd(ev, now);
+    if (lastEnd && now.getTime() - lastEnd.getTime() < 3 * 86400_000) {
+      const d = thaiDate(lastEnd);
+      out.push({ label: fmt(ev.key, d), hint: d === today ? "today" : "latest", sort: now.getTime() - lastEnd.getTime() });
+    }
+    const next = nextOccurrenceDate(ev, now);
+    out.push({ label: fmt(ev.key, next), hint: next === today ? "today" : "next", sort: 1e12 + windowFor(ev, next).start.getTime() - now.getTime() });
+  }
+  const seen = new Set<string>();
+  return out
+    .sort((a, b) => a.sort - b.sort)
+    .filter((o) => (seen.has(o.label) ? false : (seen.add(o.label), true)))
+    .map(({ label, hint }) => ({ label, hint }));
 }
